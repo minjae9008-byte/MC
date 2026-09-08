@@ -39,6 +39,18 @@ public final class PlayerData {
      * leave the stale penalty in place forever.
      */
     private boolean tierApplied;
+    /** Set when the equipped gear, or its remaining durability, changed. */
+    private boolean gearDirty = true;
+
+    /**
+     * Remaining durability of the held weapon and of the worn armour, as
+     * percentages. Derived values: they are recomputed from the inventory, so
+     * unlike the fields above they are never mirrored to the scoreboard.
+     */
+    private int weaponCondition = 100;
+    private int armorCondition = 100;
+    private boolean gearWarned;
+    private long lastGearWarnMs;
 
     public PlayerData(UUID uuid) {
         this.uuid = uuid;
@@ -162,6 +174,56 @@ public final class PlayerData {
 
     public void markTierApplied() {
         this.tierApplied = true;
+    }
+
+    public boolean gearDirty() {
+        return gearDirty;
+    }
+
+    public void markGearDirty() {
+        this.gearDirty = true;
+    }
+
+    public void clearGearDirty() {
+        this.gearDirty = false;
+    }
+
+    /** Marks everything an inventory change can affect. */
+    public void markInventoryDirty() {
+        this.weightDirty = true;
+        this.gearDirty = true;
+    }
+
+    public int weaponCondition() {
+        return weaponCondition;
+    }
+
+    public void weaponCondition(int weaponCondition) {
+        this.weaponCondition = weaponCondition;
+    }
+
+    public int armorCondition() {
+        return armorCondition;
+    }
+
+    public void armorCondition(int armorCondition) {
+        this.armorCondition = armorCondition;
+    }
+
+    public boolean gearWarned() {
+        return gearWarned;
+    }
+
+    public void gearWarned(boolean gearWarned) {
+        this.gearWarned = gearWarned;
+    }
+
+    public long lastGearWarnMs() {
+        return lastGearWarnMs;
+    }
+
+    public void lastGearWarnMs(long lastGearWarnMs) {
+        this.lastGearWarnMs = lastGearWarnMs;
     }
 
     /** Load percentage (weight/weightMax * 100), guarded against a zero max. */

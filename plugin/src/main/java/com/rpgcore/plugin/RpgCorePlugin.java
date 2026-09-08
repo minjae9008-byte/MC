@@ -1,9 +1,14 @@
 package com.rpgcore.plugin;
 
+import com.rpgcore.plugin.anvil.AnvilListener;
+import com.rpgcore.plugin.anvil.AnvilRecipe;
+import com.rpgcore.plugin.anvil.AnvilService;
 import com.rpgcore.plugin.chat.ProximityChatListener;
 import com.rpgcore.plugin.config.RpgConfig;
 import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.data.PlayerDataManager;
+import com.rpgcore.plugin.gear.GearListener;
+import com.rpgcore.plugin.gear.GearService;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.gui.StatsMenuListener;
 import com.rpgcore.plugin.hud.HudTask;
@@ -47,6 +52,8 @@ public final class RpgCorePlugin extends JavaPlugin {
     private ItemWeightTable weightTable;
     private WeightService weight;
     private TreeFellService treeFell;
+    private GearService gear;
+    private AnvilService anvil;
     private StatsMenu statsMenu;
     private BedrockPlatform bedrockPlatform;
     private SimpleVoiceChatHook voiceChatHook;
@@ -68,6 +75,10 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.treeFell = new TreeFellService(this);
         this.treeFell.load();
 
+        this.gear = new GearService(this);
+        this.anvil = new AnvilService(this);
+        this.anvil.load();
+
         this.bedrockPlatform = new BedrockPlatform(this);
         this.bedrockPlatform.detect();
         this.statsMenu = new StatsMenu(this, bedrockPlatform);
@@ -76,6 +87,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new StatsMenuListener(this), this);
         getServer().getPluginManager().registerEvents(new WeightListener(this), this);
         getServer().getPluginManager().registerEvents(new TreeFellListener(this, treeFell), this);
+        getServer().getPluginManager().registerEvents(new GearListener(this), this);
+        getServer().getPluginManager().registerEvents(new AnvilListener(this, anvil), this);
         if (rpgConfig.proximityEnabled()) {
             getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
         }
@@ -86,6 +99,7 @@ public final class RpgCorePlugin extends JavaPlugin {
             @Override
             public void run() {
                 weight.tick();
+                gear.tick();
                 treeFell.tick();
             }
         }.runTaskTimer(this, 1L, 1L);
@@ -132,7 +146,7 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     private boolean adminCommand(CommandSender sender, String[] args) {
         if (args.length == 0) {
-            sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | givexp <player> <amount> | reset <player>");
+            sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | recipes | givexp <player> <amount> | reset <player>");
             return true;
         }
 
@@ -141,11 +155,23 @@ public final class RpgCorePlugin extends JavaPlugin {
                 rpgConfig.reload();
                 weightTable.load();
                 treeFell.load();
+                anvil.load();
                 bedrockPlatform.detect();
                 for (Player player : getServer().getOnlinePlayers()) {
                     stats.recalculate(player);
                 }
                 sender.sendMessage(ChatColor.GREEN + "[RPGCore] 설정을 다시 불러왔습니다.");
+                return true;
+            }
+            case "recipes" -> {
+                if (anvil.isEmpty()) {
+                    sender.sendMessage(ChatColor.YELLOW + "[RPGCore] 등록된 모루 조합법이 없습니다.");
+                    return true;
+                }
+                sender.sendMessage(ChatColor.GOLD + "[RPGCore] 모루 조합법 (왼쪽=장비, 오른쪽=재료):");
+                for (AnvilRecipe recipe : anvil.recipes()) {
+                    sender.sendMessage("  " + anvil.describe(recipe));
+                }
                 return true;
             }
             case "givexp" -> {
@@ -193,7 +219,7 @@ public final class RpgCorePlugin extends JavaPlugin {
                 return true;
             }
             default -> {
-                sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | givexp <player> <amount> | reset <player>");
+                sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | recipes | givexp <player> <amount> | reset <player>");
                 return true;
             }
         }
@@ -229,6 +255,14 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public TreeFellService treeFell() {
         return treeFell;
+    }
+
+    public GearService gear() {
+        return gear;
+    }
+
+    public AnvilService anvil() {
+        return anvil;
     }
 
     public StatsMenu statsMenu() {

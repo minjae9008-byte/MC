@@ -17,7 +17,8 @@ import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 
 /**
- * Marks a player's weight dirty whenever their carried items can have changed.
+ * Marks a player's weight (and gear) dirty whenever their carried items can
+ * have changed.
  * Nothing is computed here - {@link WeightService#tick()} picks the flag up on
  * the next tick, so a burst of events (e.g. shift-clicking a full chest) still
  * results in a single recompute.
@@ -33,7 +34,9 @@ public final class WeightListener implements Listener {
     private void mark(Player player) {
         PlayerData data = plugin.players().cached(player.getUniqueId());
         if (data != null) {
-            data.markWeightDirty();
+            // The same events can move armour and tools around, so the gear
+            // condition is recomputed alongside the weight.
+            data.markInventoryDirty();
         }
     }
 

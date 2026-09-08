@@ -43,6 +43,15 @@ public final class RpgConfig {
     private int xpPerMobKill;
     private int xpPerTreeLog;
 
+    private boolean durabilityScalingEnabled;
+    private int durabilityFullAbove;
+    private int durabilityMinPerformance;
+    private boolean durabilityAffectsAttack;
+    private boolean durabilityAffectsArmor;
+    private boolean durabilityAffectsMining;
+
+    private boolean anvilEnabled;
+
     private double proximityRange;
     private boolean proximityEnabled;
     private boolean proximityHideOutOfRange;
@@ -88,6 +97,17 @@ public final class RpgConfig {
 
         xpPerMobKill = c.getInt("xp-sources.per-mob-kill", 10);
         xpPerTreeLog = c.getInt("xp-sources.per-tree-log", 1);
+
+        durabilityScalingEnabled = c.getBoolean("durability-scaling.enabled", true);
+        // Clamped so a mistyped curve cannot invert (a floor above the
+        // threshold would mean worn gear outperforms pristine gear).
+        durabilityFullAbove = Math.clamp(c.getInt("durability-scaling.full-performance-above", 50), 1, 100);
+        durabilityMinPerformance = Math.clamp(c.getInt("durability-scaling.minimum-performance", 50), 0, 100);
+        durabilityAffectsAttack = c.getBoolean("durability-scaling.affects.attack-damage", true);
+        durabilityAffectsArmor = c.getBoolean("durability-scaling.affects.armor", true);
+        durabilityAffectsMining = c.getBoolean("durability-scaling.affects.mining-speed", true);
+
+        anvilEnabled = c.getBoolean("anvil.enabled", true);
 
         proximityEnabled = c.getBoolean("proximity-chat.enabled", true);
         proximityRange = c.getDouble("proximity-chat.range", 24);
@@ -197,6 +217,34 @@ public final class RpgConfig {
 
     public int xpPerTreeLog() {
         return xpPerTreeLog;
+    }
+
+    public boolean durabilityScalingEnabled() {
+        return durabilityScalingEnabled;
+    }
+
+    public int durabilityFullAbove() {
+        return durabilityFullAbove;
+    }
+
+    public int durabilityMinPerformance() {
+        return durabilityMinPerformance;
+    }
+
+    public boolean durabilityAffectsAttack() {
+        return durabilityAffectsAttack;
+    }
+
+    public boolean durabilityAffectsArmor() {
+        return durabilityAffectsArmor;
+    }
+
+    public boolean durabilityAffectsMining() {
+        return durabilityAffectsMining;
+    }
+
+    public boolean anvilEnabled() {
+        return anvilEnabled;
     }
 
     public boolean proximityEnabled() {

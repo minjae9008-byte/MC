@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.gui;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.anvil.AnvilRecipe;
 import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.platform.BedrockPlatform;
 import com.rpgcore.plugin.stats.StatType;
@@ -13,6 +14,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -21,8 +23,9 @@ import java.util.List;
  * through /trigger because the datapack owned the rules; the plugin owns them
  * now, so the round-trip is gone.
  *
- * Slots: 4 head/level, 10-14 stats (from StatType order), 16 HP, 19 weight,
- * 22 unspent points, and the last slot of the inventory closes the menu.
+ * Slots: 4 head/level, 8 anvil recipes, 10-14 stats (from StatType order),
+ * 16 HP, 19 weight, 22 unspent points, 25 gear condition, and the last slot of
+ * the inventory closes the menu.
  */
 public final class StatsMenu {
 
@@ -108,11 +111,54 @@ public final class StatsMenu {
                 ChatColor.GOLD + "남은 스탯 포인트",
                 ChatColor.YELLOW + String.valueOf(data.points())));
 
+        inv.setItem(25, buildGearItem(data));
+        inv.setItem(8, buildAnvilGuideItem());
+
         // Bedrock renders barrier blocks inconsistently through Geyser, so the
         // close button uses a pane, which exists identically on both platforms.
         inv.setItem(holder.closeSlot(), buildInfoItem(Material.RED_STAINED_GLASS_PANE, ChatColor.RED + "닫기"));
 
         player.openInventory(inv);
+    }
+
+    /**
+     * Condition of the held weapon and the worn armour, with the performance
+     * each currently yields - the number that actually multiplies attack
+     * damage, armour and mining speed.
+     */
+    private ItemStack buildGearItem(PlayerData data) {
+        int weaponPerformance = plugin.gear().performancePercent(data.weaponCondition());
+        int armorPerformance = plugin.gear().performancePercent(data.armorCondition());
+        return buildInfoItem(Material.GRINDSTONE,
+                ChatColor.LIGHT_PURPLE + "장비 상태",
+                ChatColor.GRAY + "무기 내구도 " + ChatColor.WHITE + data.weaponCondition() + "%"
+                        + ChatColor.GRAY + " -> 공격력/채굴 " + performanceColor(weaponPerformance)
+                        + weaponPerformance + "%",
+                ChatColor.GRAY + "방어구 내구도 " + ChatColor.WHITE + data.armorCondition() + "%"
+                        + ChatColor.GRAY + " -> 방어력 " + performanceColor(armorPerformance)
+                        + armorPerformance + "%",
+                ChatColor.DARK_GRAY + "모루에서 수리하면 성능도 함께 돌아옵니다.");
+    }
+
+    /** The anvil recipes, so the mechanic is discoverable without a wiki. */
+    private ItemStack buildAnvilGuideItem() {
+        List<String> lore = new ArrayList<>();
+        if (plugin.anvil().isEmpty()) {
+            lore.add(ChatColor.GRAY + "등록된 조합법이 없습니다.");
+        } else {
+            lore.add(ChatColor.GRAY + "왼쪽 칸에 장비, 오른쪽 칸에 재료:");
+            for (AnvilRecipe recipe : plugin.anvil().recipes()) {
+                lore.add("  " + plugin.anvil().describe(recipe));
+            }
+        }
+        return buildInfoItem(Material.ANVIL, ChatColor.GOLD + "모루 강화", lore.toArray(new String[0]));
+    }
+
+    private static ChatColor performanceColor(int performance) {
+        if (performance >= 100) {
+            return ChatColor.GREEN;
+        }
+        return performance >= 75 ? ChatColor.YELLOW : ChatColor.RED;
     }
 
     /** Rounds gui.size to a legal chest size inside [MIN_SIZE, MAX_SIZE]. */

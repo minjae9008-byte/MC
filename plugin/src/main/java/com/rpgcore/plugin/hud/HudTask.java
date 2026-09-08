@@ -38,6 +38,20 @@ public final class HudTask extends BukkitRunnable {
         }
     }
 
+    /**
+     * Only shown once gear is actually worn enough to cost performance -
+     * pristine gear would just be a permanent "100%" taking up bar space.
+     */
+    private String gearSegment(PlayerData data) {
+        int weapon = plugin.gear().performancePercent(data.weaponCondition());
+        int armor = plugin.gear().performancePercent(data.armorCondition());
+        int worst = Math.min(weapon, armor);
+        if (worst >= 100) {
+            return "";
+        }
+        return (worst >= 75 ? "  &eGEAR " : "  &cGEAR ") + worst + "%";
+    }
+
     private Component render(Player player, PlayerData data) {
         String weightColor = switch (data.weightTier()) {
             case 1 -> "&e";
@@ -48,7 +62,8 @@ public final class HudTask extends BukkitRunnable {
         String text = "&6Lv." + data.level()
                 + "  &cHP " + (int) Math.ceil(player.getHealth()) + "&7/&c" + data.maxHealth()
                 + "  &aXP " + data.xp() + "&7/&a" + data.xpNeed()
-                + "  " + weightColor + "WT " + data.weight() + "&7/" + weightColor + data.weightMax();
+                + "  " + weightColor + "WT " + data.weight() + "&7/" + weightColor + data.weightMax()
+                + gearSegment(data);
         return LegacyComponentSerializer.legacyAmpersand().deserialize(text);
     }
 }

@@ -17,9 +17,9 @@ commands:
     description: Open your RPGCore stats menu.
     aliases: [rpg, rpgstats]
   rpgcore:
-    description: RPGCore admin commands (reload, givexp, reset).
+    description: RPGCore admin commands (reload, recipes, givexp, reset).
     permission: rpgcore.admin
-    usage: /rpgcore reload | givexp <player> <amount> | reset <player>
+    usage: /rpgcore reload | recipes | givexp <player> <amount> | reset <player>
     default: op
 
 permissions:

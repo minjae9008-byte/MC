@@ -60,7 +60,7 @@ public final class PlayerDataManager {
 
         if (board.read(player, RpgScoreboard.INITIALISED) != 1) {
             applyFirstJoinDefaults(data);
-            data.markWeightDirty();
+            data.markInventoryDirty();
             freshlyCreated.add(player.getUniqueId());
             return data;
         }
@@ -72,7 +72,7 @@ public final class PlayerDataManager {
         for (StatType type : StatType.values()) {
             data.stat(type, board.read(player, type.objective()));
         }
-        data.markWeightDirty();
+        data.markInventoryDirty();
         return data;
     }
 

@@ -88,7 +88,66 @@ tree-felling:
 - 전파 방향(현재: 첫 링만 옆으로 확장해 2x2 나무를 잡고, 이후는 위쪽 3x3)은 `TreeFellService.Job.enqueueNeighbours()`에서 오프셋 범위를 바꾸면 됩니다.
 - `respect-protection-plugins`를 켜면 연쇄로 부술 블록마다 `BlockBreakEvent`를 발생시켜 보호 플러그인이 거부할 수 있습니다. 보호 플러그인이 전혀 없다면 꺼서 이벤트 비용을 줄일 수 있습니다.
 
-## 7. 베드락(Geyser/Floodgate) 관련
+## 7. 내구도에 따른 성능 저하
+
+```yaml
+durability-scaling:
+  enabled: true
+  full-performance-above: 50   # 남은 내구도가 이 % 이상이면 페널티 없음
+  minimum-performance: 50      # 내구도 0% 직전일 때의 성능 %
+  affects:
+    attack-damage: true
+    armor: true
+    mining-speed: true
+```
+
+성능 = 내구도가 임계값 이상이면 100%, 아래면 `minimum-performance`에서 100%까지의 직선 보간입니다. 예) 임계 50 / 하한 50에서 내구도 24% → 성능 74%.
+
+- 주 손 아이템 → `attack_damage`, `block_break_speed` / 착용 방어구의 **평균** 내구도 → `armor`, `armor_toughness`.
+- 방어구 평균은 **착용 중인 칸만** 셉니다. 빈 칸을 100%로 치면 낡은 갑옷 한 벌이 희석되기 때문입니다.
+- 적용 방식은 플레이어 어트리뷰트의 `MULTIPLY_SCALAR_1` 모디파이어(`rpgcoreplugin:gear_attack` 등)입니다. **아이템은 건드리지 않습니다.**
+- `MULTIPLY_SCALAR_1`은 합계에 곱해지므로 STR 보너스도 함께 깎입니다(무딘 무기는 힘으로도 못 살린다는 의도). 무기 성능만 따로 떼려면 `StatsService`의 STR 모디파이어를 `MULTIPLY_*`로 옮기세요.
+- `block_break_speed`는 1.21.2에서 추가된 어트리뷰트입니다. 그보다 낮은 서버에서는 `Attributes.blockBreakSpeed()`가 null을 반환하고 채굴 페널티만 조용히 빠집니다.
+- 곡선을 바꾸려면 `GearService.performancePercent()` 하나만 고치면 됩니다.
+
+## 8. 모루 커스텀 조합법
+
+```yaml
+anvil:
+  enabled: true
+  recipes:
+    sharpen:                                        # 아무 키나 가능 (id로 쓰임)
+      name: "&b연마 (날카로움)"                       # /rpgcore recipes, GUI 표시용
+      target: ['#minecraft:enchantable/sharp_weapon'] # 왼쪽 칸 대상
+      ingredient: minecraft:flint                     # 오른쪽 칸 재료
+      ingredient-amount: 4
+      level-cost: 5
+      enchantments:
+        sharpness: 1                                  # 1회당 올릴 레벨
+    repair-kit:
+      target: ['#minecraft:enchantable/durability']
+      ingredient: minecraft:copper_ingot
+      ingredient-amount: 2
+      level-cost: 2
+      repair-percent: 25                              # 최대 내구도의 25% 회복
+```
+
+- `target`은 목록입니다. 아이템 ID, 바닐라 태그(`#minecraft:enchantable/mining`), 이 데이터팩 태그(`#rpgcore:...`)를 섞어 쓸 수 있습니다.
+- 인챈트 상한은 기본이 해당 인챈트의 바닐라 최대 레벨입니다. 넘기려면:
+  ```yaml
+  enchantments:
+    sharpness:
+      levels: 1
+      max-level: 10
+  ```
+  단, 바닐라 모루는 레벨 제한을 검사하므로 상한을 올릴 때는 실제로 적용되는지 테스트하세요.
+- `repair-percent`와 `enchantments` 둘 다 없으면 그 조합법은 아무 일도 하지 않으므로 로드 시 경고와 함께 건너뜁니다.
+- 매칭 순서는 config에 적힌 순서입니다. 대상이 겹치면 먼저 적힌 조합법이 이깁니다.
+- **재료 선택 주의**: 그 장비의 바닐라 수리 재료(다이아 갑옷 + 다이아 등)를 재료로 쓰면 바닐라 수리를 덮어씁니다. 기본 조합법이 구리 주괴·메아리 조각처럼 겹치지 않는 재료를 쓰는 이유입니다.
+- 조합법이 걸리지 않는 조합은 `PrepareAnvilEvent`에서 손대지 않으므로 바닐라 동작 그대로입니다.
+- 로드 결과 확인: 기동 로그의 `Anvil recipes loaded: N.` 과 `/rpgcore recipes`.
+
+## 9. 베드락(Geyser/Floodgate) 관련
 
 - `StatType`에 스탯을 추가하면 베드락 폼 버튼도 자동 생성됩니다.
 - 네이티브 폼을 끄고 전부 상자 GUI로 통일: `bedrock.use-native-forms: false`.
@@ -96,11 +155,11 @@ tree-felling:
 - 새 GUI 아이템은 베드락에도 존재하는 블록/아이템인지 확인하세요 (`BARRIER` 등은 렌더가 불안정합니다).
 - Floodgate/Cumulus는 절대 jar에 shade하지 마세요 (`pom.xml`에서 `provided` 유지). 번들링하면 Floodgate의 알려진 `LinkageError`가 발생합니다.
 
-## 8. GUI 크기
+## 10. GUI 크기
 
 `gui.size`는 상자 GUI의 칸 수입니다. 고정 슬롯(레벨/HP/무게/포인트/닫기)이 3줄을 쓰므로 **27~54 범위의 9의 배수**로 정규화됩니다. 9처럼 더 작은 값을 넣어도 27로 올려서 열리고, 닫기 버튼은 항상 **마지막 칸**입니다.
 
-## 9. 근접 채팅 / 음성 범위
+## 11. 근접 채팅 / 음성 범위
 
 ```yaml
 proximity-chat:
@@ -110,7 +169,7 @@ proximity-chat:
 ```
 Simple Voice Chat을 함께 쓴다면 `plugins/voicechat/voicechat-server.properties`의 `voice_chat_distance`도 같은 값으로 맞추세요. `voicechat.sync-range-with-proximity-chat: true`면 플러그인이 SVC 서버가 뜰 때 두 값을 비교해 어긋나면 경고 로그를 남깁니다 (자동으로 고치지는 않습니다 — 실제 음성 거리는 SVC가 소유합니다).
 
-## 10. 데이터 저장 위치
+## 12. 데이터 저장 위치
 
 플레이어 상태는 `rpgcore.*` **바닐라 스코어보드 오브젝티브**에 미러링되어 월드와 함께 저장됩니다.
 - 운영자가 직접 확인/수정: `/scoreboard players get <player> rpgcore.level`

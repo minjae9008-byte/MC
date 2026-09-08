@@ -61,6 +61,85 @@ tree-felling:
   logs: ['#minecraft:logs']
   tools: ['#minecraft:axes']
 
+# 내구도에 따른 성능 저하.
+# 남은 내구도가 full-performance-above% 이상이면 페널티 없음, 그 아래부터
+# 0%까지 minimum-performance%로 직선 감소합니다. 아이템 자체는 건드리지 않고
+# 플레이어 어트리뷰트에 MULTIPLY_SCALAR_1 모디파이어로 적용합니다.
+# (수리하면 그대로 성능이 돌아오므로, 아래 anvil 조합법의 repair-percent가
+#  곧 성능 회복입니다.)
+durability-scaling:
+  enabled: true
+  full-performance-above: 50
+  minimum-performance: 50
+  affects:
+    attack-damage: true      # 주 손 아이템 기준
+    armor: true              # 착용 중인 방어구의 평균 내구도 기준
+    mining-speed: true       # block_break_speed (1.21.2+, 없으면 자동 무시)
+
+# 모루 커스텀 조합법. 왼쪽 칸=강화할 장비, 오른쪽 칸=재료.
+# target 은 아이템 ID 또는 태그(#minecraft:..., #rpgcore:...) 목록입니다.
+# 조합법이 일치하지 않는 조합은 전부 바닐라 모루 동작 그대로입니다.
+# 주의: 재료를 그 장비의 바닐라 수리 재료(예: 다이아 갑옷 + 다이아)로 두면
+# 바닐라 수리를 덮어쓰게 되므로 겹치지 않는 재료를 쓰세요.
+anvil:
+  enabled: true
+  recipes:
+    sharpen:
+      name: "&b연마 (날카로움)"
+      target: ['#minecraft:enchantable/sharp_weapon']
+      ingredient: minecraft:flint
+      ingredient-amount: 4
+      level-cost: 5
+      enchantments:
+        sharpness: 1
+    smite:
+      name: "&b성수 (강타)"
+      target: ['#minecraft:enchantable/sharp_weapon']
+      ingredient: minecraft:bone_block
+      ingredient-amount: 2
+      level-cost: 5
+      enchantments:
+        smite: 1
+    bane:
+      name: "&b해충 퇴치 (벌레 죽이기)"
+      target: ['#minecraft:enchantable/sharp_weapon']
+      ingredient: minecraft:fermented_spider_eye
+      ingredient-amount: 2
+      level-cost: 5
+      enchantments:
+        bane_of_arthropods: 1
+    efficiency:
+      name: "&b연마석 (효율)"
+      target: ['#minecraft:enchantable/mining']
+      ingredient: minecraft:amethyst_shard
+      ingredient-amount: 4
+      level-cost: 5
+      enchantments:
+        efficiency: 1
+    protection:
+      name: "&b보호 각인 (보호)"
+      target: ['#minecraft:enchantable/armor']
+      ingredient: minecraft:echo_shard
+      ingredient-amount: 1
+      level-cost: 6
+      enchantments:
+        protection: 1
+    reinforce:
+      name: "&b강화 (내구성)"
+      target: ['#minecraft:enchantable/durability']
+      ingredient: minecraft:obsidian
+      ingredient-amount: 4
+      level-cost: 8
+      enchantments:
+        unbreaking: 1
+    repair-kit:
+      name: "&a수리 키트"
+      target: ['#minecraft:enchantable/durability']
+      ingredient: minecraft:copper_ingot
+      ingredient-amount: 2
+      level-cost: 2
+      repair-percent: 25
+
 hud:
   enabled: true
   # Action-bar text persists ~3s, so once a second is smooth and cheap.

@@ -120,8 +120,10 @@ public final class StatsService {
                 data.stat(StatType.LUCK) * config.luckPerLuck(), AttributeModifier.Operation.ADD_NUMBER);
 
         data.weightMax(config.weightBase() + data.stat(StatType.STR) * config.weightPerStr());
-        // Capacity changed, so the encumbrance tier may have changed with it.
-        data.markWeightDirty();
+        // Capacity changed, so the encumbrance tier may have changed with it;
+        // and this runs on join/respawn/reload, where the gear penalty also
+        // needs re-applying.
+        data.markInventoryDirty();
     }
 
     private void announceLevelUp(Player player, PlayerData data) {

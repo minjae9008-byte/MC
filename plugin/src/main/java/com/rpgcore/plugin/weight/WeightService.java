@@ -45,7 +45,11 @@ public final class WeightService {
         if (++rescanCounter >= plugin.rpgConfig().weightRescanInterval()) {
             rescanCounter = 0;
             for (PlayerData data : plugin.players().all()) {
-                data.markWeightDirty();
+                // Both flags: this is the backstop for inventory changes that
+                // fire no event at all, such as /give or another plugin
+                // writing straight into the inventory, and those move gear
+                // just as easily as they move weight.
+                data.markInventoryDirty();
             }
         }
 

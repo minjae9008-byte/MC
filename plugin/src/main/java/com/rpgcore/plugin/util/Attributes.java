@@ -46,6 +46,23 @@ public final class Attributes {
         return resolve("luck", "generic.luck");
     }
 
+    public static Attribute armor() {
+        return resolve("armor", "generic.armor");
+    }
+
+    public static Attribute armorToughness() {
+        return resolve("armor_toughness", "generic.armor_toughness");
+    }
+
+    /**
+     * Mining speed. Added in 1.21.2; resolves to null on older servers, and
+     * every helper here no-ops on a null attribute, so the tool-wear penalty
+     * simply does not apply there.
+     */
+    public static Attribute blockBreakSpeed() {
+        return resolve("block_break_speed", "player.block_break_speed");
+    }
+
     private static Attribute resolve(String... keys) {
         for (String key : keys) {
             Attribute attribute = Registry.ATTRIBUTE.get(NamespacedKey.minecraft(key));

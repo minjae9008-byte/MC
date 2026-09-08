@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.tree;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.util.MaterialSets;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -20,7 +21,6 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -50,37 +50,12 @@ public final class TreeFellService {
     public void load() {
         logs.clear();
         tools.clear();
-        loadSet("tree_log", Tag.REGISTRY_BLOCKS, "tree-felling.logs", logs);
-        loadSet("treefell_tool", Tag.REGISTRY_ITEMS, "tree-felling.tools", tools);
-        plugin.getLogger().info("Tree felling: " + logs.size() + " log types, " + tools.size() + " tools.");
-    }
-
-    private void loadSet(String tagName, String registry, String configPath, Set<Material> target) {
-        try {
-            Tag<Material> tag = Bukkit.getTag(registry, new NamespacedKey("rpgcore", tagName), Material.class);
-            if (tag != null) {
-                target.addAll(tag.getValues());
-            }
-        } catch (Throwable ignored) {
-            // Datapack tag unavailable on this build - config list is used below.
-        }
-        if (target.isEmpty()) {
-            for (String id : plugin.getConfig().getStringList(configPath)) {
-                if (id.startsWith("#minecraft:")) {
-                    Tag<Material> vanilla = Bukkit.getTag(registry,
-                            NamespacedKey.minecraft(id.substring("#minecraft:".length()).toLowerCase(Locale.ROOT)),
-                            Material.class);
-                    if (vanilla != null) {
-                        target.addAll(vanilla.getValues());
-                    }
-                    continue;
-                }
-                Material material = Material.matchMaterial(id);
-                if (material != null) {
-                    target.add(material);
-                }
-            }
-        }
+        String logSource = MaterialSets.loadTagOrConfig(plugin, Tag.REGISTRY_BLOCKS, "tree_log",
+                plugin.getConfig().getStringList("tree-felling.logs"), "tree-felling.logs", logs);
+        String toolSource = MaterialSets.loadTagOrConfig(plugin, Tag.REGISTRY_ITEMS, "treefell_tool",
+                plugin.getConfig().getStringList("tree-felling.tools"), "tree-felling.tools", tools);
+        plugin.getLogger().info("Tree felling: " + logs.size() + " log types (from " + logSource + "), "
+                + tools.size() + " tools (from " + toolSource + ").");
     }
 
     public boolean isLog(Material material) {
