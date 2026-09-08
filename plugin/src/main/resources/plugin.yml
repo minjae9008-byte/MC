@@ -8,7 +8,10 @@ description: >
   menu, server-side proximity text chat, and an optional Simple Voice Chat
   integration. The datapack remains the source of truth for all stats -
   this plugin only reads/writes the same scoreboard objectives.
-softdepend: [voicechat]
+# All three are optional. floodgate/Geyser-Spigot are listed so we load after
+# them and can detect Bedrock players; voicechat enables the (optional) real
+# proximity voice integration.
+softdepend: [voicechat, floodgate, Geyser-Spigot]
 
 commands:
   stats:

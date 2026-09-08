@@ -11,8 +11,9 @@ proximity-chat:
   # Format applied to messages that are within range. %player% and %message%
   # are replaced; standard Minecraft color codes ('&') are supported.
   format: "&7[근접] &f%player%&7: &f%message%"
-  # If true, players outside chat range simply do not receive the message at
-  # all (true proximity chat). If false, they see a muted/grayed-out version.
+  # true  = players outside the range do not receive the message at all
+  #         (real proximity chat).
+  # false = everyone still receives it; only the [근접] formatting is applied.
   hide-out-of-range: true
 
 voicechat:
@@ -24,3 +25,12 @@ voicechat:
 gui:
   title: "&8캐릭터 정보"
   size: 27
+
+bedrock:
+  # With Geyser + Floodgate installed, show Bedrock players a native Bedrock
+  # form for /stats instead of the chest GUI. Bedrock cannot click chat
+  # components, so the datapack's /trigger rpgcore.menu text menu is not
+  # usable for them - this is their proper UI.
+  # If Floodgate is missing (or its API doesn't match), this automatically
+  # falls back to the chest GUI, which Geyser translates for Bedrock as well.
+  use-native-forms: true

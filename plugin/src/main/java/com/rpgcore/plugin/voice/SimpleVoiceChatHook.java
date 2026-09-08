@@ -31,6 +31,10 @@ public final class SimpleVoiceChatHook {
                     + "RPGCore's text-based proximity chat still works. See README.md to install it.");
             return;
         }
+        if (plugin.bedrockPlatform().isFloodgatePresent()) {
+            plugin.getLogger().info("Note: Simple Voice Chat requires the Java client mod, so Bedrock "
+                    + "(Geyser) players cannot use voice chat - they still get proximity text chat.");
+        }
         if (!plugin.getConfig().getBoolean("voicechat.sync-range-with-proximity-chat", true)) {
             return;
         }

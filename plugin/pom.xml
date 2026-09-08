@@ -24,6 +24,11 @@
             <id>maxhenkel</id>
             <url>https://maven.maxhenkel.de/repository/public</url>
         </repository>
+        <!-- Floodgate / Cumulus (Bedrock support via Geyser) -->
+        <repository>
+            <id>opencollab</id>
+            <url>https://repo.opencollab.dev/main/</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -40,6 +45,22 @@
             <groupId>de.maxhenkel.voicechat</groupId>
             <artifactId>voicechat-api</artifactId>
             <version>2.5.5</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- Optional soft-dependencies: only used when Geyser + Floodgate are
+             installed, to give Bedrock players a native form UI. Kept
+             'provided' on purpose - bundling/shading Cumulus is what causes
+             the well-known LinkageError with Floodgate. -->
+        <dependency>
+            <groupId>org.geysermc.floodgate</groupId>
+            <artifactId>api</artifactId>
+            <version>2.2.2-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.geysermc.cumulus</groupId>
+            <artifactId>cumulus</artifactId>
+            <version>1.1.2</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>

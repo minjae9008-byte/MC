@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.gui;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.platform.BedrockPlatform;
 import com.rpgcore.plugin.util.RpgScoreboard;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -26,10 +27,9 @@ import java.util.List;
  */
 public final class StatsMenu {
 
-    public static final String INVENTORY_TITLE_KEY = "rpgcore_stats_menu";
-
     private final RpgCorePlugin plugin;
     private final RpgScoreboard board;
+    private final BedrockPlatform bedrockPlatform;
 
     public record StatSlot(int slot, String objective, String triggerObjective, String label, Material icon) {}
 
@@ -66,9 +66,10 @@ public final class StatsMenu {
         return null;
     }
 
-    public StatsMenu(RpgCorePlugin plugin, RpgScoreboard board) {
+    public StatsMenu(RpgCorePlugin plugin, RpgScoreboard board, BedrockPlatform bedrockPlatform) {
         this.plugin = plugin;
         this.board = board;
+        this.bedrockPlatform = bedrockPlatform;
     }
 
     public void open(Player player) {
@@ -87,34 +88,49 @@ public final class StatsMenu {
 
         inv.setItem(16, buildInfoItem(Material.REDSTONE,
                 ChatColor.RED + "HP",
-                ChatColor.GRAY + board.get(player, "rpgcore.hp") + " / " + board.get(player, "rpgcore.hp_max")));
+                ChatColor.GRAY + "" + board.get(player, "rpgcore.hp") + " / " + board.get(player, "rpgcore.hp_max")));
 
         int weight = board.get(player, "rpgcore.weight");
         int weightMax = board.get(player, "rpgcore.weight_max");
         int tier = board.get(player, "rpgcore.weight_tier");
         inv.setItem(19, buildInfoItem(Material.ANVIL,
                 ChatColor.AQUA + "무게 (Weight)",
-                ChatColor.GRAY + weight + " / " + weightMax,
+                ChatColor.GRAY + "" + weight + " / " + weightMax,
                 ChatColor.GRAY + "부담 단계: " + tier + " / 3"));
 
         inv.setItem(22, buildInfoItem(Material.NETHER_STAR,
                 ChatColor.GOLD + "남은 스탯 포인트",
                 ChatColor.YELLOW + String.valueOf(board.get(player, "rpgcore.points"))));
 
-        inv.setItem(26, buildInfoItem(Material.BARRIER, ChatColor.RED + "닫기"));
+        // Bedrock renders barrier blocks inconsistently through Geyser, so the
+        // close button uses a pane, which exists identically on both platforms.
+        inv.setItem(CLOSE_SLOT, buildInfoItem(Material.RED_STAINED_GLASS_PANE, ChatColor.RED + "닫기"));
 
         player.openInventory(inv);
     }
 
     private ItemStack buildHeadItem(Player player) {
+        List<String> lore = List.of(
+                ChatColor.YELLOW + "Lv. " + board.get(player, "rpgcore.level"),
+                ChatColor.GREEN + "XP " + board.get(player, "rpgcore.xp") + " / " + board.get(player, "rpgcore.xp_need")
+        );
+
+        // Player-head skins resolve through Floodgate for Bedrock players and
+        // can end up blank, so give them a plain icon instead.
+        if (bedrockPlatform.isBedrockPlayer(player)) {
+            ItemStack item = new ItemStack(Material.BOOK);
+            ItemMeta meta = item.getItemMeta();
+            meta.setDisplayName(ChatColor.GOLD + player.getName());
+            meta.setLore(lore);
+            item.setItemMeta(meta);
+            return item;
+        }
+
         ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) item.getItemMeta();
         meta.setOwningPlayer(player);
         meta.setDisplayName(ChatColor.GOLD + player.getName());
-        meta.setLore(List.of(
-                ChatColor.YELLOW + "Lv. " + board.get(player, "rpgcore.level"),
-                ChatColor.GREEN + "XP " + board.get(player, "rpgcore.xp") + " / " + board.get(player, "rpgcore.xp_need")
-        ));
+        meta.setLore(lore);
         item.setItemMeta(meta);
         return item;
     }

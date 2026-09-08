@@ -67,6 +67,36 @@ Paper 서버용 RPG 데이터팩 + 보조 플러그인. 최신 마인크래프�
 - **플러그인 설치 시**: `/stats` (별칭 `/rpg`, `/rpgstats`) 명령어로 진짜 상자(Chest) GUI가 열리고, 클릭으로 스탯을 배분할 수 있습니다. GUI는 항상 데이터팩의 `/trigger`만 호출하므로 규칙(스탯 계산식 등)은 데이터팩이 유일한 소스입니다.
 - 상시 HUD(액션바)로 레벨/HP/XP/무게가 항상 표시됩니다.
 
+## Geyser / Floodgate (베드락 크로스플레이) 호환
+
+이 서버는 Geyser + Floodgate가 설치되어 있으므로, 베드락(모바일/콘솔/윈도우10) 플레이어를 고려해 다음과 같이 맞췄습니다.
+
+### 자동으로 처리되는 것
+| 기능 | 베드락에서 |
+|---|---|
+| 스탯/레벨/경험치, 무게 계산, 연쇄 벌목 | **완전 동일하게 동작** (전부 서버 사이드 명령어라 클라이언트 종류와 무관) |
+| 스탯 UI | `/stats` 입력 시 **베드락 네이티브 폼(Form) UI**가 뜹니다 (Floodgate Cumulus 폼). Floodgate가 없거나 API가 안 맞으면 자동으로 상자 GUI로 폴백 |
+| 상시 HUD (액션바) | 정상 표시. Geyser 부하를 줄이려고 매 틱 → **5틱(0.25초)마다 갱신**으로 조정 |
+| 근접 텍스트 채팅 | 정상 동작 (플러그인이 서버 사이드에서 처리) |
+| 무게 페널티(이동속도), 허기/채굴피로 이펙트 | 정상 적용 |
+| 스코어보드 이름 매칭 | Floodgate 접두사(기본 `.`)가 붙은 이름도 그대로 사용하므로 데이터팩/플러그인 값이 어긋나지 않습니다 |
+
+### 베드락에서 제약이 있는 것 (의도적으로 우회 처리함)
+| 제약 | 원인 | 대응 |
+|---|---|---|
+| 채팅 글자 클릭(`[+]` 버튼)이 안 됨 | 베드락 프로토콜에 클릭 가능한 채팅 컴포넌트가 없음 (Geyser가 번역 불가) | `/trigger rpgcore.menu` 출력에 **타이핑용 명령어를 함께 표시**. 근본적으로는 `/stats` 네이티브 폼 사용 권장 |
+| 점프력 페널티 미적용 | 베드락에는 플레이어 jump_strength 어트리뷰트가 없음 | 이동속도 페널티 + 허기 드레인은 그대로 적용되므로 과적재 페널티는 양쪽 모두 체감됩니다 |
+| 이모지 깨짐 | 베드락 폰트에 자바 이모지 글리프 없음 | UI/메시지를 **ASCII + 한글**로만 구성 (🔊 → `[VOICE]`) |
+| 플레이어 머리 아이콘 | Floodgate 스킨이 비어 보일 수 있음 | 베드락 플레이어에게는 상자 GUI에서 머리 대신 일반 아이콘 사용 |
+| barrier 아이콘 | 베드락에서 표시가 불안정 | 닫기 버튼을 유리판(`RED_STAINED_GLASS_PANE`)으로 변경 |
+| **Simple Voice Chat 음성** | SVC는 자바 클라이언트 모드가 필수 → **베드락 플레이어는 음성 채팅 사용 불가** | 베드락 플레이어는 근접 **텍스트** 채팅으로 대체됩니다. (서버 시작 로그에도 안내 출력) 베드락까지 음성을 원하면 Discord 연동 등 외부 수단이 필요합니다 |
+
+### 설치 순서 (Geyser 환경)
+1. Geyser-Spigot + Floodgate를 `plugins/`에 설치 (이미 하신 상태).
+2. RPGCore 데이터팩을 `world/datapacks/`에 설치.
+3. RPGCore 플러그인 jar를 `plugins/`에 설치 — Floodgate보다 나중에 로드되도록 `plugin.yml`에 `softdepend: [voicechat, floodgate, Geyser-Spigot]`이 이미 걸려 있습니다.
+4. 서버 시작 로그에서 `Geyser/Floodgate detected - Bedrock players are supported with native form menus.` 를 확인하세요.
+
 ## 확장하는 방법
 
 자세한 내용은 [`CONFIG.md`](CONFIG.md)를 참고하세요. 요약:
@@ -79,11 +109,12 @@ Paper 서버용 RPG 데이터팩 + 보조 플러그인. 최신 마인크래프�
 | 벌목 가능한 나무 종류 추가 | `datapack/data/minecraft/loot_table/blocks/`에 파일 추가 (기존 파일 복사 후 id만 교체) |
 | 벌목에 필요한 도구 변경 | `datapack/data/rpgcore/tags/item/treefell_tool.json` |
 | 근접 채팅/음성 반경 조정 | 데이터팩 `$voice_range` (load.mcfunction) + 플러그인 `config.yml`의 `proximity-chat.range`를 함께 수정 |
-| GUI 슬롯/아이콘 변경 | `plugin/.../gui/StatsMenu.java`의 `STAT_SLOTS` |
+| GUI 슬롯/아이콘 변경 | `plugin/.../gui/StatsMenu.java`의 `STAT_SLOTS` (베드락 폼 버튼도 이 목록을 그대로 사용합니다) |
+| 베드락 네이티브 폼 끄기 | `plugin/src/main/resources/config.yml`의 `bedrock.use-native-forms: false` |
 
 ## 알려진 제약 / 검증 필요 사항
 
-- 이 개발 환경은 실제 마인크래프트 서버를 띄우거나 외부 Maven 저장소에 접속할 수 없어서, **실서버에서의 직접 테스트와 플러그인 빌드 검증을 하지 못했습니다.** 배포 전 테스트 서버에서 검증을 권장합니다.
+- 이 개발 환경은 실제 마인크래프트 서버를 띄우거나 외부 Maven 저장소(paper-api, floodgate, voicechat)에 접속할 수 없어서 **실서버 테스트와 실제 의존성으로의 빌드는 하지 못했습니다.** 대신 Bukkit/Paper/Adventure/Floodgate/Cumulus/VoiceChat API의 스텁(stub)을 만들어 전체 소스를 `javac -Xlint:all`로 컴파일 검증했고(경고 0), 데이터팩은 함수/태그/스코어보드/매크로 상호 참조를 스크립트로 전수 검사했습니다. 배포 전 테스트 서버 검증은 여전히 권장합니다.
 - `pack_format`은 실제 서버 버전에 맞게 조정하세요.
 - Simple Voice Chat 연동(`plugin/.../voice/SimpleVoiceChatIntegration.java`)은 SVC의 공개 예제 플러그인 구조를 따랐으나, SVC API는 버전마다 바뀔 수 있습니다. 설치한 SVC 버전과 맞지 않으면 자동으로 안전하게 비활성화되고(다른 기능에는 영향 없음) 로그에 경고만 남습니다 — 실패 시 [voicechat-api-bukkit 예제](https://github.com/henkelmax/voicechat-api-bukkit)를 참고해 클래스를 맞춰주세요.
 - 무게 계산은 성능/안정성을 위해 슬롯 단위(칸에 아이템이 있으면 종류당 고정 무게)로 계산하며, 스택 개수는 반영하지 않습니다. 스택 수량까지 반영하고 싶다면 `CONFIG.md`의 설명을 참고하세요.
@@ -108,9 +139,10 @@ datapack/
 plugin/
   pom.xml
   src/main/java/com/rpgcore/plugin/
-    RpgCorePlugin.java                   # 진입점, /stats, /rpgcorereload
+    RpgCorePlugin.java                   # 진입점, /stats, /rpgcorereload, 플랫폼 라우팅
     util/RpgScoreboard.java              # 데이터팩 스코어보드 read/trigger 브릿지
-    gui/                                 # 상자 GUI
+    gui/                                 # 상자 GUI (자바용, 베드락 폴백)
     chat/ProximityChatListener.java      # 근접 텍스트 채팅
+    platform/                            # Geyser/Floodgate 감지 + 베드락 네이티브 폼
     voice/                               # Simple Voice Chat 소프트 연동
 ```

@@ -20,4 +20,4 @@ scoreboard players set @s rpgcore.alloc_luck 0
 
 function rpgcore:stats/recalc
 
-tellraw @s [{"text":"[RPGCore] ","color":"gold"},{"text":"환영합니다! 레벨 1로 시작합니다. 스탯 포인트 5개를 보유 중입니다.\n","color":"yellow"},{"text":"/trigger rpgcore.menu","color":"aqua"},{"text":" 명령어로 스탯 창을 여세요.","color":"yellow"}]
+tellraw @s [{"text":"[RPGCore] ","color":"gold"},{"text":"환영합니다! 레벨 1로 시작합니다. 스탯 포인트 5개를 보유 중입니다.\n","color":"yellow"},{"text":"/trigger rpgcore.menu","color":"aqua"},{"text":" 로 스탯 창을 열 수 있습니다. (플러그인 설치 시 ","color":"yellow"},{"text":"/stats","color":"aqua"},{"text":" 권장 - 베드락 이용자는 네이티브 UI로 열립니다.)","color":"yellow"}]

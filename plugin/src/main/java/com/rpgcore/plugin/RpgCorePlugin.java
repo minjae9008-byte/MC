@@ -3,6 +3,7 @@ package com.rpgcore.plugin;
 import com.rpgcore.plugin.chat.ProximityChatListener;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.gui.StatsMenuListener;
+import com.rpgcore.plugin.platform.BedrockPlatform;
 import com.rpgcore.plugin.util.RpgScoreboard;
 import com.rpgcore.plugin.voice.SimpleVoiceChatHook;
 import org.bukkit.command.Command;
@@ -15,12 +16,17 @@ import org.bukkit.plugin.java.JavaPlugin;
  * remains the single source of truth for every stat, level and weight value -
  * this plugin only reads/writes the same vanilla scoreboard objectives and
  * adds presentation-layer features a pure datapack cannot provide on its own:
- * a real chest-GUI menu, and server-side proximity chat / voice chat glue.
+ * a real GUI menu, and server-side proximity chat / voice chat glue.
+ *
+ * Cross-play aware: with Geyser + Floodgate installed, Bedrock players get a
+ * native Bedrock form instead of the chest GUI (they cannot click chat
+ * components, which is what the datapack-only menu relies on).
  */
 public final class RpgCorePlugin extends JavaPlugin {
 
     private RpgScoreboard scoreboard;
     private StatsMenu statsMenu;
+    private BedrockPlatform bedrockPlatform;
     private SimpleVoiceChatHook voiceChatHook;
 
     @Override
@@ -28,9 +34,11 @@ public final class RpgCorePlugin extends JavaPlugin {
         saveDefaultConfig();
 
         this.scoreboard = new RpgScoreboard();
-        this.statsMenu = new StatsMenu(this, scoreboard);
+        this.bedrockPlatform = new BedrockPlatform(this);
+        this.bedrockPlatform.detect();
+        this.statsMenu = new StatsMenu(this, scoreboard, bedrockPlatform);
 
-        getServer().getPluginManager().registerEvents(new StatsMenuListener(this, statsMenu), this);
+        getServer().getPluginManager().registerEvents(new StatsMenuListener(this), this);
 
         if (getConfig().getBoolean("proximity-chat.enabled", true)) {
             getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
@@ -55,11 +63,12 @@ public final class RpgCorePlugin extends JavaPlugin {
                     sender.sendMessage("이 명령어는 플레이어만 사용할 수 있습니다.");
                     return true;
                 }
-                statsMenu.open(player);
+                openStatsMenu(player);
                 return true;
             }
             case "rpgcorereload" -> {
                 reloadConfig();
+                bedrockPlatform.detect();
                 sender.sendMessage("[RPGCore] 설정을 다시 불러왔습니다.");
                 return true;
             }
@@ -69,7 +78,27 @@ public final class RpgCorePlugin extends JavaPlugin {
         }
     }
 
+    /**
+     * Single entry point for "show me my stats": a native Bedrock form for
+     * Geyser players when available, otherwise the chest GUI (which Geyser
+     * can also translate, so Bedrock players are never left without a menu).
+     */
+    public void openStatsMenu(Player player) {
+        if (bedrockPlatform.openStatsForm(player, scoreboard)) {
+            return;
+        }
+        statsMenu.open(player);
+    }
+
     public RpgScoreboard scoreboard() {
         return scoreboard;
+    }
+
+    public StatsMenu statsMenu() {
+        return statsMenu;
+    }
+
+    public BedrockPlatform bedrockPlatform() {
+        return bedrockPlatform;
     }
 }

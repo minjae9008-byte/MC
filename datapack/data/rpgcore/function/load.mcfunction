@@ -50,6 +50,7 @@ scoreboard players set $per_luck_luck_centi rpgcore.const 50
 scoreboard players set $base_weight_max rpgcore.const 100
 scoreboard players set $per_str_weight_max rpgcore.const 10
 
+scoreboard players set $five rpgcore.const 5
 scoreboard players set $ten rpgcore.const 10
 scoreboard players set $twenty rpgcore.const 20
 scoreboard players set $hundred rpgcore.const 100

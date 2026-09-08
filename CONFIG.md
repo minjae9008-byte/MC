@@ -72,7 +72,16 @@ function rpgcore:util/set_attribute_modifier with storage rpgcore:calc
 - 텍스트 메뉴(`datapack/data/rpgcore/function/ui/menu.mcfunction`)는 순수 tellraw JSON입니다. 새 줄이나 버튼을 추가하려면 같은 패턴(`clickEvent.run_command` → `/trigger rpgcore.xxx add 1`)을 따르세요.
 - 상자 GUI(`plugin/.../gui/StatsMenu.java`)는 `STAT_SLOTS` 리스트와 `open()` 메서드의 `inv.setItem(...)` 호출만 수정하면 됩니다. 클릭 처리는 `StatsMenuListener.java`가 슬롯 번호 → 트리거 오브젝티브 매핑을 자동으로 처리하므로 별도 로직 추가가 필요 없습니다.
 
-## 7. 근접 채팅/음성 범위 조정
+## 7. 베드락(Geyser/Floodgate) 관련 확장
+
+- **스탯을 추가하면 베드락 폼에도 자동 반영됩니다.** `StatsMenu.STAT_SLOTS`에 항목을 추가하면 상자 GUI 슬롯과 베드락 폼 버튼이 같은 목록에서 생성되므로 따로 손댈 곳이 없습니다.
+- 베드락 네이티브 폼을 끄고 모두 상자 GUI로 통일하려면: `config.yml`의 `bedrock.use-native-forms: false`.
+- 새로 추가하는 채팅/UI 문구는 **이모지 없이 ASCII + 한글**로 작성하세요. 베드락 폰트에는 자바 이모지 글리프가 없어 네모(□)로 깨집니다.
+- 새 GUI 아이템을 넣을 때는 베드락에 동일하게 존재하는 블록/아이템인지 확인하세요 (`BARRIER`, 커스텀 모델 데이터 등은 표시가 불안정합니다).
+- 채팅 클릭 이벤트(`clickEvent`)는 베드락에서 동작하지 않으므로, 새 버튼을 추가할 때는 **타이핑용 명령어도 함께 출력**하거나 폼/GUI 쪽에 넣으세요.
+- Floodgate/Cumulus는 절대 jar에 shade하지 마세요 (`pom.xml`에서 `provided` 스코프 유지). 번들링하면 Floodgate에서 잘 알려진 `LinkageError`가 발생합니다.
+
+## 8. 근접 채팅/음성 범위 조정
 
 두 곳을 함께 수정해야 값이 일치합니다.
 - `datapack/data/rpgcore/function/load.mcfunction`: `scoreboard players set $voice_range rpgcore.const 24`
