@@ -18,7 +18,7 @@ public final class StatsMenuListener implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {
-        if (!(event.getInventory().getHolder() instanceof StatsMenu.Holder)) {
+        if (!(event.getInventory().getHolder() instanceof StatsMenu.Holder holder)) {
             return;
         }
         // Cancel every interaction with the menu, including shift-clicks from
@@ -34,8 +34,10 @@ public final class StatsMenuListener implements Listener {
         }
 
         int slot = event.getRawSlot();
-        if (slot == StatsMenu.CLOSE_SLOT) {
-            player.closeInventory();
+        if (slot == holder.closeSlot()) {
+            // Closing from inside the click handler leaves the client's cursor
+            // state out of sync, so this too waits for the next tick.
+            plugin.getServer().getScheduler().runTask(plugin, () -> player.closeInventory());
             return;
         }
 
@@ -44,10 +46,16 @@ public final class StatsMenuListener implements Listener {
             return;
         }
 
-        // Applied synchronously by the plugin, so the menu can be redrawn
-        // immediately - no waiting a tick for a datapack to pick up a trigger.
+        // The allocation itself is applied straight away - no waiting a tick
+        // for a datapack to pick up a trigger - but opening an inventory from
+        // inside InventoryClickEvent desyncs the client, so the redraw is
+        // scheduled for the next tick.
         if (plugin.stats().allocate(player, type)) {
-            plugin.statsMenu().open(player);
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    plugin.statsMenu().open(player);
+                }
+            });
         }
     }
 

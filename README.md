@@ -33,8 +33,8 @@ Paper 서버용 RPG 시스템. **게임 로직은 전부 플러그인**에 있�
 
 ## 설치
 
-1. **플러그인**: `plugin/`에서 `mvn package` → `plugin/target/rpgcore-plugin-2.0.0.jar`를 서버 `plugins/`에 넣고 재시작. (이 개발 환경은 외부 Maven 저장소가 차단되어 있어 여기서 빌드하지 못했습니다 — 인터넷 되는 곳에서 빌드해 주세요.)
-2. **데이터팩(선택, 권장)**: `datapack/` 폴더를 `world/datapacks/rpgcore/`로 복사. 없으면 `config.yml`의 목록이 대신 쓰입니다. `pack.mcmeta`의 `pack_format`은 서버 버전에 맞게 조정하세요.
+1. **플러그인**: `plugin/`에서 `mvn package` → `plugin/target/rpgcore-plugin-2.0.0.jar`를 서버 `plugins/`에 넣고 재시작. 빌드에는 Java 21이 필요합니다.
+2. **데이터팩(선택, 권장)**: `datapack/` 폴더를 `world/datapacks/rpgcore/`로 복사. 없으면 `config.yml`의 목록이 대신 쓰입니다. `pack.mcmeta`의 `pack_format`은 서버 버전에 맞게 조정하세요. 서버 기동 로그에 `Couldn't load tag rpgcore:...`가 없어야 정상입니다 (태그 하나라도 존재하지 않는 아이템을 참조하면 그 태그 전체가 통째로 무시되고 조용히 `config.yml` 폴백으로 넘어갑니다 — [`CONFIG.md`](CONFIG.md) 2절 참고).
 3. **(선택) 음성 채팅**: [Simple Voice Chat](https://modrinth.com/plugin/simple-voice-chat)을 `plugins/`에 추가하고, `voicechat-server.properties`의 `voice_chat_distance`를 `config.yml`의 `proximity-chat.range`(기본 24)와 맞추세요. 자바 클라이언트 모드가 필요합니다.
 
 ## 기능
@@ -96,12 +96,30 @@ Paper 서버용 RPG 시스템. **게임 로직은 전부 플러그인**에 있�
 | 무게 갱신 부하 | `weight.scans-per-tick`, `safety-rescan-ticks` |
 | GUI 제목/크기, 베드락 폼 사용 여부 | `gui.*`, `bedrock.use-native-forms` |
 
-## 알려진 제약 / 검증 필요 사항
+## 검증 상태
 
-- 이 개발 환경은 마인크래프트 서버 구동과 외부 Maven 저장소 접근이 모두 차단되어 있어 **실서버 테스트와 실제 의존성 빌드는 하지 못했습니다.** 대신 Bukkit/Paper/Adventure/Floodgate/Cumulus/VoiceChat API 스텁을 만들어 전체 소스를 `javac -Xlint:all`로 컴파일 검증했습니다(경고 0). 배포 전 테스트 서버 검증을 권장합니다.
-- 플러그인은 최신 Paper API(1.21+) 기준입니다. 어트리뷰트는 개명 양쪽을 지원하지만, `AttributeModifier(NamespacedKey, ...)` 생성자는 1.21+ 전용입니다.
-- Simple Voice Chat / Floodgate 연동 코드는 각 API 버전에 따라 시그니처가 달라질 수 있습니다. 실패해도 다른 기능에는 영향이 없도록 격리·폴백되어 있으며, 로그에 경고만 남습니다.
+**Paper 1.21.4 (빌드 232) 실서버에서 데이터팩 + 플러그인을 함께 구동해 확인했습니다.** 봇 클라이언트로 실제 접속해 아래를 직접 검증했고, 전 구동 로그에 예외 0건입니다.
+
+| 검증 항목 | 결과 |
+|---|---|
+| 데이터팩 태그 로딩 | 5개 태그 전부 정상 로드, 236개 아이템 분류 (`config.yml` 폴백 0건) |
+| 최초 접속 / 재접속 | 초기 지급 5포인트, 재접속 시 스코어보드에서 복구 |
+| `/stats` GUI | 열림 → STR 클릭 → 포인트 차감 + 즉시 재출력 → 닫기 버튼 |
+| 스탯 → 어트리뷰트 | `str_damage` 0.5 / `dex_attack_speed` 0.05 / `agi_speed` 0.002 / `agi_jump` 0.01 / `luck_bonus` 0.5, 최대 체력 base 반영 |
+| XP / 레벨업 | 250 XP → Lv.3, 벌목 10블록 → XP +10 |
+| 무게 단계 | 96/100 → 1단계(이동속도 -10%), 240/100 → 3단계(실측 speed 0.051 = -50%), 허기 + 채굴 피로 부여 확인 |
+| 무게 해제 | 아이템 투척 즉시(2.5초 내) 페널티 해제, 모디파이어 제거 확인 |
+| 연쇄 벌목 | 2x2 원목 두 줄 동시 제거, 다이아 도끼 내구도 22 소모, `max-blocks: 256` 상한 준수 |
+| 웅크리기 / 크리에이티브 | 둘 다 연쇄 비활성 확인 |
+| 근접 채팅 | 3블록 수신 O / 400블록 수신 X, 플레이어가 입력한 `&c` 색코드는 그대로 텍스트로 출력 |
+| 관리자 명령 | `reload` / `givexp` / `reset` + 잘못된 인자 6종 모두 안전 처리 |
+
+남은 제약:
+
+- 플러그인은 Paper API 1.21+ 기준입니다. 어트리뷰트는 개명 양쪽을 지원하지만, `AttributeModifier(NamespacedKey, ...)` 생성자는 1.21+ 전용입니다.
+- **Geyser/Floodgate와 Simple Voice Chat 연동은 이 환경에 해당 서버가 없어 실행 검증하지 못했습니다.** 소스는 각 공식 API(`floodgate-api 2.2.2-SNAPSHOT`, `cumulus 1.1.2`, `voicechat-api 2.5.36`)로 컴파일됩니다. 두 연동 모두 실패해도 다른 기능에 영향이 없도록 격리·폴백되어 있으며, 로그에 경고만 남깁니다.
 - `Bukkit.getTag`로 데이터팩 커스텀 태그를 읽습니다. 서버 빌드가 이를 지원하지 않으면 자동으로 `config.yml` 목록으로 폴백하고, 시작 로그에 어느 쪽을 썼는지 출력합니다.
+- 어트리뷰트 모디파이어 키의 네임스페이스는 `plugin.yml`의 플러그인 이름에서 나오므로 `rpgcoreplugin:*`입니다 (예: `/attribute <player> minecraft:movement_speed modifier value get rpgcoreplugin:weight_speed`). 스코어보드 오브젝티브(`rpgcore.*`)·데이터팩 태그(`rpgcore:*`)와 네임스페이스가 다르니 주의하세요.
 
 ## 디렉터리 구조
 

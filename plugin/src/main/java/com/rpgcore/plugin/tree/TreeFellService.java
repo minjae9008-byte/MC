@@ -113,7 +113,10 @@ public final class TreeFellService {
         for (Iterator<Job> it = jobs.iterator(); it.hasNext(); ) {
             Job job = it.next();
             if (!job.player.isOnline() || job.broken >= maxBlocks || job.queue.isEmpty() || job.toolBroke) {
-                if (job.broken > 0) {
+                // Only for a player still online: awarding XP to someone who
+                // already quit would re-create their cached PlayerData after
+                // PlayerQuitEvent unloaded it, leaking the entry for good.
+                if (job.broken > 0 && job.player.isOnline()) {
                     plugin.stats().addXp(job.player, job.broken * plugin.rpgConfig().xpPerTreeLog());
                 }
                 it.remove();

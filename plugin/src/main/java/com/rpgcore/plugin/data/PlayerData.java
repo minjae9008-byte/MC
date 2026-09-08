@@ -31,6 +31,14 @@ public final class PlayerData {
     private boolean dirty;
     /** Set when the inventory changed and the weight must be recomputed. */
     private boolean weightDirty = true;
+    /**
+     * False until the encumbrance tier's attribute modifiers have been applied
+     * at least once this session. Attribute modifiers persist in the player's
+     * saved data, so a player who logs out encumbered comes back still carrying
+     * them; without this the first recompute would see tier 0 == tier 0 and
+     * leave the stale penalty in place forever.
+     */
+    private boolean tierApplied;
 
     public PlayerData(UUID uuid) {
         this.uuid = uuid;
@@ -146,6 +154,14 @@ public final class PlayerData {
 
     public void clearWeightDirty() {
         this.weightDirty = false;
+    }
+
+    public boolean tierApplied() {
+        return tierApplied;
+    }
+
+    public void markTierApplied() {
+        this.tierApplied = true;
     }
 
     /** Load percentage (weight/weightMax * 100), guarded against a zero max. */

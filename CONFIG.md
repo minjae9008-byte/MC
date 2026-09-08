@@ -29,6 +29,16 @@ weight:
 
 새 등급을 추가하려면 `weight.tiers` 아래에 키를 하나 더 만들고(예: `extreme`), 원하면 같은 이름의 데이터팩 태그 `#rpgcore:weight_extreme`을 만들면 됩니다. 코드 수정은 필요 없습니다.
 
+> **주의 — 태그는 전부 아니면 전무입니다.** 태그 안에 그 버전에 존재하지 않는 아이템/태그가 **하나라도** 있으면 마인크래프트는 그 태그를 통째로 버립니다. 플러그인은 태그가 없는 것으로 보고 조용히 `config.yml` 목록으로 폴백하므로, 증상은 "무게가 이상하다" 뿐입니다. 기동 로그에서
+> ```
+> Couldn't load tag rpgcore:weight_light as it is missing following references: ...
+> ```
+> 를 확인하고, 버전에 따라 있을 수도 없을 수도 있는 항목은 필수가 아니라고 표시하세요.
+> ```json
+> { "id": "minecraft:pale_oak_log", "required": false }
+> ```
+> 바닐라 태그를 참조할 때는 실제로 존재하는지 확인이 필요합니다. 예를 들어 `#minecraft:dyes`, `#minecraft:ingots`, `#minecraft:bows`, `#minecraft:flowers`는 **바닐라에 없습니다** (`#minecraft:small_flowers`는 있습니다). 플러그인이 실제로 몇 개를 태그에서 읽었는지는 기동 로그의 `Weight table loaded: N materials (X from datapack tags, Y from config.yml)`로 확인하세요 — `X`가 0이면 태그를 못 읽은 것입니다.
+
 ## 3. 무게 페널티 단계 수정
 
 `WeightService.tierFor()`(임계값)와 `applyTier()`(단계별 수치)를 수정합니다. 단계가 바뀔 때만 어트리뷰트를 건드리도록 되어 있으니, 값만 바꾸면 나머지는 그대로 동작합니다.
@@ -86,7 +96,11 @@ tree-felling:
 - 새 GUI 아이템은 베드락에도 존재하는 블록/아이템인지 확인하세요 (`BARRIER` 등은 렌더가 불안정합니다).
 - Floodgate/Cumulus는 절대 jar에 shade하지 마세요 (`pom.xml`에서 `provided` 유지). 번들링하면 Floodgate의 알려진 `LinkageError`가 발생합니다.
 
-## 8. 근접 채팅 / 음성 범위
+## 8. GUI 크기
+
+`gui.size`는 상자 GUI의 칸 수입니다. 고정 슬롯(레벨/HP/무게/포인트/닫기)이 3줄을 쓰므로 **27~54 범위의 9의 배수**로 정규화됩니다. 9처럼 더 작은 값을 넣어도 27로 올려서 열리고, 닫기 버튼은 항상 **마지막 칸**입니다.
+
+## 9. 근접 채팅 / 음성 범위
 
 ```yaml
 proximity-chat:
@@ -94,12 +108,12 @@ proximity-chat:
   hide-out-of-range: true   # false면 전원에게 전달되고 포맷만 적용
   format: "&7[근접] &f%player%&7: &f%message%"
 ```
-Simple Voice Chat을 함께 쓴다면 `plugins/voicechat/voicechat-server.properties`의 `voice_chat_distance`도 같은 값으로 맞추세요.
+Simple Voice Chat을 함께 쓴다면 `plugins/voicechat/voicechat-server.properties`의 `voice_chat_distance`도 같은 값으로 맞추세요. `voicechat.sync-range-with-proximity-chat: true`면 플러그인이 SVC 서버가 뜰 때 두 값을 비교해 어긋나면 경고 로그를 남깁니다 (자동으로 고치지는 않습니다 — 실제 음성 거리는 SVC가 소유합니다).
 
-## 9. 데이터 저장 위치
+## 10. 데이터 저장 위치
 
 플레이어 상태는 `rpgcore.*` **바닐라 스코어보드 오브젝티브**에 미러링되어 월드와 함께 저장됩니다.
 - 운영자가 직접 확인/수정: `/scoreboard players get <player> rpgcore.level`
-- 값을 손으로 바꿨다면 `/rpgcore reload`로 재계산시키거나 재접속하면 반영됩니다.
+- **접속 중인 플레이어의 오브젝티브를 손으로 바꾸는 것은 소용이 없습니다.** 스코어보드는 메모리 캐시(`PlayerData`)의 미러일 뿐이고, 다음 write-through 때 캐시 값으로 덮어써집니다. `/rpgcore reload`도 캐시에서 재계산할 뿐 스코어보드를 다시 읽지 않습니다. 값을 직접 고치려면 **해당 플레이어가 접속하지 않은 상태에서** 바꾸세요 (접속 시 스코어보드에서 읽어옵니다). 접속 중이라면 `/rpgcore givexp` / `/rpgcore reset`을 쓰세요.
 - 초기화: `/rpgcore reset <player>`
 - 다른 데이터팩이나 커맨드 블록에서 RPG 값을 읽고 싶을 때도 이 오브젝티브를 그대로 쓰면 됩니다.

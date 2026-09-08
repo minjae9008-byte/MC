@@ -1,5 +1,5 @@
 {
-  "_comment": "Blocks the plugin's tree-felling chain-break treats as tree trunk. The plugin resolves this tag through the server's tag registry at startup (falling back to config.yml's tree-felling.logs list if this datapack is not installed). Add any log/stem id here - no code changes needed.",
+  "_comment": "Blocks the plugin's tree-felling chain-break treats as tree trunk. The plugin resolves this tag through the server's tag registry at startup (falling back to config.yml's tree-felling.logs list if this datapack is not installed). Add any log/stem id here - no code changes needed. Ids that only exist in some game versions must use {\"id\": ..., \"required\": false}, or the whole tag is dropped on versions that lack them (pale oak arrived in 1.21.4, and this pack declares support back to pack_format 48).",
   "values": [
     "minecraft:oak_log",
     "minecraft:spruce_log",
@@ -9,7 +9,10 @@
     "minecraft:dark_oak_log",
     "minecraft:mangrove_log",
     "minecraft:cherry_log",
-    "minecraft:pale_oak_log",
+    {
+      "id": "minecraft:pale_oak_log",
+      "required": false
+    },
     "minecraft:crimson_stem",
     "minecraft:warped_stem",
     "minecraft:stripped_oak_log",
@@ -20,7 +23,10 @@
     "minecraft:stripped_dark_oak_log",
     "minecraft:stripped_mangrove_log",
     "minecraft:stripped_cherry_log",
-    "minecraft:stripped_pale_oak_log",
+    {
+      "id": "minecraft:stripped_pale_oak_log",
+      "required": false
+    },
     "minecraft:stripped_crimson_stem",
     "minecraft:stripped_warped_stem"
   ]

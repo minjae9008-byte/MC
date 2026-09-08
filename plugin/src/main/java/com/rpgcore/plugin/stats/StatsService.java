@@ -16,6 +16,9 @@ import org.bukkit.entity.Player;
  */
 public final class StatsService {
 
+    /** Vanilla's hard ceiling for the max_health attribute base value. */
+    private static final int MAX_ATTRIBUTE_HEALTH = 1024;
+
     private final RpgCorePlugin plugin;
 
     private final NamespacedKey strDamageKey;
@@ -93,9 +96,12 @@ public final class StatsService {
             data.xpNeed(xpNeedFor(data.level()));
         }
 
-        int maxHealth = config.baseHp()
-                + data.level() * config.hpPerLevel()
-                + data.stat(StatType.VIT) * config.hpPerVit();
+        // Vanilla rejects a max_health base outside (0, 1024], and a high
+        // enough level or VIT would otherwise sail past that and make every
+        // recalculate() throw.
+        int maxHealth = Math.clamp((long) config.baseHp()
+                + (long) data.level() * config.hpPerLevel()
+                + (long) data.stat(StatType.VIT) * config.hpPerVit(), 1, MAX_ATTRIBUTE_HEALTH);
         data.maxHealth(maxHealth);
         Attributes.setBase(player, Attributes.maxHealth(), maxHealth);
         if (player.getHealth() > maxHealth) {

@@ -15,7 +15,7 @@ import org.bukkit.Bukkit;
  * from the official example plugin (github.com/henkelmax/voicechat-api-bukkit)
  * as of the voicechat-api version pinned in pom.xml - if a server runs a
  * newer/older Simple Voice Chat, re-check that repository and adjust this
- * class before shipping. It only registers a presence hook today; extend
+ * class before shipping. It only checks the configured ranges today; extend
  * {@link Plugin#registerEvents} to add real RPG-driven behaviour (e.g. a
  * skill that widens a player's voice broadcast range).
  *
@@ -25,6 +25,9 @@ import org.bukkit.Bukkit;
  * it never touch this class at all.
  */
 final class SimpleVoiceChatIntegration {
+
+    private SimpleVoiceChatIntegration() {
+    }
 
     static void register(RpgCorePlugin plugin) {
         BukkitVoicechatService service = Bukkit.getServicesManager().load(BukkitVoicechatService.class);
@@ -50,7 +53,21 @@ final class SimpleVoiceChatIntegration {
         public void registerEvents(EventRegistration registration) {
             registration.registerEvent(VoicechatServerStartedEvent.class, event -> {
                 VoicechatServerApi serverApi = event.getVoicechat();
-                plugin.getLogger().info("Simple Voice Chat server API ready (v" + serverApi.getVersion() + ").");
+                // Simple Voice Chat owns the real audio distance; RPGCore only
+                // reads it, so an operator can see at a glance when the two
+                // ranges have drifted apart (voice carrying further than text,
+                // or the other way round, is confusing to play with).
+                double voiceRange = serverApi.getVoiceChatDistance();
+                double textRange = plugin.rpgConfig().proximityRange();
+                if (Math.abs(voiceRange - textRange) > 0.5D) {
+                    plugin.getLogger().warning("Simple Voice Chat voice range is " + voiceRange
+                            + " but RPGCore proximity text chat range is " + textRange
+                            + ". Set voice_chat_distance in voicechat-server.properties (or "
+                            + "proximity-chat.range in RPGCore's config.yml) so the two match.");
+                } else {
+                    plugin.getLogger().info("Simple Voice Chat ready; voice range " + voiceRange
+                            + " matches RPGCore's proximity text chat range.");
+                }
             });
         }
     }

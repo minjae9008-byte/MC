@@ -4,7 +4,6 @@ import com.rpgcore.plugin.RpgCorePlugin;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -33,11 +32,16 @@ public final class ProximityChatListener implements Listener {
         double range = plugin.rpgConfig().proximityRange();
         double rangeSquared = range * range;
 
-        String plainMessage = PlainTextComponentSerializer.plainText().serialize(event.message());
-        String rendered = plugin.rpgConfig().proximityFormat()
-                .replace("%player%", sender.getName())
-                .replace("%message%", plainMessage);
-        Component renderedComponent = LegacyComponentSerializer.legacyAmpersand().deserialize(rendered);
+        // Only the operator-authored format string is parsed for '&' colour
+        // codes; the player's name and message are substituted as components
+        // afterwards, so a player cannot colour (or fake) chat by typing '&'
+        // codes into their own message.
+        Component renderedComponent = LegacyComponentSerializer.legacyAmpersand()
+                .deserialize(plugin.rpgConfig().proximityFormat())
+                .replaceText(builder -> builder.matchLiteral("%player%")
+                        .replacement(Component.text(sender.getName())))
+                .replaceText(builder -> builder.matchLiteral("%message%")
+                        .replacement(event.message()));
 
         if (plugin.rpgConfig().proximityHideOutOfRange()) {
             event.viewers().removeIf(viewer -> {

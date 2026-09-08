@@ -79,10 +79,17 @@ public final class WeightService {
 
         int previousTier = data.weightTier();
         int tier = tierFor(data.loadPercent());
-        if (tier != previousTier) {
+        // The modifiers are also (re)applied on the first recompute of a
+        // session even when the tier has not moved: they survive in the
+        // player's saved attributes, so a player who logged out encumbered
+        // would otherwise keep the penalty after dropping the load.
+        if (tier != previousTier || !data.tierApplied()) {
             data.weightTier(tier);
+            data.markTierApplied();
             applyTier(player, tier);
-            notifyTierChange(player, tier, previousTier);
+            if (tier != previousTier) {
+                notifyTierChange(player, tier);
+            }
         }
         plugin.players().flush(player, data);
     }
@@ -138,19 +145,22 @@ public final class WeightService {
         }
     }
 
-    private void notifyTierChange(Player player, int tier, int previousTier) {
-        if (tier > previousTier) {
-            String message = switch (tier) {
-                case 1 -> ChatColor.YELLOW + "[RPGCore] 짐이 무거워지기 시작합니다. (이동속도 -10%)";
-                case 2 -> ChatColor.GOLD + "[RPGCore] 과적재! 이동속도 -25%, 허기가 빨리 닳습니다.";
-                case 3 -> ChatColor.RED + "[RPGCore] 심각한 과적재! 이동속도 -50%, 채굴 속도도 느려집니다.";
-                default -> null;
-            };
-            if (message != null) {
-                player.sendMessage(message);
-            }
-        } else if (tier == 0) {
+    private void notifyTierChange(Player player, int tier) {
+        if (tier == 0) {
             player.sendMessage(ChatColor.GREEN + "[RPGCore] 짐이 가벼워졌습니다. 페널티가 해제되었습니다.");
+            return;
+        }
+        // Every move between loaded tiers is announced, in both directions -
+        // dropping from 3 to 1 lifts real penalties and the player should see
+        // which ones they still have.
+        String message = switch (tier) {
+            case 1 -> ChatColor.YELLOW + "[RPGCore] 짐 무게: 1단계. (이동속도 -10%)";
+            case 2 -> ChatColor.GOLD + "[RPGCore] 과적재 2단계! 이동속도 -25%, 허기가 빨리 닳습니다.";
+            case 3 -> ChatColor.RED + "[RPGCore] 과적재 3단계! 이동속도 -50%, 채굴 속도도 느려집니다.";
+            default -> null;
+        };
+        if (message != null) {
+            player.sendMessage(message);
         }
     }
 }
