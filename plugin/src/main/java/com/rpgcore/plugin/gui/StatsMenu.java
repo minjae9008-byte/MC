@@ -1,8 +1,9 @@
 package com.rpgcore.plugin.gui;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.platform.BedrockPlatform;
-import com.rpgcore.plugin.util.RpgScoreboard;
+import com.rpgcore.plugin.stats.StatType;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -15,31 +16,21 @@ import org.bukkit.inventory.meta.SkullMeta;
 import java.util.List;
 
 /**
- * Real, clickable chest-GUI presentation of the same stats the datapack's
- * vanilla-only /trigger rpgcore.menu text menu shows. Purely presentational:
- * every "+" button just fires the matching trigger objective, so the
- * datapack's stats/alloc_*.mcfunction still owns the actual rules.
+ * Chest GUI for Java players (Geyser also translates it for Bedrock as a
+ * fallback). Clicking a stat calls StatsService directly - the old build went
+ * through /trigger because the datapack owned the rules; the plugin owns them
+ * now, so the round-trip is gone.
  *
- * Slot layout (extend STAT_SLOTS to add more allocatable stats):
- *   4  - player head / level+xp summary
- *   10 - STR   11 - DEX   12 - VIT   13 - AGI   14 - LUCK
- *   16 - HP    19 - Weight   22 - unspent points   26 - close
+ * Slots: 4 head/level, 10-14 stats (from StatType order), 16 HP, 19 weight,
+ * 22 unspent points, 26 close.
  */
 public final class StatsMenu {
 
+    public static final int CLOSE_SLOT = 26;
+    private static final int FIRST_STAT_SLOT = 10;
+
     private final RpgCorePlugin plugin;
-    private final RpgScoreboard board;
     private final BedrockPlatform bedrockPlatform;
-
-    public record StatSlot(int slot, String objective, String triggerObjective, String label, Material icon) {}
-
-    public static final List<StatSlot> STAT_SLOTS = List.of(
-            new StatSlot(10, "rpgcore.str", "rpgcore.alloc_str", "STR", Material.IRON_SWORD),
-            new StatSlot(11, "rpgcore.dex", "rpgcore.alloc_dex", "DEX", Material.FEATHER),
-            new StatSlot(12, "rpgcore.vit", "rpgcore.alloc_vit", "VIT", Material.GOLDEN_APPLE),
-            new StatSlot(13, "rpgcore.agi", "rpgcore.alloc_agi", "AGI", Material.RABBIT_FOOT),
-            new StatSlot(14, "rpgcore.luck", "rpgcore.alloc_luck", "LUCK", Material.EMERALD)
-    );
 
     /** Marker holder so StatsMenuListener can reliably recognise this GUI. */
     public static final class Holder implements InventoryHolder {
@@ -55,24 +46,24 @@ public final class StatsMenu {
         }
     }
 
-    public static final int CLOSE_SLOT = 26;
-
-    public static StatSlot byClickedSlot(int slot) {
-        for (StatSlot s : STAT_SLOTS) {
-            if (s.slot() == slot) {
-                return s;
-            }
-        }
-        return null;
-    }
-
-    public StatsMenu(RpgCorePlugin plugin, RpgScoreboard board, BedrockPlatform bedrockPlatform) {
+    public StatsMenu(RpgCorePlugin plugin, BedrockPlatform bedrockPlatform) {
         this.plugin = plugin;
-        this.board = board;
         this.bedrockPlatform = bedrockPlatform;
     }
 
+    public static int slotOf(StatType type) {
+        return FIRST_STAT_SLOT + type.ordinal();
+    }
+
+    public static StatType statAt(int slot) {
+        int index = slot - FIRST_STAT_SLOT;
+        StatType[] values = StatType.values();
+        return index >= 0 && index < values.length ? values[index] : null;
+    }
+
     public void open(Player player) {
+        PlayerData data = plugin.players().get(player);
+
         String title = ChatColor.translateAlternateColorCodes('&',
                 plugin.getConfig().getString("gui.title", "&8캐릭터 정보"));
         int size = plugin.getConfig().getInt("gui.size", 27);
@@ -80,27 +71,25 @@ public final class StatsMenu {
         Inventory inv = plugin.getServer().createInventory(holder, size, title);
         holder.setInventory(inv);
 
-        inv.setItem(4, buildHeadItem(player));
+        inv.setItem(4, buildHeadItem(player, data));
 
-        for (StatSlot s : STAT_SLOTS) {
-            inv.setItem(s.slot(), buildStatItem(player, s));
+        for (StatType type : StatType.values()) {
+            inv.setItem(slotOf(type), buildStatItem(data, type));
         }
 
         inv.setItem(16, buildInfoItem(Material.REDSTONE,
                 ChatColor.RED + "HP",
-                ChatColor.GRAY + "" + board.get(player, "rpgcore.hp") + " / " + board.get(player, "rpgcore.hp_max")));
+                ChatColor.GRAY + "" + (int) Math.ceil(player.getHealth()) + " / " + data.maxHealth()));
 
-        int weight = board.get(player, "rpgcore.weight");
-        int weightMax = board.get(player, "rpgcore.weight_max");
-        int tier = board.get(player, "rpgcore.weight_tier");
         inv.setItem(19, buildInfoItem(Material.ANVIL,
                 ChatColor.AQUA + "무게 (Weight)",
-                ChatColor.GRAY + "" + weight + " / " + weightMax,
-                ChatColor.GRAY + "부담 단계: " + tier + " / 3"));
+                ChatColor.GRAY + "" + data.weight() + " / " + data.weightMax()
+                        + "  (" + data.loadPercent() + "%)",
+                ChatColor.GRAY + "부담 단계: " + data.weightTier() + " / 3"));
 
         inv.setItem(22, buildInfoItem(Material.NETHER_STAR,
                 ChatColor.GOLD + "남은 스탯 포인트",
-                ChatColor.YELLOW + String.valueOf(board.get(player, "rpgcore.points"))));
+                ChatColor.YELLOW + String.valueOf(data.points())));
 
         // Bedrock renders barrier blocks inconsistently through Geyser, so the
         // close button uses a pane, which exists identically on both platforms.
@@ -109,10 +98,10 @@ public final class StatsMenu {
         player.openInventory(inv);
     }
 
-    private ItemStack buildHeadItem(Player player) {
+    private ItemStack buildHeadItem(Player player, PlayerData data) {
         List<String> lore = List.of(
-                ChatColor.YELLOW + "Lv. " + board.get(player, "rpgcore.level"),
-                ChatColor.GREEN + "XP " + board.get(player, "rpgcore.xp") + " / " + board.get(player, "rpgcore.xp_need")
+                ChatColor.YELLOW + "Lv. " + data.level(),
+                ChatColor.GREEN + "XP " + data.xp() + " / " + data.xpNeed()
         );
 
         // Player-head skins resolve through Floodgate for Bedrock players and
@@ -135,13 +124,14 @@ public final class StatsMenu {
         return item;
     }
 
-    private ItemStack buildStatItem(Player player, StatSlot s) {
-        ItemStack item = new ItemStack(s.icon());
+    private ItemStack buildStatItem(PlayerData data, StatType type) {
+        ItemStack item = new ItemStack(type.icon());
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(ChatColor.AQUA + s.label() + ChatColor.GRAY + ": " + ChatColor.WHITE + board.get(player, s.objective()));
+        meta.setDisplayName(ChatColor.AQUA + type.label() + ChatColor.GRAY + ": "
+                + ChatColor.WHITE + data.stat(type));
         meta.setLore(List.of(
-                ChatColor.GREEN + "클릭하여 포인트 1개 사용 (+1 " + s.label() + ")",
-                ChatColor.DARK_GRAY + s.triggerObjective()
+                ChatColor.GRAY + type.description(),
+                ChatColor.GREEN + "클릭하여 포인트 1개 사용 (+1 " + type.label() + ")"
         ));
         item.setItemMeta(meta);
         return item;

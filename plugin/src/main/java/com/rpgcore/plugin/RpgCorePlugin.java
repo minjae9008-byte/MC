@@ -1,30 +1,52 @@
 package com.rpgcore.plugin;
 
 import com.rpgcore.plugin.chat.ProximityChatListener;
+import com.rpgcore.plugin.config.RpgConfig;
+import com.rpgcore.plugin.data.PlayerData;
+import com.rpgcore.plugin.data.PlayerDataManager;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.gui.StatsMenuListener;
+import com.rpgcore.plugin.hud.HudTask;
 import com.rpgcore.plugin.platform.BedrockPlatform;
+import com.rpgcore.plugin.stats.PlayerSessionListener;
+import com.rpgcore.plugin.stats.StatType;
+import com.rpgcore.plugin.stats.StatsService;
+import com.rpgcore.plugin.tree.TreeFellListener;
+import com.rpgcore.plugin.tree.TreeFellService;
 import com.rpgcore.plugin.util.RpgScoreboard;
 import com.rpgcore.plugin.voice.SimpleVoiceChatHook;
+import com.rpgcore.plugin.weight.ItemWeightTable;
+import com.rpgcore.plugin.weight.WeightListener;
+import com.rpgcore.plugin.weight.WeightService;
+import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
 /**
- * Companion plugin for the RPGCore datapack. The datapack (see /datapack)
- * remains the single source of truth for every stat, level and weight value -
- * this plugin only reads/writes the same vanilla scoreboard objectives and
- * adds presentation-layer features a pure datapack cannot provide on its own:
- * a real GUI menu, and server-side proximity chat / voice chat glue.
+ * RPGCore.
  *
- * Cross-play aware: with Geyser + Floodgate installed, Bedrock players get a
- * native Bedrock form instead of the chest GUI (they cannot click chat
- * components, which is what the datapack-only menu relies on).
+ * All gameplay logic lives here, in the plugin. The datapack alongside it is
+ * now a pure data layer (item/block classification tags) with no functions and
+ * no per-tick work: everything that used to be command-driven - the 164-command
+ * weight scan, the every-tick marker-item scan for tree felling, the trigger
+ * polling and the JSON HUD - is event-driven Java now.
+ *
+ * The vanilla scoreboard is still written to, but only as a mirror: it gives
+ * free persistence with the world and lets admins and other datapacks read RPG
+ * values, while the hot paths read cached {@link PlayerData} from memory.
  */
 public final class RpgCorePlugin extends JavaPlugin {
 
+    private RpgConfig rpgConfig;
     private RpgScoreboard scoreboard;
+    private PlayerDataManager players;
+    private StatsService stats;
+    private ItemWeightTable weightTable;
+    private WeightService weight;
+    private TreeFellService treeFell;
     private StatsMenu statsMenu;
     private BedrockPlatform bedrockPlatform;
     private SimpleVoiceChatHook voiceChatHook;
@@ -33,25 +55,58 @@ public final class RpgCorePlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
+        this.rpgConfig = new RpgConfig(this);
         this.scoreboard = new RpgScoreboard();
+        this.players = new PlayerDataManager(this, scoreboard);
+        this.players.createObjectives();
+        this.stats = new StatsService(this);
+
+        this.weightTable = new ItemWeightTable(this);
+        this.weightTable.load();
+        this.weight = new WeightService(this, weightTable);
+
+        this.treeFell = new TreeFellService(this);
+        this.treeFell.load();
+
         this.bedrockPlatform = new BedrockPlatform(this);
         this.bedrockPlatform.detect();
-        this.statsMenu = new StatsMenu(this, scoreboard, bedrockPlatform);
+        this.statsMenu = new StatsMenu(this, bedrockPlatform);
 
+        getServer().getPluginManager().registerEvents(new PlayerSessionListener(this), this);
         getServer().getPluginManager().registerEvents(new StatsMenuListener(this), this);
-
-        if (getConfig().getBoolean("proximity-chat.enabled", true)) {
+        getServer().getPluginManager().registerEvents(new WeightListener(this), this);
+        getServer().getPluginManager().registerEvents(new TreeFellListener(this, treeFell), this);
+        if (rpgConfig.proximityEnabled()) {
             getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
         }
 
+        // Two light repeating tasks total: one tick pump for the weight/tree
+        // queues, and the HUD on its own slower interval.
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                weight.tick();
+                treeFell.tick();
+            }
+        }.runTaskTimer(this, 1L, 1L);
+        new HudTask(this).runTaskTimer(this, 20L, rpgConfig.hudInterval());
+
         this.voiceChatHook = new SimpleVoiceChatHook(this);
         this.voiceChatHook.tryHook();
+
+        // Players are already online after a /reload.
+        for (Player player : getServer().getOnlinePlayers()) {
+            stats.recalculate(player);
+        }
 
         getLogger().info("RPGCore plugin enabled.");
     }
 
     @Override
     public void onDisable() {
+        for (Player player : getServer().getOnlinePlayers()) {
+            players.unload(player);
+        }
         getLogger().info("RPGCore plugin disabled.");
     }
 
@@ -66,14 +121,80 @@ public final class RpgCorePlugin extends JavaPlugin {
                 openStatsMenu(player);
                 return true;
             }
-            case "rpgcorereload" -> {
-                reloadConfig();
-                bedrockPlatform.detect();
-                sender.sendMessage("[RPGCore] 설정을 다시 불러왔습니다.");
-                return true;
+            case "rpgcore" -> {
+                return adminCommand(sender, args);
             }
             default -> {
                 return false;
+            }
+        }
+    }
+
+    private boolean adminCommand(CommandSender sender, String[] args) {
+        if (args.length == 0) {
+            sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | givexp <player> <amount> | reset <player>");
+            return true;
+        }
+
+        switch (args[0].toLowerCase()) {
+            case "reload" -> {
+                rpgConfig.reload();
+                weightTable.load();
+                treeFell.load();
+                bedrockPlatform.detect();
+                for (Player player : getServer().getOnlinePlayers()) {
+                    stats.recalculate(player);
+                }
+                sender.sendMessage(ChatColor.GREEN + "[RPGCore] 설정을 다시 불러왔습니다.");
+                return true;
+            }
+            case "givexp" -> {
+                if (args.length < 3) {
+                    sender.sendMessage(ChatColor.RED + "/rpgcore givexp <player> <amount>");
+                    return true;
+                }
+                Player target = getServer().getPlayerExact(args[1]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "온라인이 아닌 플레이어입니다: " + args[1]);
+                    return true;
+                }
+                int amount;
+                try {
+                    amount = Integer.parseInt(args[2]);
+                } catch (NumberFormatException e) {
+                    sender.sendMessage(ChatColor.RED + "숫자를 입력하세요: " + args[2]);
+                    return true;
+                }
+                stats.addXp(target, amount);
+                sender.sendMessage(ChatColor.GREEN + "[RPGCore] " + target.getName() + " 에게 XP " + amount + " 지급.");
+                return true;
+            }
+            case "reset" -> {
+                if (args.length < 2) {
+                    sender.sendMessage(ChatColor.RED + "/rpgcore reset <player>");
+                    return true;
+                }
+                Player target = getServer().getPlayerExact(args[1]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "온라인이 아닌 플레이어입니다: " + args[1]);
+                    return true;
+                }
+                PlayerData data = players.get(target);
+                data.level(1);
+                data.xp(0);
+                data.xpNeed(stats.xpNeedFor(1));
+                data.points(rpgConfig.startingPoints());
+                for (StatType type : StatType.values()) {
+                    data.stat(type, 0);
+                }
+                stats.recalculate(target, data);
+                players.flush(target, data);
+                sender.sendMessage(ChatColor.GREEN + "[RPGCore] " + target.getName() + " 의 스탯을 초기화했습니다.");
+                return true;
+            }
+            default -> {
+                sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | givexp <player> <amount> | reset <player>");
+                return true;
             }
         }
     }
@@ -84,14 +205,30 @@ public final class RpgCorePlugin extends JavaPlugin {
      * can also translate, so Bedrock players are never left without a menu).
      */
     public void openStatsMenu(Player player) {
-        if (bedrockPlatform.openStatsForm(player, scoreboard)) {
+        if (bedrockPlatform.openStatsForm(player)) {
             return;
         }
         statsMenu.open(player);
     }
 
-    public RpgScoreboard scoreboard() {
-        return scoreboard;
+    public RpgConfig rpgConfig() {
+        return rpgConfig;
+    }
+
+    public PlayerDataManager players() {
+        return players;
+    }
+
+    public StatsService stats() {
+        return stats;
+    }
+
+    public WeightService weight() {
+        return weight;
+    }
+
+    public TreeFellService treeFell() {
+        return treeFell;
     }
 
     public StatsMenu statsMenu() {

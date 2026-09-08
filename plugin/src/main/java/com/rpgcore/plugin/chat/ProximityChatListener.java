@@ -11,13 +11,13 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
 /**
- * Server-side proximity text chat: this is the part a pure vanilla datapack
- * genuinely cannot do (datapacks have no access to chat packets). This is
- * intentionally independent from any voice mod - it works standalone.
+ * Server-side proximity text chat: this is the part a datapack genuinely
+ * cannot do (datapacks have no access to chat packets). It also replaces the
+ * old datapack "someone is nearby" poll, which ran an O(n^2) selector every
+ * second whether anyone was talking or not - this only does work when a
+ * message is actually sent.
  *
- * The range should match datapack/data/rpgcore/function/load.mcfunction's
- * $voice_range constant (config.yml: proximity-chat.range) so the in-game
- * "someone is near" hint and the actual chat range agree.
+ * Independent from any voice mod, so it works for Bedrock players too.
  */
 public final class ProximityChatListener implements Listener {
 
@@ -30,15 +30,16 @@ public final class ProximityChatListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onChat(AsyncChatEvent event) {
         Player sender = event.getPlayer();
-        double range = plugin.getConfig().getDouble("proximity-chat.range", 24);
-        boolean hideOutOfRange = plugin.getConfig().getBoolean("proximity-chat.hide-out-of-range", true);
-        String format = plugin.getConfig().getString("proximity-chat.format", "&7[근접] &f%player%&7: &f%message%");
+        double range = plugin.rpgConfig().proximityRange();
+        double rangeSquared = range * range;
 
         String plainMessage = PlainTextComponentSerializer.plainText().serialize(event.message());
-        String rendered = format.replace("%player%", sender.getName()).replace("%message%", plainMessage);
+        String rendered = plugin.rpgConfig().proximityFormat()
+                .replace("%player%", sender.getName())
+                .replace("%message%", plainMessage);
         Component renderedComponent = LegacyComponentSerializer.legacyAmpersand().deserialize(rendered);
 
-        if (hideOutOfRange) {
+        if (plugin.rpgConfig().proximityHideOutOfRange()) {
             event.viewers().removeIf(viewer -> {
                 if (!(viewer instanceof Player p) || p.equals(sender)) {
                     return false;
@@ -46,7 +47,8 @@ public final class ProximityChatListener implements Listener {
                 if (!p.getWorld().equals(sender.getWorld())) {
                     return true;
                 }
-                return p.getLocation().distance(sender.getLocation()) > range;
+                // distanceSquared avoids a sqrt per viewer per message.
+                return p.getLocation().distanceSquared(sender.getLocation()) > rangeSquared;
             });
         }
 

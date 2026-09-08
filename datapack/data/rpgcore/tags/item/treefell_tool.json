@@ -1,5 +1,5 @@
 {
-  "_comment": "Items that trigger chain tree-felling when used to break a log. Defaults to all axes; add custom RPG tool ids here to extend.",
+  "_comment": "Items that trigger the chain tree-fell when used to break a log. Read by the plugin at startup (config.yml fallback: tree-felling.tools). Defaults to all axes; add custom RPG tool ids here.",
   "values": [
     "#minecraft:axes"
   ]

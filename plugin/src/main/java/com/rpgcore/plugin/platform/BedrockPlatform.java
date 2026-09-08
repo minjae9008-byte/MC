@@ -1,7 +1,6 @@
 package com.rpgcore.plugin.platform;
 
 import com.rpgcore.plugin.RpgCorePlugin;
-import com.rpgcore.plugin.util.RpgScoreboard;
 import org.bukkit.entity.Player;
 
 /**
@@ -60,12 +59,12 @@ public final class BedrockPlatform {
      * applicable or failed, in which case the caller should fall back to the
      * chest GUI.
      */
-    public boolean openStatsForm(Player player, RpgScoreboard board) {
+    public boolean openStatsForm(Player player) {
         if (!bridgeUsable || !isBedrockPlayer(player)) {
             return false;
         }
         try {
-            FloodgateBridge.openStatsForm(plugin, player, board);
+            FloodgateBridge.openStatsForm(plugin, player);
             return true;
         } catch (Throwable t) {
             bridgeUsable = false;

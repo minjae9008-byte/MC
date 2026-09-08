@@ -1,13 +1,12 @@
 name: RPGCorePlugin
-version: '1.0.0'
+version: '2.0.0'
 main: com.rpgcore.plugin.RpgCorePlugin
 api-version: '1.21'
 author: RPGCore
 description: >
-  Companion plugin for the RPGCore datapack. Adds a real chest-GUI stats
-  menu, server-side proximity text chat, and an optional Simple Voice Chat
-  integration. The datapack remains the source of truth for all stats -
-  this plugin only reads/writes the same scoreboard objectives.
+  RPG stats, encumbrance and chain tree-felling for Paper, plus proximity
+  chat and a cross-play stats UI. All gameplay logic runs here; the bundled
+  datapack is only a tag-based data layer with no per-tick work.
 # All three are optional. floodgate/Geyser-Spigot are listed so we load after
 # them and can detect Bedrock players; voicechat enables the (optional) real
 # proximity voice integration.
@@ -17,12 +16,13 @@ commands:
   stats:
     description: Open your RPGCore stats menu.
     aliases: [rpg, rpgstats]
-  rpgcorereload:
-    description: Reload the RPGCore plugin config.
+  rpgcore:
+    description: RPGCore admin commands (reload, givexp, reset).
     permission: rpgcore.admin
+    usage: /rpgcore reload | givexp <player> <amount> | reset <player>
     default: op
 
 permissions:
   rpgcore.admin:
-    description: Manage RPGCore plugin settings.
+    description: Manage RPGCore.
     default: op

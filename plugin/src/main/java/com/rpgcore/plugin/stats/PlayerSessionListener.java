@@ -1,0 +1,71 @@
+package com.rpgcore.plugin.stats;
+
+import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.data.PlayerData;
+import org.bukkit.ChatColor;
+import org.bukkit.entity.Mob;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+
+/**
+ * Session lifecycle plus the default XP sources. Everything is event-driven -
+ * no polling anywhere.
+ */
+public final class PlayerSessionListener implements Listener {
+
+    private final RpgCorePlugin plugin;
+
+    public PlayerSessionListener(RpgCorePlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        PlayerData data = plugin.players().get(player);
+        boolean firstJoin = plugin.players().isFreshlyCreated(player);
+
+        plugin.stats().recalculate(player, data);
+        plugin.players().flush(player, data);
+
+        if (firstJoin) {
+            player.sendMessage(ChatColor.GOLD + "[RPGCore] " + ChatColor.YELLOW
+                    + "환영합니다! 레벨 1로 시작합니다. 스탯 포인트 "
+                    + data.points() + "개를 보유 중입니다.");
+            player.sendMessage(ChatColor.YELLOW + "  " + ChatColor.AQUA + "/stats"
+                    + ChatColor.YELLOW + " 명령어로 스탯 창을 여세요.");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        plugin.players().unload(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRespawn(PlayerRespawnEvent event) {
+        // Attributes survive death, but re-applying keeps things consistent if
+        // another plugin cleared modifiers on respawn.
+        plugin.stats().recalculate(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onMobKill(EntityDeathEvent event) {
+        // Mob only: armour stands are LivingEntities too, and awarding XP for
+        // those would be a one-block XP farm.
+        if (!(event.getEntity() instanceof Mob)) {
+            return;
+        }
+        Player killer = event.getEntity().getKiller();
+        if (killer == null) {
+            return;
+        }
+        plugin.stats().addXp(killer, plugin.rpgConfig().xpPerMobKill());
+    }
+}

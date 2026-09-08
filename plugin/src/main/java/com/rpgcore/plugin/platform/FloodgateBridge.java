@@ -1,8 +1,8 @@
 package com.rpgcore.plugin.platform;
 
 import com.rpgcore.plugin.RpgCorePlugin;
-import com.rpgcore.plugin.gui.StatsMenu;
-import com.rpgcore.plugin.util.RpgScoreboard;
+import com.rpgcore.plugin.data.PlayerData;
+import com.rpgcore.plugin.stats.StatType;
 import org.bukkit.entity.Player;
 import org.geysermc.cumulus.form.SimpleForm;
 import org.geysermc.floodgate.api.FloodgateApi;
@@ -16,8 +16,8 @@ import java.util.UUID;
  * imports. Any API mismatch surfaces as a Throwable in BedrockPlatform, which
  * then permanently falls back to the chest GUI.
  *
- * Cumulus versions must NOT be shaded into this jar - the API is provided by
- * Floodgate at runtime (see pom.xml).
+ * Cumulus must NOT be shaded into this jar - the API is provided by Floodgate
+ * at runtime (see pom.xml).
  */
 final class FloodgateBridge {
 
@@ -28,48 +28,46 @@ final class FloodgateBridge {
         return FloodgateApi.getInstance().isFloodgatePlayer(uuid);
     }
 
-    static void openStatsForm(RpgCorePlugin plugin, Player player, RpgScoreboard board) {
+    static void openStatsForm(RpgCorePlugin plugin, Player player) {
+        PlayerData data = plugin.players().get(player);
+
         SimpleForm.Builder builder = SimpleForm.builder()
                 .title("캐릭터 정보")
-                .content(buildContent(player, board));
+                .content(buildContent(player, data));
 
-        for (StatsMenu.StatSlot slot : StatsMenu.STAT_SLOTS) {
-            builder.button(slot.label() + "  +1   (현재 " + board.get(player, slot.objective()) + ")");
+        for (StatType type : StatType.values()) {
+            builder.button(type.label() + "  +1   (현재 " + data.stat(type) + ")");
         }
         builder.button("닫기");
 
         builder.validResultHandler(response -> {
             int clicked = response.clickedButtonId();
-            if (clicked < 0 || clicked >= StatsMenu.STAT_SLOTS.size()) {
+            StatType[] types = StatType.values();
+            if (clicked < 0 || clicked >= types.length) {
                 return;
             }
-            StatsMenu.StatSlot slot = StatsMenu.STAT_SLOTS.get(clicked);
-            // Form callbacks arrive off the main thread; command dispatch and
-            // re-opening the form must both happen on the server thread.
+            StatType type = types[clicked];
+            // Form callbacks arrive off the main thread; stat changes and the
+            // re-open must both run on the server thread.
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) {
                     return;
                 }
-                board.trigger(player, slot.triggerObjective());
-            });
-            // The datapack applies the trigger on its next tick, so re-open a
-            // few ticks later to show refreshed numbers.
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                if (player.isOnline()) {
+                if (plugin.stats().allocate(player, type)) {
                     plugin.openStatsMenu(player);
                 }
-            }, 4L);
+            });
         });
 
         FloodgateApi.getInstance().sendForm(player.getUniqueId(), builder);
     }
 
-    private static String buildContent(Player player, RpgScoreboard board) {
-        return "Lv. " + board.get(player, "rpgcore.level") + "\n"
-                + "XP " + board.get(player, "rpgcore.xp") + " / " + board.get(player, "rpgcore.xp_need") + "\n"
-                + "HP " + board.get(player, "rpgcore.hp") + " / " + board.get(player, "rpgcore.hp_max") + "\n"
-                + "무게 " + board.get(player, "rpgcore.weight") + " / " + board.get(player, "rpgcore.weight_max")
-                + "  (부담 단계 " + board.get(player, "rpgcore.weight_tier") + "/3)\n"
-                + "남은 스탯 포인트: " + board.get(player, "rpgcore.points");
+    private static String buildContent(Player player, PlayerData data) {
+        return "Lv. " + data.level() + "\n"
+                + "XP " + data.xp() + " / " + data.xpNeed() + "\n"
+                + "HP " + (int) Math.ceil(player.getHealth()) + " / " + data.maxHealth() + "\n"
+                + "무게 " + data.weight() + " / " + data.weightMax()
+                + "  (" + data.loadPercent() + "%, 부담 단계 " + data.weightTier() + "/3)\n"
+                + "남은 스탯 포인트: " + data.points();
     }
 }

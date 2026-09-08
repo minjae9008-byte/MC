@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.gui;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.stats.StatType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -33,27 +34,21 @@ public final class StatsMenuListener implements Listener {
         }
 
         int slot = event.getRawSlot();
-
         if (slot == StatsMenu.CLOSE_SLOT) {
             player.closeInventory();
             return;
         }
 
-        StatsMenu.StatSlot statSlot = StatsMenu.byClickedSlot(slot);
-        if (statSlot == null) {
+        StatType type = StatsMenu.statAt(slot);
+        if (type == null) {
             return;
         }
 
-        plugin.scoreboard().trigger(player, statSlot.triggerObjective());
-
-        // The datapack processes the trigger on its next tick; refresh the GUI
-        // shortly after so the player sees the updated numbers without reopening.
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()
-                    && player.getOpenInventory().getTopInventory().getHolder() instanceof StatsMenu.Holder) {
-                plugin.statsMenu().open(player);
-            }
-        }, 3L);
+        // Applied synchronously by the plugin, so the menu can be redrawn
+        // immediately - no waiting a tick for a datapack to pick up a trigger.
+        if (plugin.stats().allocate(player, type)) {
+            plugin.statsMenu().open(player);
+        }
     }
 
     @EventHandler

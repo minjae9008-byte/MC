@@ -1,5 +1,5 @@
 {
-  "_comment": "20 weight points per item in stack. Add more item ids here to extend.",
+  "_comment": "Weight class read by the RPGCore plugin at startup (config.yml fallback: weight.tiers). Weight per item is multiplied by stack size. Add item ids or vanilla tags freely.",
   "values": [
     "minecraft:netherite_ingot",
     "minecraft:netherite_block",

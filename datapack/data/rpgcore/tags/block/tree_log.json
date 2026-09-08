@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference list of log/stem blocks covered by the tree-fell system. This tag is informational/config documentation; the actual per-block hook lives in the matching data/minecraft/loot_table/blocks/<id>.json override. To add a new log type: 1) add its id here, 2) copy an existing loot table override under data/minecraft/loot_table/blocks/ and change the id inside it.",
+  "_comment": "Blocks the plugin's tree-felling chain-break treats as tree trunk. The plugin resolves this tag through the server's tag registry at startup (falling back to config.yml's tree-felling.logs list if this datapack is not installed). Add any log/stem id here - no code changes needed.",
   "values": [
     "minecraft:oak_log",
     "minecraft:spruce_log",

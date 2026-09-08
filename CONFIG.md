@@ -1,89 +1,105 @@
 # CONFIG / 확장 가이드
 
-이 문서는 RPGCore를 코드 구조를 깊이 몰라도 확장할 수 있도록 정리한 레시피 모음입니다.
+게임 로직은 전부 플러그인에 있습니다. 대부분의 조정은 `plugin/src/main/resources/config.yml`(배포 후에는 `plugins/RPGCorePlugin/config.yml`)에서 끝나고, `/rpgcore reload`로 재시작 없이 반영됩니다.
 
-## 1. 밸런스 상수 바꾸기
+## 1. 밸런스 조정 (설정만)
 
-모든 튜닝 가능한 값은 `datapack/data/rpgcore/function/load.mcfunction` 하단 "tunable constants" 구역에 `rpgcore.const` 목표를 가진 가짜 플레이어(fake player)로 모여 있습니다. 예:
-
-```mcfunction
-scoreboard players set $xp_base rpgcore.const 100
-scoreboard players set $xp_growth rpgcore.const 50
-scoreboard players set $per_str_dmg_milli rpgcore.const 500
+```yaml
+leveling:
+  xp-base: 100        # 레벨 2까지 필요한 XP
+  xp-growth: 50       # 레벨당 추가 요구량
+stats:
+  hp-per-vit: 1
+  attack-damage-per-str: 0.5
+weight:
+  base-capacity: 100
+  capacity-per-str: 10
 ```
 
-숫자만 바꾸고 `/reload`(또는 서버 재시작)만 하면 전체 시스템에 반영됩니다. milli/centi가 붙은 상수는 소수점 계산을 정수 스코어보드로 흉내내기 위한 고정소수점 값입니다 (예: `per_str_dmg_milli 500` = STR 1당 공격력 +0.500).
+`/rpgcore reload` → 접속 중인 모든 플레이어의 파생 능력치가 즉시 재계산됩니다.
 
-## 2. 새 스탯 추가하기 (예: `INT`)
+## 2. 아이템 무게 분류
 
-1. `load.mcfunction`에 목표 추가: `scoreboard objectives add rpgcore.int dummy "INT"`, 트리거도 추가: `scoreboard objectives add rpgcore.alloc_int trigger`.
-2. `player/first_join.mcfunction`에 초기값 `scoreboard players set @s rpgcore.int 0` 추가.
-3. `stats/alloc_str.mcfunction` + `stats/_alloc_str_apply.mcfunction`을 복사해 `alloc_int.mcfunction` / `_alloc_int_apply.mcfunction`으로 만들고 오브젝티브 이름만 바꿉니다.
-4. `player/tick.mcfunction`에 다음 두 줄 추가:
-   ```mcfunction
-   execute if score @s rpgcore.alloc_int matches 1.. run function rpgcore:stats/alloc_int
-   execute if score @s rpgcore.alloc_int matches 1.. run scoreboard players set @s rpgcore.alloc_int 0
+우선순위: **데이터팩 태그 > config.yml 목록**.
+
+- 데이터팩: `datapack/data/rpgcore/tags/item/weight_light.json` 등에 아이템 ID나 바닐라 태그(`#minecraft:planks`)를 추가. 서버가 태그를 해석해주므로 바닐라 태그를 그대로 쓸 수 있는 게 장점입니다.
+- 데이터팩 미설치: `config.yml`의 `weight.tiers.<등급>.items` 목록 사용.
+- 등급별 무게 값은 `weight.tiers.<등급>.weight`. 무게는 **개수 × 등급 무게**로 계산됩니다.
+- 어느 목록에도 없는 아이템은 `weight.default-item-weight`(기본 1).
+
+새 등급을 추가하려면 `weight.tiers` 아래에 키를 하나 더 만들고(예: `extreme`), 원하면 같은 이름의 데이터팩 태그 `#rpgcore:weight_extreme`을 만들면 됩니다. 코드 수정은 필요 없습니다.
+
+## 3. 무게 페널티 단계 수정
+
+`WeightService.tierFor()`(임계값)와 `applyTier()`(단계별 수치)를 수정합니다. 단계가 바뀔 때만 어트리뷰트를 건드리도록 되어 있으니, 값만 바꾸면 나머지는 그대로 동작합니다.
+
+성능 관련 설정:
+```yaml
+weight:
+  scans-per-tick: 8        # 한 틱에 재계산할 최대 인원
+  safety-rescan-ticks: 200 # 이벤트를 놓쳤을 때를 대비한 전원 재검사 주기
+```
+평소에는 인벤토리가 바뀐 플레이어만 재계산하므로, 이 두 값은 최악의 경우를 제한하는 용도입니다.
+
+## 4. 새 스탯 추가하기 (예: `INT`)
+
+1. `stats/StatType.java`에 한 줄 추가:
+   ```java
+   INT("INT", "rpgcore.int", Material.BOOK, "마법 위력"),
    ```
-5. `stats/recalc.mcfunction`에 INT가 만들어낼 효과를 추가합니다 (예: 마법 관련 커스텀 값이면 그냥 스코어보드 연산만 하면 되고, 실제 바닐라 어트리뷰트에 반영하고 싶다면 기존 STR/AGI 블록을 복사해 `rpgcore:util/set_attribute_modifier`를 재사용하세요).
-6. (선택) `plugin/.../gui/StatsMenu.java`의 `STAT_SLOTS` 리스트에 한 줄 추가하면 GUI에도 자동으로 나타납니다.
+   이것만으로 상자 GUI 슬롯, 베드락 폼 버튼, 스코어보드 오브젝티브가 자동 생성됩니다.
+2. 효과를 `StatsService.recalculate()`에 추가 (기존 STR/AGI 블록 복사):
+   ```java
+   Attributes.setModifier(player, Attributes.attackDamage(), intPowerKey,
+           data.stat(StatType.INT) * config.somethingPerInt(),
+           AttributeModifier.Operation.ADD_NUMBER);
+   ```
+3. 배율 상수는 `RpgConfig`에 필드 + getter를 추가하고 `config.yml`에 키를 넣습니다.
 
-## 3. 어트리뷰트에 스탯 효과 연결하기
+## 5. 어트리뷰트를 다룰 때
 
-`datapack/data/rpgcore/function/util/`에 재사용 가능한 매크로 유틸이 있습니다.
+`util/Attributes.java`를 쓰세요.
+- `Attributes.maxHealth()` 등은 레지스트리 키로 조회하며 `max_health` / `generic.max_health` 양쪽 표기를 모두 시도합니다 (1.21.2 개명 대응).
+- `setModifier(player, attribute, key, amount, operation)`는 값이 실제로 달라졌을 때만 모디파이어를 교체하므로 매 틱 호출해도 안전합니다. `amount`가 0이면 모디파이어를 제거합니다.
+- `setBase(player, attribute, value)`는 최대 체력처럼 절대값을 설정할 때 사용합니다.
 
-- `set_attribute_base {attribute, value}` — 절대값 설정 (예: 최대 체력).
-- `set_attribute_modifier {attribute, id, value, operation}` — 모디파이어 추가/교체. `operation`은 `add_value`, `add_multiplied_base`, `multiply_total` 중 하나.
-- `remove_attribute_modifier {attribute, id}` — 모디파이어 제거.
+## 6. 벌목 확장
 
-사용 예 (recalc.mcfunction 참고):
-```mcfunction
-scoreboard players operation @s rpgcore.tmp = @s rpgcore.str
-scoreboard players operation @s rpgcore.tmp *= $per_str_dmg_milli rpgcore.const
-data modify storage rpgcore:calc attribute set value "minecraft:attack_damage"
-data modify storage rpgcore:calc id set value "rpgcore:str_bonus"
-data modify storage rpgcore:calc operation set value "add_value"
-execute store result storage rpgcore:calc value double 0.001 run scoreboard players get @s rpgcore.tmp
-function rpgcore:util/set_attribute_modifier with storage rpgcore:calc
+```yaml
+tree-felling:
+  max-blocks: 256               # 나무 한 그루당 상한
+  blocks-per-tick: 12           # 틱당 제거 수 (성능/연출 조절)
+  respect-protection-plugins: true
+  damage-tool: true
+  sneak-disables: true
 ```
 
-## 4. 무게 시스템 확장
+- 나무 종류/도구는 데이터팩 태그 `#rpgcore:tree_log`, `#rpgcore:treefell_tool`에 추가하면 끝입니다 (없으면 `tree-felling.logs`, `tree-felling.tools` 목록 사용). **코드 수정 불필요.**
+- 전파 방향(현재: 첫 링만 옆으로 확장해 2x2 나무를 잡고, 이후는 위쪽 3x3)은 `TreeFellService.Job.enqueueNeighbours()`에서 오프셋 범위를 바꾸면 됩니다.
+- `respect-protection-plugins`를 켜면 연쇄로 부술 블록마다 `BlockBreakEvent`를 발생시켜 보호 플러그인이 거부할 수 있습니다. 보호 플러그인이 전혀 없다면 꺼서 이벤트 비용을 줄일 수 있습니다.
 
-- 아이템 분류 변경: `datapack/data/rpgcore/tags/item/weight_light.json` / `weight_medium.json` / `weight_heavy.json` / `weight_very_heavy.json`에 아이템 ID나 태그(`#minecraft:...`)를 추가/삭제하면 됩니다.
-- 무게 값(점수) 자체를 바꾸려면 `datapack/data/rpgcore/function/weight/scan_player.mcfunction`에서 `scoreboard players add @s rpgcore.weight <값>` 부분의 숫자를 바꾸세요 (light=1, medium=3, heavy=8, very_heavy=20).
-- 페널티 단계/수치는 `weight/tier_0.mcfunction` ~ `tier_3.mcfunction`, 임계값은 `weight/apply.mcfunction`의 `matches` 범위를 수정하세요.
-- **스택 수량까지 반영하고 싶다면**: 현재는 "슬롯에 있으면 고정 무게"만 계산합니다(성능/버전 호환성을 위한 설계 선택). 수량까지 곱하려면 `data get entity @s Inventory[{Slot:<n>b}].count`(또는 설치된 버전의 정확한 NBT 필드명 - 1.20.5+ 컴포넌트 개편으로 `count`/`Count` 표기가 버전별로 다를 수 있으니 실제 서버에서 `/data get entity @s Inventory[{Slot:0b}]`로 먼저 확인하세요)를 매크로로 읽어 곱하는 `weight/add_slot.mcfunction` 같은 헬퍼를 추가하고, `scan_player.mcfunction`을 raw NBT Slot 인덱스 기반으로 다시 생성해야 합니다.
-- 새 무게 등급(예: `weight_extreme`)을 추가하려면 태그 파일과 `scan_player.mcfunction`에 41개 슬롯 x 새 태그 체크 줄을 추가하고, `apply.mcfunction`/`tier_*.mcfunction` 로직을 확장하세요.
+## 7. 베드락(Geyser/Floodgate) 관련
 
-## 5. 벌목 가능한 나무 종류 추가하기
+- `StatType`에 스탯을 추가하면 베드락 폼 버튼도 자동 생성됩니다.
+- 네이티브 폼을 끄고 전부 상자 GUI로 통일: `bedrock.use-native-forms: false`.
+- 새로 추가하는 문구는 **이모지 없이 ASCII + 한글**로 작성하세요 (베드락 폰트에 자바 이모지 글리프가 없어 □로 깨집니다).
+- 새 GUI 아이템은 베드락에도 존재하는 블록/아이템인지 확인하세요 (`BARRIER` 등은 렌더가 불안정합니다).
+- Floodgate/Cumulus는 절대 jar에 shade하지 마세요 (`pom.xml`에서 `provided` 유지). 번들링하면 Floodgate의 알려진 `LinkageError`가 발생합니다.
 
-이 시스템은 나무 종류별 전용 코드가 전혀 없습니다 (완전히 데이터 기반). 새 원목(예: 모드 추가 블록이나 신버전에서 추가된 원목)을 지원하려면:
+## 8. 근접 채팅 / 음성 범위
 
-1. `datapack/data/minecraft/loot_table/blocks/` 안의 아무 파일(예: `oak_log.json`)을 복사해 새 블록 ID 이름으로 저장합니다 (예: `pale_oak_log.json`처럼 이미 있으면 그대로 두면 됩니다).
-2. 파일 안의 `"minecraft:oak_log"` 문자열 3곳(첫 pool의 드랍 아이템, 두 번째 pool의 `RpgLogId` 값)을 새 블록 ID로 바꿉니다.
-3. (선택, 문서화용) `datapack/data/rpgcore/tags/block/tree_log.json`에도 추가해 목록을 최신 상태로 유지하세요 — 이 태그는 엔진 동작에는 쓰이지 않고 참고용입니다.
-4. 끝입니다. `treefell/expand.mcfunction` 등 엔진 파일은 전혀 손댈 필요가 없습니다 (매크로로 블록 ID를 그대로 전달받아 동작하기 때문).
+```yaml
+proximity-chat:
+  range: 24
+  hide-out-of-range: true   # false면 전원에게 전달되고 포맷만 적용
+  format: "&7[근접] &f%player%&7: &f%message%"
+```
+Simple Voice Chat을 함께 쓴다면 `plugins/voicechat/voicechat-server.properties`의 `voice_chat_distance`도 같은 값으로 맞추세요.
 
-벌목에 필요한 도구를 바꾸려면 `datapack/data/rpgcore/tags/item/treefell_tool.json`을 수정하세요 (기본값은 `#minecraft:axes`).
+## 9. 데이터 저장 위치
 
-전파 범위(현재: 처음 한 번만 옆으로도 확장해 2x2 굵은 나무를 잡고, 그 다음부터는 위쪽 3x3만 전파)를 바꾸려면 `treefell/expand_neighbors_base.mcfunction`(처음 1회, 17방향)과 `treefell/expand_neighbors.mcfunction`(이후 반복, 위쪽 9방향)의 좌표 오프셋을 수정하세요.
-
-## 6. UI 확장
-
-- 텍스트 메뉴(`datapack/data/rpgcore/function/ui/menu.mcfunction`)는 순수 tellraw JSON입니다. 새 줄이나 버튼을 추가하려면 같은 패턴(`clickEvent.run_command` → `/trigger rpgcore.xxx add 1`)을 따르세요.
-- 상자 GUI(`plugin/.../gui/StatsMenu.java`)는 `STAT_SLOTS` 리스트와 `open()` 메서드의 `inv.setItem(...)` 호출만 수정하면 됩니다. 클릭 처리는 `StatsMenuListener.java`가 슬롯 번호 → 트리거 오브젝티브 매핑을 자동으로 처리하므로 별도 로직 추가가 필요 없습니다.
-
-## 7. 베드락(Geyser/Floodgate) 관련 확장
-
-- **스탯을 추가하면 베드락 폼에도 자동 반영됩니다.** `StatsMenu.STAT_SLOTS`에 항목을 추가하면 상자 GUI 슬롯과 베드락 폼 버튼이 같은 목록에서 생성되므로 따로 손댈 곳이 없습니다.
-- 베드락 네이티브 폼을 끄고 모두 상자 GUI로 통일하려면: `config.yml`의 `bedrock.use-native-forms: false`.
-- 새로 추가하는 채팅/UI 문구는 **이모지 없이 ASCII + 한글**로 작성하세요. 베드락 폰트에는 자바 이모지 글리프가 없어 네모(□)로 깨집니다.
-- 새 GUI 아이템을 넣을 때는 베드락에 동일하게 존재하는 블록/아이템인지 확인하세요 (`BARRIER`, 커스텀 모델 데이터 등은 표시가 불안정합니다).
-- 채팅 클릭 이벤트(`clickEvent`)는 베드락에서 동작하지 않으므로, 새 버튼을 추가할 때는 **타이핑용 명령어도 함께 출력**하거나 폼/GUI 쪽에 넣으세요.
-- Floodgate/Cumulus는 절대 jar에 shade하지 마세요 (`pom.xml`에서 `provided` 스코프 유지). 번들링하면 Floodgate에서 잘 알려진 `LinkageError`가 발생합니다.
-
-## 8. 근접 채팅/음성 범위 조정
-
-두 곳을 함께 수정해야 값이 일치합니다.
-- `datapack/data/rpgcore/function/load.mcfunction`: `scoreboard players set $voice_range rpgcore.const 24`
-- `plugin/src/main/resources/config.yml`: `proximity-chat.range: 24`
-- (Simple Voice Chat 설치 시) `plugins/voicechat/voicechat-server.properties`: `voice_chat_distance`
+플레이어 상태는 `rpgcore.*` **바닐라 스코어보드 오브젝티브**에 미러링되어 월드와 함께 저장됩니다.
+- 운영자가 직접 확인/수정: `/scoreboard players get <player> rpgcore.level`
+- 값을 손으로 바꿨다면 `/rpgcore reload`로 재계산시키거나 재접속하면 반영됩니다.
+- 초기화: `/rpgcore reset <player>`
+- 다른 데이터팩이나 커맨드 블록에서 RPG 값을 읽고 싶을 때도 이 오브젝티브를 그대로 쓰면 됩니다.

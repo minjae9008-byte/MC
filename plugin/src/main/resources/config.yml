@@ -1,15 +1,79 @@
-# RPGCore plugin config
-# The datapack under datapack/ owns all game logic; this file only tunes the
-# plugin's presentation layer (GUI, proximity chat, voice chat glue).
+# RPGCore configuration.
+#
+# The plugin owns all gameplay logic. The bundled datapack only supplies the
+# item/block classification tags (#rpgcore:weight_*, #rpgcore:tree_log,
+# #rpgcore:treefell_tool); when those tags are present they win, and the lists
+# further down are the fallback for servers running without the datapack.
+
+leveling:
+  xp-base: 100          # XP needed for level 2
+  xp-growth: 50         # extra XP needed per level after that
+  starting-points: 5
+  points-per-level: 1
+
+stats:
+  base-hp: 20           # attribute points; 20 = the vanilla 10 hearts
+  hp-per-level: 2
+  hp-per-vit: 1
+  attack-damage-per-str: 0.5
+  attack-speed-per-dex: 0.05
+  movement-speed-per-agi: 0.002
+  jump-strength-per-agi: 0.01   # Java only: Bedrock has no jump attribute
+  luck-per-luck: 0.5
+
+weight:
+  base-capacity: 100
+  capacity-per-str: 10
+  # Weight is only recomputed for players whose inventory changed (events set
+  # a dirty flag). These two just bound the worst case.
+  scans-per-tick: 8
+  safety-rescan-ticks: 200
+  default-item-weight: 1
+  # Weight per item, multiplied by stack size. Each tier prefers the matching
+  # #rpgcore:weight_<tier> datapack tag; the items list is the fallback.
+  tiers:
+    light:
+      weight: 1
+      items: [minecraft:stick, minecraft:string, minecraft:feather, minecraft:paper, minecraft:redstone, minecraft:gunpowder, minecraft:arrow, minecraft:wheat, minecraft:leather]
+    medium:
+      weight: 3
+      items: [minecraft:oak_planks, minecraft:oak_log, minecraft:iron_sword, minecraft:iron_axe, minecraft:bread, minecraft:bucket, minecraft:iron_ingot, minecraft:gold_ingot]
+    heavy:
+      weight: 8
+      items: [minecraft:cobblestone, minecraft:stone, minecraft:deepslate, minecraft:obsidian, minecraft:iron_block, minecraft:raw_iron, minecraft:chest, minecraft:furnace, minecraft:anvil, minecraft:iron_chestplate, minecraft:diamond_chestplate]
+    very_heavy:
+      weight: 20
+      items: [minecraft:netherite_ingot, minecraft:netherite_block, minecraft:beacon, minecraft:diamond_block, minecraft:emerald_block, minecraft:shulker_box, minecraft:enchanting_table]
+
+tree-felling:
+  enabled: true
+  # Hard cap per tree, so a griefed "log wall" can never run away.
+  max-blocks: 256
+  # Blocks removed per tick; the rest is queued, so big trees never spike.
+  blocks-per-tick: 12
+  # Fire a BlockBreakEvent for every chained block so WorldGuard/GriefPrevention
+  # and friends can veto it. Costs one event per block; leave on unless you
+  # have no protection plugins.
+  respect-protection-plugins: true
+  damage-tool: true
+  sneak-disables: true
+  # Fallbacks used only when the datapack tags are absent.
+  logs: ['#minecraft:logs']
+  tools: ['#minecraft:axes']
+
+hud:
+  enabled: true
+  # Action-bar text persists ~3s, so once a second is smooth and cheap.
+  interval-ticks: 20
+
+xp-sources:
+  per-mob-kill: 10
+  per-tree-log: 1
 
 proximity-chat:
   enabled: true
-  # Must match the $voice_range constant set in
-  # datapack/data/rpgcore/function/load.mcfunction so the visible "someone is
-  # near" hint and the actual chat range agree.
   range: 24
-  # Format applied to messages that are within range. %player% and %message%
-  # are replaced; standard Minecraft color codes ('&') are supported.
+  # %player% and %message% are replaced; '&' colour codes are supported.
   format: "&7[근접] &f%player%&7: &f%message%"
   # true  = players outside the range do not receive the message at all
   #         (real proximity chat).
@@ -17,9 +81,8 @@ proximity-chat:
   hide-out-of-range: true
 
 voicechat:
-  # When Simple Voice Chat (https://modrepo.de/minecraft/voicechat) is
-  # installed, align its per-group/global distance with proximity-chat.range
-  # and lightly integrate RPG stats (e.g. a future perk widening voice range).
+  # Real voice audio comes from the Simple Voice Chat plugin (Java clients
+  # only). Set its own voice_chat_distance to match proximity-chat.range.
   sync-range-with-proximity-chat: true
 
 gui:
@@ -28,9 +91,6 @@ gui:
 
 bedrock:
   # With Geyser + Floodgate installed, show Bedrock players a native Bedrock
-  # form for /stats instead of the chest GUI. Bedrock cannot click chat
-  # components, so the datapack's /trigger rpgcore.menu text menu is not
-  # usable for them - this is their proper UI.
-  # If Floodgate is missing (or its API doesn't match), this automatically
-  # falls back to the chest GUI, which Geyser translates for Bedrock as well.
+  # form for /stats instead of the chest GUI. Falls back to the chest GUI
+  # automatically if Floodgate is missing or its API doesn't match.
   use-native-forms: true
