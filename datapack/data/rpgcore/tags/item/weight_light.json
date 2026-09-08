@@ -1,0 +1,24 @@
+{
+  "_comment": "1 weight point per item in stack. Add more item ids here to extend.",
+  "values": [
+    "minecraft:stick",
+    "minecraft:string",
+    "minecraft:feather",
+    "minecraft:paper",
+    "minecraft:gunpowder",
+    "minecraft:redstone",
+    "minecraft:glowstone_dust",
+    "minecraft:ender_pearl",
+    "minecraft:arrow",
+    "minecraft:flint",
+    "minecraft:seeds",
+    "minecraft:wheat_seeds",
+    "minecraft:wheat",
+    "minecraft:sugar",
+    "minecraft:bone_meal",
+    "minecraft:leather",
+    "#minecraft:dyes",
+    "#minecraft:flowers",
+    "#minecraft:saplings"
+  ]
+}

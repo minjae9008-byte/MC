@@ -1,0 +1,27 @@
+{
+  "_comment": "3 weight points per item in stack. Add more item ids here to extend.",
+  "values": [
+    "#minecraft:planks",
+    "#minecraft:wool",
+    "#minecraft:swords",
+    "#minecraft:axes",
+    "#minecraft:hoes",
+    "#minecraft:shovels",
+    "#minecraft:bows",
+    "minecraft:crossbow",
+    "minecraft:trident",
+    "minecraft:shield",
+    "minecraft:bread",
+    "minecraft:cooked_beef",
+    "minecraft:cooked_porkchop",
+    "minecraft:cooked_chicken",
+    "minecraft:apple",
+    "minecraft:golden_apple",
+    "#minecraft:logs",
+    "minecraft:bucket",
+    "minecraft:water_bucket",
+    "minecraft:lava_bucket",
+    "minecraft:milk_bucket",
+    "#minecraft:ingots"
+  ]
+}

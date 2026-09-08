@@ -1,0 +1,32 @@
+{
+  "_comment": "8 weight points per item in stack. Add more item ids here to extend.",
+  "values": [
+    "#minecraft:pickaxes",
+    "#minecraft:stone_tool_materials",
+    "minecraft:cobblestone",
+    "minecraft:stone",
+    "minecraft:deepslate",
+    "minecraft:netherrack",
+    "minecraft:obsidian",
+    "minecraft:iron_block",
+    "minecraft:gold_block",
+    "minecraft:copper_block",
+    "minecraft:raw_iron",
+    "minecraft:raw_gold",
+    "minecraft:raw_copper",
+    "minecraft:iron_ore",
+    "minecraft:gold_ore",
+    "minecraft:deepslate_iron_ore",
+    "minecraft:deepslate_gold_ore",
+    "minecraft:chest",
+    "minecraft:barrel",
+    "minecraft:furnace",
+    "minecraft:anvil",
+    "minecraft:chipped_anvil",
+    "minecraft:damaged_anvil",
+    "minecraft:iron_chestplate",
+    "minecraft:iron_leggings",
+    "minecraft:diamond_chestplate",
+    "minecraft:diamond_leggings"
+  ]
+}

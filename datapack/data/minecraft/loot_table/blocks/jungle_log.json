@@ -1,0 +1,41 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:jungle_log"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:match_tool",
+          "predicate": {
+            "items": "#rpgcore:treefell_tool"
+          }
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:stick",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": 1
+            },
+            {
+              "function": "minecraft:set_custom_data",
+              "tag": "{RpgTreefell:1b,RpgLogId:\"minecraft:jungle_log\"}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

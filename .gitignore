@@ -1,0 +1,5 @@
+plugin/target/
+*.class
+.idea/
+*.iml
+.vscode/

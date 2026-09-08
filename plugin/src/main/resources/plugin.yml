@@ -1,0 +1,25 @@
+name: RPGCorePlugin
+version: '1.0.0'
+main: com.rpgcore.plugin.RpgCorePlugin
+api-version: '1.21'
+author: RPGCore
+description: >
+  Companion plugin for the RPGCore datapack. Adds a real chest-GUI stats
+  menu, server-side proximity text chat, and an optional Simple Voice Chat
+  integration. The datapack remains the source of truth for all stats -
+  this plugin only reads/writes the same scoreboard objectives.
+softdepend: [voicechat]
+
+commands:
+  stats:
+    description: Open your RPGCore stats menu.
+    aliases: [rpg, rpgstats]
+  rpgcorereload:
+    description: Reload the RPGCore plugin config.
+    permission: rpgcore.admin
+    default: op
+
+permissions:
+  rpgcore.admin:
+    description: Manage RPGCore plugin settings.
+    default: op

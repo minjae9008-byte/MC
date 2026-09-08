@@ -1,0 +1,26 @@
+# RPGCore plugin config
+# The datapack under datapack/ owns all game logic; this file only tunes the
+# plugin's presentation layer (GUI, proximity chat, voice chat glue).
+
+proximity-chat:
+  enabled: true
+  # Must match the $voice_range constant set in
+  # datapack/data/rpgcore/function/load.mcfunction so the visible "someone is
+  # near" hint and the actual chat range agree.
+  range: 24
+  # Format applied to messages that are within range. %player% and %message%
+  # are replaced; standard Minecraft color codes ('&') are supported.
+  format: "&7[근접] &f%player%&7: &f%message%"
+  # If true, players outside chat range simply do not receive the message at
+  # all (true proximity chat). If false, they see a muted/grayed-out version.
+  hide-out-of-range: true
+
+voicechat:
+  # When Simple Voice Chat (https://modrepo.de/minecraft/voicechat) is
+  # installed, align its per-group/global distance with proximity-chat.range
+  # and lightly integrate RPG stats (e.g. a future perk widening voice range).
+  sync-range-with-proximity-chat: true
+
+gui:
+  title: "&8캐릭터 정보"
+  size: 27
