@@ -37,6 +37,8 @@ weight:
 > ```json
 > { "id": "minecraft:pale_oak_log", "required": false }
 > ```
+> 26.2부터는 `pack.mcmeta` 스키마도 바뀌었습니다. 포맷 81보다 위를 지원한다고 선언하려면 `min_format`/`max_format`이 **필수**이고, 없으면 `Error reading pack metadata` 경고와 함께 구형 스키마로 폴백합니다. 구·신버전을 모두 지원하려면 이 저장소의 `datapack/pack.mcmeta`처럼 `pack_format` + `supported_formats` + `min_format` + `max_format`을 함께 적으세요.
+>
 > 바닐라 태그를 참조할 때는 실제로 존재하는지 확인이 필요합니다. 예를 들어 `#minecraft:dyes`, `#minecraft:ingots`, `#minecraft:bows`, `#minecraft:flowers`는 **바닐라에 없습니다** (`#minecraft:small_flowers`는 있습니다). 플러그인이 실제로 몇 개를 태그에서 읽었는지는 기동 로그의 `Weight table loaded: N materials (X from datapack tags, Y from config.yml)`로 확인하세요 — `X`가 0이면 태그를 못 읽은 것입니다.
 
 ## 3. 무게 페널티 단계 수정
@@ -93,21 +95,26 @@ tree-felling:
 ```yaml
 durability-scaling:
   enabled: true
-  full-performance-above: 50   # 남은 내구도가 이 % 이상이면 페널티 없음
+  full-performance-above: 80   # 남은 내구도가 이 % 이상이면 페널티 없음
   minimum-performance: 50      # 내구도 0% 직전일 때의 성능 %
   affects:
     attack-damage: true
     armor: true
     mining-speed: true
+    ranged-damage: true
 ```
 
-성능 = 내구도가 임계값 이상이면 100%, 아래면 `minimum-performance`에서 100%까지의 직선 보간입니다. 예) 임계 50 / 하한 50에서 내구도 24% → 성능 74%.
+성능 = 내구도가 임계값 이상이면 100%, 아래면 `minimum-performance`에서 100%까지의 직선 보간입니다. 예) 임계 80 / 하한 50에서 내구도 60% → 성능 87%, 내구도 19% → 성능 61%.
+
+임계값을 올릴수록 "조금만 써도 성능이 떨어지는" 빡빡한 서버가 됩니다. 기본 80은 내구도가 5분의 1만 닳아도 바로 체감되는 설정입니다.
 
 - 주 손 아이템 → `attack_damage`, `block_break_speed` / 착용 방어구의 **평균** 내구도 → `armor`, `armor_toughness`.
+- 원거리(`ranged-damage`)는 어트리뷰트가 아니라 **투사체에 직접** 새깁니다. 활·석궁은 `EntityShootBowEvent`, 삼지창은 `PlayerLaunchProjectileEvent`에서 발사 시점 무기 상태를 읽어 `AbstractArrow#setDamage`에 곱합니다. 발사 뒤 무기를 바꿔도 이미 날아간 투사체는 변하지 않습니다. (근접 삼지창 찌르기는 주 손 아이템이므로 `attack_damage` 쪽에서 처리됩니다.)
 - 방어구 평균은 **착용 중인 칸만** 셉니다. 빈 칸을 100%로 치면 낡은 갑옷 한 벌이 희석되기 때문입니다.
 - 적용 방식은 플레이어 어트리뷰트의 `MULTIPLY_SCALAR_1` 모디파이어(`rpgcoreplugin:gear_attack` 등)입니다. **아이템은 건드리지 않습니다.**
 - `MULTIPLY_SCALAR_1`은 합계에 곱해지므로 STR 보너스도 함께 깎입니다(무딘 무기는 힘으로도 못 살린다는 의도). 무기 성능만 따로 떼려면 `StatsService`의 STR 모디파이어를 `MULTIPLY_*`로 옮기세요.
 - `block_break_speed`는 1.21.2에서 추가된 어트리뷰트입니다. 그보다 낮은 서버에서는 `Attributes.blockBreakSpeed()`가 null을 반환하고 채굴 페널티만 조용히 빠집니다.
+- `/give`처럼 이벤트를 발생시키지 않는 인벤토리 변경은 `weight.safety-rescan-ticks`(기본 200틱 = 10초) 주기의 재검사가 잡습니다. 실제 플레이에서는 아이템을 줍거나 옮기거나 내구도가 닳는 순간 즉시 갱신됩니다.
 - 곡선을 바꾸려면 `GearService.performancePercent()` 하나만 고치면 됩니다.
 
 ## 8. 모루 커스텀 조합법
@@ -117,33 +124,34 @@ anvil:
   enabled: true
   recipes:
     sharpen:                                        # 아무 키나 가능 (id로 쓰임)
-      name: "&b연마 (날카로움)"                       # /rpgcore recipes, GUI 표시용
+      name: "&b날 세우기"                             # /rpgcore recipes, GUI 표시용
       target: ['#minecraft:enchantable/sharp_weapon'] # 왼쪽 칸 대상
       ingredient: minecraft:flint                     # 오른쪽 칸 재료
-      ingredient-amount: 4
-      level-cost: 5
+      ingredient-amount: 2
       enchantments:
         sharpness: 1                                  # 1회당 올릴 레벨
     repair-kit:
       target: ['#minecraft:enchantable/durability']
-      ingredient: minecraft:copper_ingot
-      ingredient-amount: 2
-      level-cost: 2
+      ingredient: minecraft:grindstone
+      ingredient-amount: 1
       repair-percent: 25                              # 최대 내구도의 25% 회복
 ```
 
 - `target`은 목록입니다. 아이템 ID, 바닐라 태그(`#minecraft:enchantable/mining`), 이 데이터팩 태그(`#rpgcore:...`)를 섞어 쓸 수 있습니다.
-- 인챈트 상한은 기본이 해당 인챈트의 바닐라 최대 레벨입니다. 넘기려면:
+- **`level-cost`는 기본 0(무료)**, **인챈트 상한도 기본으로 없습니다.** 재료만 있으면 몇 번이든 반복해 바닐라 최대 레벨을 넘길 수 있습니다.
+- 바닐라의 작업 횟수 누적 비용("수리 비용이 너무 비쌉니다")도 커스텀 조합에는 걸리지 않습니다. 결과물의 `repair_cost`를 올리지 않고 입력값 그대로 넘기기 때문입니다. 바닐라 수리·합치기는 평소처럼 비용이 올라갑니다.
+- 제한을 되살리려면 명시하면 됩니다:
   ```yaml
   enchantments:
     sharpness:
       levels: 1
-      max-level: 10
+      max-level: 5
+  level-cost: 5
   ```
-  단, 바닐라 모루는 레벨 제한을 검사하므로 상한을 올릴 때는 실제로 적용되는지 테스트하세요.
+- 상한을 없애도 안전 하드 상한 **255**는 남습니다 (그 이상은 아이템 데이터/표시가 깨질 수 있습니다). 바닐라 모루의 레벨 제한 검사는 커스텀 결과물에 대해 `bypassEnchantmentLevelRestriction`으로 해제합니다.
 - `repair-percent`와 `enchantments` 둘 다 없으면 그 조합법은 아무 일도 하지 않으므로 로드 시 경고와 함께 건너뜁니다.
 - 매칭 순서는 config에 적힌 순서입니다. 대상이 겹치면 먼저 적힌 조합법이 이깁니다.
-- **재료 선택 주의**: 그 장비의 바닐라 수리 재료(다이아 갑옷 + 다이아 등)를 재료로 쓰면 바닐라 수리를 덮어씁니다. 기본 조합법이 구리 주괴·메아리 조각처럼 겹치지 않는 재료를 쓰는 이유입니다.
+- **재료 선택 주의**: 그 장비의 바닐라 수리 재료(철 갑옷 + 철 주괴 등)를 재료로 쓰면 바닐라 수리를 덮어씁니다. 기본 조합법이 철 '주괴' 대신 철 '블록', 숫돌 같은 재료를 쓰는 이유입니다. 26.2에서 구리 장비가 추가되어 구리 주괴도 이제 바닐라 수리 재료입니다.
 - 조합법이 걸리지 않는 조합은 `PrepareAnvilEvent`에서 손대지 않으므로 바닐라 동작 그대로입니다.
 - 로드 결과 확인: 기동 로그의 `Anvil recipes loaded: N.` 과 `/rpgcore recipes`.
 

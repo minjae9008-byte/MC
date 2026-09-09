@@ -9,6 +9,7 @@ import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.data.PlayerDataManager;
 import com.rpgcore.plugin.gear.GearListener;
 import com.rpgcore.plugin.gear.GearService;
+import com.rpgcore.plugin.gear.RangedListener;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.gui.StatsMenuListener;
 import com.rpgcore.plugin.hud.HudTask;
@@ -88,6 +89,7 @@ public final class RpgCorePlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new WeightListener(this), this);
         getServer().getPluginManager().registerEvents(new TreeFellListener(this, treeFell), this);
         getServer().getPluginManager().registerEvents(new GearListener(this), this);
+        getServer().getPluginManager().registerEvents(new RangedListener(this), this);
         getServer().getPluginManager().registerEvents(new AnvilListener(this, anvil), this);
         if (rpgConfig.proximityEnabled()) {
             getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);

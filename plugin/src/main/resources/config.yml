@@ -69,75 +69,80 @@ tree-felling:
 #  곧 성능 회복입니다.)
 durability-scaling:
   enabled: true
-  full-performance-above: 50
+  full-performance-above: 80
   minimum-performance: 50
   affects:
     attack-damage: true      # 주 손 아이템 기준
     armor: true              # 착용 중인 방어구의 평균 내구도 기준
-    mining-speed: true       # block_break_speed (1.21.2+, 없으면 자동 무시)
+    mining-speed: true       # block_break_speed
+    ranged-damage: true      # 활/석궁/삼지창: 발사 시점 무기 상태로 투사체 피해 조정
 
 # 모루 커스텀 조합법. 왼쪽 칸=강화할 장비, 오른쪽 칸=재료.
 # target 은 아이템 ID 또는 태그(#minecraft:..., #rpgcore:...) 목록입니다.
 # 조합법이 일치하지 않는 조합은 전부 바닐라 모루 동작 그대로입니다.
-# 주의: 재료를 그 장비의 바닐라 수리 재료(예: 다이아 갑옷 + 다이아)로 두면
-# 바닐라 수리를 덮어쓰게 되므로 겹치지 않는 재료를 쓰세요.
+#
+# level-cost 는 기본 0(무료)이고, enchantments 의 max-level 을 적지 않으면
+# 상한이 없습니다 - 재료만 있으면 몇 번이든 반복해서 올릴 수 있습니다.
+# 바닐라의 "수리 비용이 너무 비쌉니다" 누적 제한도 커스텀 조합에는 걸리지
+# 않습니다(작업 횟수 비용을 올리지 않고 그대로 넘깁니다).
+# 상한을 되살리려면:
+#   enchantments:
+#     sharpness:
+#       levels: 1
+#       max-level: 5
+#
+# 재료 선택 주의: 그 장비의 바닐라 수리 재료(철 갑옷 + 철 주괴 등)를 쓰면
+# 바닐라 수리를 덮어씁니다. 아래 기본값이 철 '블록'과 숫돌을 쓰는 이유입니다.
 anvil:
   enabled: true
   recipes:
     sharpen:
-      name: "&b연마 (날카로움)"
+      name: "&b날 세우기"                    # 부싯돌로 날을 갈아 세운다
       target: ['#minecraft:enchantable/sharp_weapon']
       ingredient: minecraft:flint
-      ingredient-amount: 4
-      level-cost: 5
+      ingredient-amount: 2
       enchantments:
         sharpness: 1
     smite:
-      name: "&b성수 (강타)"
+      name: "&b성화 각인"                    # 빛 = 언데드 특효
       target: ['#minecraft:enchantable/sharp_weapon']
-      ingredient: minecraft:bone_block
-      ingredient-amount: 2
-      level-cost: 5
+      ingredient: minecraft:glowstone_dust
+      ingredient-amount: 3
       enchantments:
         smite: 1
     bane:
-      name: "&b해충 퇴치 (벌레 죽이기)"
+      name: "&b독 바르기"                    # 거미 눈의 독을 날에 바른다
       target: ['#minecraft:enchantable/sharp_weapon']
-      ingredient: minecraft:fermented_spider_eye
-      ingredient-amount: 2
-      level-cost: 5
+      ingredient: minecraft:spider_eye
+      ingredient-amount: 3
       enchantments:
         bane_of_arthropods: 1
     efficiency:
-      name: "&b연마석 (효율)"
+      name: "&b기계 정비"                    # 레드스톤으로 동력 전달을 다듬는다
       target: ['#minecraft:enchantable/mining']
-      ingredient: minecraft:amethyst_shard
+      ingredient: minecraft:redstone
       ingredient-amount: 4
-      level-cost: 5
       enchantments:
         efficiency: 1
     protection:
-      name: "&b보호 각인 (보호)"
+      name: "&b철판 덧대기"                  # 철 블록을 두들겨 갑옷을 보강
       target: ['#minecraft:enchantable/armor']
-      ingredient: minecraft:echo_shard
+      ingredient: minecraft:iron_block
       ingredient-amount: 1
-      level-cost: 6
       enchantments:
         protection: 1
     reinforce:
-      name: "&b강화 (내구성)"
+      name: "&b흑요석 담금질"                # 가장 단단한 재료로 단단하게
       target: ['#minecraft:enchantable/durability']
       ingredient: minecraft:obsidian
-      ingredient-amount: 4
-      level-cost: 8
+      ingredient-amount: 2
       enchantments:
         unbreaking: 1
     repair-kit:
-      name: "&a수리 키트"
+      name: "&a숫돌 정비"                    # 숫돌로 갈아 손질한다
       target: ['#minecraft:enchantable/durability']
-      ingredient: minecraft:copper_ingot
-      ingredient-amount: 2
-      level-cost: 2
+      ingredient: minecraft:grindstone
+      ingredient-amount: 1
       repair-percent: 25
 
 hud:

@@ -60,6 +60,10 @@ public final class AnvilListener implements Listener {
         AnvilView view = event.getView();
         view.setRepairCost(recipe.levelCost());
         view.setRepairItemCountCost(recipe.ingredientAmount());
+        // Vanilla refuses results whose enchantments exceed their normal
+        // maximum; recipes are allowed past it, so that check is waived for
+        // the combinations we produce.
+        view.bypassEnchantmentLevelRestriction(true);
 
         // The client is told the cost with the window update, which Paper has
         // already sent by the time we change it, so nudge it next tick.

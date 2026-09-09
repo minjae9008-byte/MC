@@ -11,6 +11,7 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.Repairable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -97,8 +98,12 @@ public final class AnvilService {
                     continue;
                 }
                 int levels = Math.max(1, enchants.getInt(key + ".levels", enchants.getInt(key, 1)));
-                int maxLevel = enchants.getInt(key + ".max-level", enchantment.getMaxLevel());
-                grants.add(new AnvilRecipe.Grant(enchantment, levels, Math.max(1, maxLevel)));
+                // No vanilla ceiling by default: a recipe can be applied as
+                // many times as the player has materials for. Set max-level
+                // explicitly to put a limit back.
+                int maxLevel = enchants.getInt(key + ".max-level", AnvilRecipe.HARD_LEVEL_CEILING);
+                grants.add(new AnvilRecipe.Grant(enchantment, levels,
+                        Math.clamp(maxLevel, 1, AnvilRecipe.HARD_LEVEL_CEILING)));
             }
         }
 
@@ -114,7 +119,7 @@ public final class AnvilService {
                 targets,
                 ingredient,
                 Math.max(1, node.getInt("ingredient-amount", 1)),
-                Math.max(0, node.getInt("level-cost", 1)),
+                Math.max(0, node.getInt("level-cost", 0)),
                 repairPercent,
                 List.copyOf(grants));
     }
@@ -149,6 +154,12 @@ public final class AnvilService {
             return null;
         }
 
+        // Vanilla makes every anvil use of an item more expensive than the
+        // last and eventually refuses outright ("Too Expensive!"). That is the
+        // cap on how many times gear can be worked, so custom recipes carry
+        // the prior work cost across unchanged instead of raising it.
+        int priorWorkCost = meta instanceof Repairable repairable ? repairable.getRepairCost() : 0;
+
         boolean changed = false;
 
         if (recipe.repairPercent() > 0 && meta instanceof Damageable damageable && damageable.getDamage() > 0) {
@@ -175,6 +186,9 @@ public final class AnvilService {
         if (!changed) {
             return null;
         }
+        if (meta instanceof Repairable repairable) {
+            repairable.setRepairCost(priorWorkCost);
+        }
         result.setItemMeta(meta);
         return result;
     }
@@ -184,16 +198,20 @@ public final class AnvilService {
         StringBuilder out = new StringBuilder();
         out.append(ChatColor.AQUA).append(recipe.displayName()).append(ChatColor.GRAY).append(" - ")
                 .append(ChatColor.WHITE).append(recipe.ingredientAmount()).append("x ")
-                .append(key(recipe.ingredient()))
-                .append(ChatColor.GRAY).append(" (레벨 ").append(recipe.levelCost()).append(") -> ");
+                .append(key(recipe.ingredient()));
+        if (recipe.levelCost() > 0) {
+            out.append(ChatColor.GRAY).append(" (레벨 ").append(recipe.levelCost()).append(")");
+        }
+        out.append(ChatColor.GRAY).append(" -> ");
 
         List<String> effects = new ArrayList<>();
         if (recipe.repairPercent() > 0) {
             effects.add("내구도 +" + recipe.repairPercent() + "%");
         }
         for (AnvilRecipe.Grant grant : recipe.grants()) {
-            effects.add(key(grant.enchantment()) + " +" + grant.levels()
-                    + " (최대 " + grant.maxLevel() + ")");
+            String limit = grant.maxLevel() >= AnvilRecipe.HARD_LEVEL_CEILING
+                    ? "" : " (최대 " + grant.maxLevel() + ")";
+            effects.add(key(grant.enchantment()) + " +" + grant.levels() + limit);
         }
         return out.append(ChatColor.GREEN).append(String.join(", ", effects)).toString();
     }

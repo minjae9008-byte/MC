@@ -49,6 +49,7 @@ public final class RpgConfig {
     private boolean durabilityAffectsAttack;
     private boolean durabilityAffectsArmor;
     private boolean durabilityAffectsMining;
+    private boolean durabilityAffectsRanged;
 
     private boolean anvilEnabled;
 
@@ -106,6 +107,7 @@ public final class RpgConfig {
         durabilityAffectsAttack = c.getBoolean("durability-scaling.affects.attack-damage", true);
         durabilityAffectsArmor = c.getBoolean("durability-scaling.affects.armor", true);
         durabilityAffectsMining = c.getBoolean("durability-scaling.affects.mining-speed", true);
+        durabilityAffectsRanged = c.getBoolean("durability-scaling.affects.ranged-damage", true);
 
         anvilEnabled = c.getBoolean("anvil.enabled", true);
 
@@ -241,6 +243,10 @@ public final class RpgConfig {
 
     public boolean durabilityAffectsMining() {
         return durabilityAffectsMining;
+    }
+
+    public boolean durabilityAffectsRanged() {
+        return durabilityAffectsRanged;
     }
 
     public boolean anvilEnabled() {

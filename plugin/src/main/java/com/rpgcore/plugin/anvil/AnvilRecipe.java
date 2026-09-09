@@ -16,7 +16,7 @@ import java.util.Set;
  * @param targets          materials accepted in the left slot
  * @param ingredient       material required in the right slot
  * @param ingredientAmount how many of it are consumed
- * @param levelCost        experience levels charged by the anvil
+ * @param levelCost        experience levels charged by the anvil (0 = free)
  * @param repairPercent    durability restored, as a percentage of the maximum
  * @param grants           enchantment steps this recipe applies
  */
@@ -30,11 +30,19 @@ public record AnvilRecipe(String id,
                           List<Grant> grants) {
 
     /**
+     * Enchantment levels are not capped by this plugin, but they still have to
+     * fit in the item's data and stay renderable, so recipes are bounded by
+     * this rather than by the enchantment's vanilla maximum.
+     */
+    public static final int HARD_LEVEL_CEILING = 255;
+
+    /**
      * One enchantment step.
      *
      * @param enchantment what to add
      * @param levels      how much to add per craft
-     * @param maxLevel    ceiling; defaults to the enchantment's vanilla maximum
+     * @param maxLevel    ceiling; unlimited by default, bounded only by
+     *                    {@link #HARD_LEVEL_CEILING}
      */
     public record Grant(Enchantment enchantment, int levels, int maxLevel) {
     }
