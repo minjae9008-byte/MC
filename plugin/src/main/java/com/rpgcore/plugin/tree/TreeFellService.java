@@ -4,7 +4,6 @@ import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.util.MaterialSets;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.Tag;
 import org.bukkit.block.Block;
 import org.bukkit.enchantments.Enchantment;
@@ -27,12 +26,9 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Chain tree felling.
  *
- * The datapack version needed a loot-table override per wood type, a marker
- * item, an every-tick `@e[type=item,nbt=...]` scan of all loaded item entities,
- * and a recursive flood fill that could run ~2000 commands inside a single
- * tick. Here a BlockBreakEvent hands us the exact block and tool for free, and
- * the fill is a queue drained a few blocks per tick, so even a giant jungle
- * tree never spikes a tick.
+ * A BlockBreakEvent hands us the exact block and tool, and the flood fill is a
+ * queue drained a few blocks per tick, so even a giant jungle tree never
+ * spikes a tick.
  */
 public final class TreeFellService {
 
@@ -50,12 +46,11 @@ public final class TreeFellService {
     public void load() {
         logs.clear();
         tools.clear();
-        String logSource = MaterialSets.loadTagOrConfig(plugin, Tag.REGISTRY_BLOCKS, "tree_log",
+        MaterialSets.addAll(plugin, Tag.REGISTRY_BLOCKS,
                 plugin.getConfig().getStringList("tree-felling.logs"), "tree-felling.logs", logs);
-        String toolSource = MaterialSets.loadTagOrConfig(plugin, Tag.REGISTRY_ITEMS, "treefell_tool",
+        MaterialSets.addAll(plugin, Tag.REGISTRY_ITEMS,
                 plugin.getConfig().getStringList("tree-felling.tools"), "tree-felling.tools", tools);
-        plugin.getLogger().info("Tree felling: " + logs.size() + " log types (from " + logSource + "), "
-                + tools.size() + " tools (from " + toolSource + ").");
+        plugin.getLogger().info("Tree felling: " + logs.size() + " log types, " + tools.size() + " tools.");
     }
 
     public boolean isLog(Material material) {

@@ -1,196 +1,232 @@
 # RPGCore
 
-Paper 서버용 RPG 시스템. **게임 로직은 전부 플러그인**에 있고, 데이터팩은 아이템/블록 분류 태그만 담는 **데이터 레이어**입니다.
+Paper 서버용 RPG 플러그인. 스탯/레벨, 소지 무게, 장비 내구도 페널티, 연쇄 벌목,
+모루 커스텀 강화, 근접 채팅을 한 덩어리로 제공합니다.
 
-- **`plugin/`** — 스탯/레벨, 무게, 연쇄 벌목, HUD, 근접 채팅, 크로스플레이 UI. 전부 이벤트 기반 Java.
-- **`datapack/`** — `#rpgcore:weight_*`, `#rpgcore:tree_log`, `#rpgcore:treefell_tool` 태그만. **함수 0개, 매 틱 실행 0**.
-
-## 왜 플러그인으로 옮겼나 (v1 데이터팩 → v2 플러그인)
-
-데이터팩만으로 구현했을 때의 실측 가능한 비용과, 지금 구조의 차이입니다 (20인 기준).
-
-| 기능 | v1 (데이터팩) | v2 (플러그인) |
-|---|---|---|
-| 무게 계산 | `execute if items` **164줄 × 20명 × 2회/초 ≈ 6,600 명령/초**, 인벤토리 변화와 무관하게 상시 | 인벤토리가 **바뀐 플레이어만** 41칸 배열 순회 + EnumMap 조회. 가만히 서 있으면 **비용 0** |
-| 벌목 감지 | loot table 22개 오버라이드 + 마커 아이템 + **매 틱 전체 아이템 엔티티 NBT 스캔** | `BlockBreakEvent` 한 번. 스캔·마커·loot table 오버라이드 **전부 제거** |
-| 벌목 처리 | 재귀 flood-fill이 **단일 틱에 1,000~2,000 명령** (대형 나무에서 틱 스파이크) | 큐를 **틱당 12블록씩** 소비. 대형 나무도 틱 스파이크 없음 |
-| 스탯 배분 | trigger 오브젝티브 **폴링 11줄 × 20명 × 20틱 = 4,400 명령/초**, 반영까지 1틱 지연 | GUI 클릭 → 메서드 직접 호출. 폴링 없음, 지연 없음 |
-| 근접 감지 | `@a[distance=..]` 셀렉터를 **1초마다 전원** 실행 (O(n²)) | 채팅이 **실제로 발생할 때만** 거리 비교 (제곱거리, sqrt 없음) |
-| HUD | 매 틱(→5틱) tellraw JSON 조립 | 1초 간격 Adventure 컴포넌트 |
-| 상시 반복 작업 | `#minecraft:tick` 함수 체인 | **반복 태스크 2개** (1틱 큐 펌프, 1초 HUD) |
-
-부수적으로 얻은 것:
-- **스택 수량 반영 무게** — 데이터팩 판은 NBT 버전 차이 때문에 슬롯 단위로만 계산했지만, 이제 `개수 × 무게`로 정확히 계산합니다.
-- **보호 플러그인 호환** — 연쇄로 부술 블록마다 `BlockBreakEvent`를 발생시켜 WorldGuard/GriefPrevention이 거부할 수 있습니다 (`respect-protection-plugins`).
-- **도구 내구도/인챈트 반영** — `breakNaturally(tool)`로 실크터치 등이 정상 적용되고, 도구 내구도도 닳으며(언브레이킹 확률 반영) 부러지기 직전에 벌목이 멈춥니다.
-- **loot table 충돌 제거** — 원목 loot table을 덮어쓰지 않으므로 다른 데이터팩과 부딪히지 않습니다.
-- **실제 XP 획득 경로** — 몹 처치/벌목 XP가 실제로 들어옵니다 (v1은 디버그 함수뿐이었습니다).
-
-### 데이터는 여전히 바닐라 스코어보드에 기록됩니다
-플러그인은 값이 바뀔 때만 `rpgcore.*` 스코어보드에 **미러링**합니다. 핫패스는 메모리 캐시(`PlayerData`)만 읽습니다. 미러를 유지하는 이유는 두 가지입니다.
-1. **저장 비용 0** — 스코어보드는 월드와 함께 저장되므로 별도 데이터 파일이 없습니다.
-2. **상호 운용** — 운영자가 `/scoreboard players get`으로 확인하거나, 다른 데이터팩/커맨드 블록이 RPG 값을 읽을 수 있습니다.
+- **jar 하나가 전부입니다.** 데이터팩도, 다른 플러그인도, 외부 라이브러리도 필요 없습니다.
+- **전부 서버 사이드 로직**이라 자바와 베드락(Geyser) 플레이어가 **완전히 동일하게** 동작합니다.
+- 설정은 `config.yml` 한 파일. 대부분 `/rpgcore reload` 로 재시작 없이 반영됩니다.
 
 ## 설치
 
-1. **플러그인**: `plugin/`에서 `mvn package` → `plugin/target/rpgcore-plugin-2.0.0.jar`를 서버 `plugins/`에 넣고 재시작. **Paper 26.2 기준이며 빌드·구동 모두 Java 25가 필요합니다** (Paper 26.2 자체가 Java 25를 요구합니다). `JAVA_HOME=/path/to/jdk-25 mvn package`.
-2. **데이터팩(선택, 권장)**: `datapack/` 폴더를 `world/datapacks/rpgcore/`로 복사. 없으면 `config.yml`의 목록이 대신 쓰입니다. `pack.mcmeta`는 구버전용 `pack_format`/`supported_formats`와 신버전용 `min_format`/`max_format`을 함께 선언해 1.21.4~26.2 범위를 커버합니다 (포맷 81보다 위를 지원한다고 선언하려면 `min_format`/`max_format`이 **필수**입니다 — 없으면 26.2가 `Error reading pack metadata` 경고와 함께 구형 스키마로 폴백합니다). 서버 기동 로그에 `Couldn't load tag rpgcore:...`가 없어야 정상입니다 (태그 하나라도 존재하지 않는 아이템을 참조하면 그 태그 전체가 통째로 무시되고 조용히 `config.yml` 폴백으로 넘어갑니다 — [`CONFIG.md`](CONFIG.md) 2절 참고).
-3. **(선택) 음성 채팅**: [Simple Voice Chat](https://modrinth.com/plugin/simple-voice-chat)을 `plugins/`에 추가하고, `voicechat-server.properties`의 `voice_chat_distance`를 `config.yml`의 `proximity-chat.range`(기본 24)와 맞추세요. 자바 클라이언트 모드가 필요합니다.
+**요구사항: Paper 26.2 이상, Java 25** (Paper 26.2 자체가 Java 25를 요구합니다.)
+
+1. `plugin/` 에서 빌드 → `plugin/target/rpgcore-plugin-2.0.0.jar`
+   ```
+   cd plugin && JAVA_HOME=/path/to/jdk-25 mvn package
+   ```
+2. jar 를 서버 `plugins/` 에 넣고 재시작.
+3. 끝. `plugins/RPGCorePlugin/config.yml` 이 자동 생성됩니다.
+
+기동 로그에 아래처럼 뜨면 정상입니다.
+
+```
+[RPGCorePlugin] Weight table loaded: 242 materials; anything unlisted weighs 1.
+[RPGCorePlugin] Tree felling: 22 log types, 7 tools.
+[RPGCorePlugin] Anvil recipes loaded: 7.
+```
+
+**(선택) 근접 음성**: [Simple Voice Chat](https://modrinth.com/plugin/simple-voice-chat) 을 함께 깔면 실제 음성이 됩니다.
+그쪽 `voice_chat_distance` 와 이쪽 `proximity-chat.range` 가 어긋나면 기동 로그가 경고합니다.
+(음성은 자바 클라이언트 모드가 필요합니다. 베드락은 근접 **텍스트** 채팅으로 동작합니다.)
 
 ## 기능
 
-### 1. RPG 스탯 / 레벨
-- STR / DEX / VIT / AGI / LUCK, 레벨업마다 포인트 지급(초기 5개).
-- 실제 바닐라 어트리뷰트에 반영: VIT→최대 체력, STR→공격력·최대 소지무게, DEX→공격 속도, AGI→이동속도·점프력, LUCK→행운.
-- 어트리뷰트는 레지스트리 키로 조회하므로 1.21.2의 `generic.max_health` → `max_health` 개명 양쪽에서 동작합니다.
-- XP: 몹 처치(`xp-sources.per-mob-kill`), 벌목한 원목 수(`per-tree-log`), `/rpgcore givexp`.
+### 스탯 / 레벨
+STR · DEX · VIT · AGI · LUCK. 레벨업마다 포인트를 받아 `/stats` 창에서 찍습니다.
+찍은 값은 바닐라 어트리뷰트에 그대로 반영됩니다.
 
-### 2. 소지 무게
-- 인벤토리 + 방어구 + 보조손 41칸을 `개수 × 등급 무게`로 계산.
-- 부하율에 따라 4단계: 70% 미만 무패널티 → 이동속도 -10/-25/-50%, 점프 -15/-40/-70%, 100% 초과부터 허기, 130% 초과부터 채굴 피로.
-- 단계가 바뀔 때만 어트리뷰트를 건드리고, 바뀔 때 채팅으로 알려줍니다.
-
-### 3. 연쇄 벌목
-- 도끼로 원목을 캐면 위/옆으로 연결된 같은 원목이 큐 방식으로 순차 제거 (2x2 굵은 나무 지원, 옆 나무로는 번지지 않음).
-- 웅크리면 비활성(`sneak-disables`), 최대 블록 수 제한, 크리에이티브 제외.
-
-### 4. 내구도에 따른 성능 저하
-- 낡은 무기는 약하게 때리고, 낡은 방어구는 덜 막고, 낡은 도구는 느리게 캡니다.
-- 남은 내구도 `full-performance-above`(**기본 80%**) 이상이면 페널티 없음. 그 아래로는 0%까지 `minimum-performance`(기본 50%)로 직선 감소합니다. 예) 내구도 60% → 성능 87%, 내구도 19% → 성능 61%.
-- 적용 대상:
-
-  | 대상 | 무엇으로 | 어떻게 |
-  |---|---|---|
-  | 근접 공격 | 주 손 아이템 | `attack_damage` 어트리뷰트 |
-  | 채굴 속도 | 주 손 아이템 | `block_break_speed` 어트리뷰트 |
-  | 방어력 | 착용 방어구 **평균** | `armor` + `armor_toughness` |
-  | **원거리 피해** | **발사한 활/석궁/삼지창** | **투사체의 기본 피해량** |
-
-  각각 `affects.*`로 개별로 끌 수 있습니다.
-- 원거리는 어트리뷰트로 걸 수 없어서(투사체는 발사 뒤 한참 있다 명중합니다) **발사 시점 무기 상태를 투사체에 새겨 넣습니다.** 화살이 날아가는 중에 새 활로 바꿔도 이미 쏜 화살은 강해지지 않습니다.
-- **아이템 자체는 절대 고쳐 쓰지 않습니다.** 플레이어 어트리뷰트에 `MULTIPLY_SCALAR_1` 모디파이어로만 걸리므로, 바닐라 수리·다른 플러그인과 충돌하지 않고 수리하면 그대로 성능이 돌아옵니다.
-- 장비가 바뀌거나 내구도가 닳은 플레이어만 재계산합니다(이벤트 → dirty 플래그 → 틱 펌프). 가만히 있으면 비용 0.
-
-### 5. 모루 커스텀 강화
-- 왼쪽 칸에 장비, 오른쪽 칸에 재료를 넣으면 인챈트가 붙거나 내구도가 찹니다. **조합법은 전부 `config.yml`** — 코드 수정 없이 추가/삭제할 수 있습니다.
-- **경험치 레벨을 쓰지 않고, 반복 횟수 제한도 없습니다.** 재료만 있으면 몇 번이든 올릴 수 있습니다.
-- 기본 제공 7종 (재료는 그 장비의 바닐라 수리 재료와 겹치지 않게 골랐습니다):
-
-  | 조합 | 재료 | 효과 | 재료를 고른 이유 |
-  |---|---|---|---|
-  | 날 세우기 | 부싯돌 2 | 날카로움 +1 | 숫돌로 날을 간다 |
-  | 성화 각인 | 발광석 가루 3 | 강타 +1 | 빛은 언데드에 특효 |
-  | 독 바르기 | 거미 눈 3 | 벌레 죽이기 +1 | 독을 날에 바른다 |
-  | 기계 정비 | 레드스톤 가루 4 | 효율 +1 | 동력 전달을 다듬는다 |
-  | 철판 덧대기 | 철 블록 1 | 보호 +1 | 갑옷을 두들겨 보강 (철 '주괴'는 바닐라 수리와 겹침) |
-  | 흑요석 담금질 | 흑요석 2 | 내구성 +1 | 가장 단단한 재료 |
-  | 숫돌 정비 | 숫돌 1 | 내구도 +25% | 갈아서 손질한다 |
-
-- 대상은 아이템 태그로 지정합니다(기본값은 바닐라 `#minecraft:enchantable/*`). `#rpgcore:*` 데이터팩 태그나 개별 아이템 ID도 그대로 씁니다.
-- **조합법이 걸리지 않는 조합은 바닐라 모루 그대로입니다** — 같은 재료 수리, 인챈트북 합치기, 이름 변경 전부 정상 동작하고, 커스텀 결과물에도 이름 변경이 함께 적용됩니다.
-- 바닐라의 "수리 비용이 너무 비쌉니다" 누적 제한도 커스텀 조합에는 걸리지 않습니다 (작업 횟수 비용을 올리지 않고 그대로 넘깁니다).
-- 상한을 되살리고 싶으면 조합법에 `max-level`(과 원하면 `level-cost`)을 넣으면 됩니다. 안전을 위한 하드 상한은 255입니다.
-- 내구도가 가득 찬 장비에 수리 조합을 걸면 결과가 비어서 재료를 헛되이 쓰지 않습니다.
-- 4번 기능과 맞물려서, **수리 키트는 곧 성능 회복**입니다.
-
-### 6. 근접 채팅 / 음성
-- 근접 텍스트 채팅은 플러그인이 자체 처리 (베드락 포함 전 플랫폼 동작).
-- 실제 음성은 Simple Voice Chat 연동 (자바 클라이언트 전용).
-
-### 7. UI
-- `/stats` (별칭 `/rpg`, `/rpgstats`) — 자바는 상자 GUI, 베드락은 Floodgate 네이티브 폼. 장비 상태(내구도 → 현재 성능)와 모루 조합법 목록도 함께 보여줍니다.
-- 상시 액션바 HUD: 레벨 / HP / XP / 무게(부하 단계별 색상). 장비가 닳았을 때만 `GEAR 74%` 구간이 추가로 붙습니다.
-- 관리자: `/rpgcore reload | recipes | givexp <player> <amount> | reset <player>`.
-
-## Geyser / Floodgate (베드락 크로스플레이) 호환
-
-### 자동으로 처리되는 것
-| 기능 | 베드락에서 |
+| 스탯 | 효과 |
 |---|---|
-| 스탯/레벨, 무게, 연쇄 벌목, 근접 채팅, 내구도 페널티, 모루 강화 | 서버 사이드 로직이라 **완전 동일 동작** (모루는 베드락 네이티브 화면으로 Geyser가 번역) |
-| 스탯 UI | `/stats` → **베드락 네이티브 폼**. Floodgate가 없거나 API가 안 맞으면 상자 GUI로 자동 폴백 |
-| HUD | 액션바 1초 간격이라 Geyser 번역 부하도 낮음 |
-| 스코어보드 이름 | Floodgate 접두사(기본 `.`)가 붙은 이름 그대로 사용해 값이 어긋나지 않음 |
+| STR | 공격력, 최대 소지무게 |
+| DEX | 공격 속도 |
+| VIT | 최대 체력 |
+| AGI | 이동속도, 점프력 |
+| LUCK | 행운 |
 
-### 베드락 제약 (우회 처리함)
-| 제약 | 원인 | 대응 |
+XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
+
+### 소지 무게
+인벤토리 + 방어구 + 보조손 41칸을 `개수 × 등급 무게` 로 계산합니다.
+부하율에 따라 4단계이며, 단계가 바뀔 때만 어트리뷰트를 건드립니다.
+
+| 부하율 | 이동속도 | 점프 | 추가 |
+|---|---|---|---|
+| ~70% | – | – | – |
+| 70~100% | -10% | -15% | – |
+| 100~130% | -25% | -40% | 허기 |
+| 130%~ | -50% | -70% | 허기 + 채굴 피로 |
+
+### 장비 내구도 → 성능
+낡은 무기는 약하게 때리고, 낡은 방어구는 덜 막고, 낡은 도구는 느리게 캡니다.
+남은 내구도가 `full-performance-above`(기본 80%) 이상이면 페널티 없음, 그 아래로는
+0%까지 `minimum-performance`(기본 50%)로 직선 감소합니다. 예) 내구도 60% → 성능 87%.
+
+| 대상 | 기준 | 적용 |
 |---|---|---|
-| 채팅 글자 클릭 불가 | 베드락 프로토콜에 클릭 컴포넌트 없음 | UI를 폼/GUI로 제공 (클릭형 채팅 메뉴 자체를 없앰) |
-| 점프력 페널티 미적용 | 베드락에 플레이어 jump_strength 어트리뷰트 없음 | 이동속도 페널티·허기는 그대로 적용 |
-| 이모지 깨짐 | 베드락 폰트에 자바 이모지 글리프 없음 | 메시지를 ASCII + 한글로만 구성 |
-| 플레이어 머리 / barrier 아이콘 | 스킨 조회 실패, 렌더 불안정 | 베드락은 일반 아이콘 사용, 닫기 버튼은 유리판 |
-| **Simple Voice Chat 음성** | 자바 클라이언트 모드 필수 | 베드락은 근접 **텍스트** 채팅으로 대체 (서버 로그에도 안내) |
+| 근접 공격 / 채굴 속도 | 주 손 아이템 | `attack_damage`, `block_break_speed` |
+| 방어력 | 착용 방어구 **평균** | `armor`, `armor_toughness` |
+| 원거리 피해 | 발사한 활·석궁·삼지창 | 투사체 기본 피해량 |
 
-## 확장하는 방법
+아이템 자체는 건드리지 않고 플레이어 어트리뷰트에만 걸리므로, 수리하면 성능이 그대로 돌아옵니다.
+원거리는 **발사 시점** 무기 상태를 투사체에 새깁니다.
 
-자세한 내용은 [`CONFIG.md`](CONFIG.md). 요약:
+### 모루 커스텀 강화
+왼쪽 칸에 장비, 오른쪽 칸에 재료. **경험치 레벨을 쓰지 않고 반복 횟수 제한도 없습니다.**
+바닐라의 "수리 비용이 너무 비쌉니다" 누적 제한도 걸리지 않습니다.
 
-| 하고 싶은 것 | 수정할 곳 |
+| 조합 | 재료 | 효과 |
+|---|---|---|
+| 날 세우기 | 부싯돌 2 | 날카로움 +1 |
+| 성화 각인 | 발광석 가루 3 | 강타 +1 |
+| 독 바르기 | 거미 눈 3 | 벌레 죽이기 +1 |
+| 기계 정비 | 레드스톤 4 | 효율 +1 |
+| 철판 덧대기 | 철 블록 1 | 보호 +1 |
+| 흑요석 담금질 | 흑요석 2 | 내구성 +1 |
+| 숫돌 정비 | 숫돌 1 | 내구도 +25% |
+
+조합법에 걸리지 않는 조합은 **바닐라 모루 그대로**입니다 — 같은 재료 수리, 인챈트북 합치기,
+이름 변경 모두 정상 동작합니다. 내구도 페널티와 맞물려 **수리 = 성능 회복**입니다.
+
+### 연쇄 벌목
+도끼로 원목을 캐면 위·옆으로 이어진 같은 원목이 순차 제거됩니다 (2x2 굵은 나무 지원).
+큐를 틱당 몇 블록씩만 소비하므로 대형 나무에서도 렉이 없습니다.
+웅크리면 비활성, 크리에이티브 제외, 블록 수 상한 있음.
+6면 원목(`oak_wood` 등)은 기본 목록에 없어 원목 건축물은 안전합니다.
+
+### 근접 채팅
+설정한 거리 안의 플레이어에게만 채팅이 전달됩니다. 플레이어가 입력한 `&` 색코드는
+그대로 텍스트로 나가므로 채팅을 꾸미거나 위장할 수 없습니다.
+
+### UI
+- `/stats` (별칭 `/rpg`, `/rpgstats`) — 상자 GUI. 스탯 배분, 장비 상태, 모루 조합법 목록.
+- 액션바 HUD — 레벨 / HP / XP / 무게. 장비가 닳았을 때만 `GEAR 87%` 구간이 추가됩니다.
+
+## 명령어
+
+| 명령어 | 권한 | 설명 |
+|---|---|---|
+| `/stats` | 모두 | 스탯 창 열기 |
+| `/rpgcore reload` | `rpgcore.admin` | config.yml 다시 읽기 |
+| `/rpgcore recipes` | `rpgcore.admin` | 모루 조합법 목록 |
+| `/rpgcore givexp <player> <amount>` | `rpgcore.admin` | XP 지급 |
+| `/rpgcore reset <player>` | `rpgcore.admin` | 스탯 초기화 |
+
+## 설정
+
+`plugins/RPGCorePlugin/config.yml` 하나만 보면 됩니다.
+
+| 섹션 | 주요 값 |
 |---|---|
-| 밸런스(경험치 곡선, 스탯 배율, 무게 용량) | `plugin/src/main/resources/config.yml` — 재시작 없이 `/rpgcore reload` |
-| 아이템 무게 분류 | 데이터팩 `#rpgcore:weight_*` 태그 (없으면 `config.yml`의 `weight.tiers.*.items`) |
-| 벌목 가능한 나무 / 도구 | 데이터팩 `#rpgcore:tree_log`, `#rpgcore:treefell_tool` 태그 (또는 `tree-felling.logs/tools`) |
-| 새 스탯 추가 | `StatType`에 한 줄 추가 → GUI·베드락 폼·스코어보드에 자동 반영. 효과만 `StatsService.recalculate`에 작성 |
-| 내구도 페널티 곡선 | `durability-scaling.*` (임계값/하한/적용 대상) |
-| 모루 조합법 추가·수정 | `anvil.recipes.*` — 재료·수량·레벨 비용·인챈트·수리량 전부 설정 |
-| 벌목 성능 조정 | `tree-felling.blocks-per-tick`, `max-blocks` |
-| 무게 갱신 부하 | `weight.scans-per-tick`, `safety-rescan-ticks` |
-| GUI 제목/크기, 베드락 폼 사용 여부 | `gui.*`, `bedrock.use-native-forms` |
+| `leveling` | `xp-base`(레벨2 요구량), `xp-growth`(레벨당 증가), `starting-points`, `points-per-level` |
+| `stats` | 스탯 1당 배율 — `attack-damage-per-str`, `hp-per-vit`, `movement-speed-per-agi` 등 |
+| `weight` | `base-capacity`, `capacity-per-str`, `default-item-weight`, `tiers.*`(등급별 무게와 아이템 목록) |
+| `tree-felling` | `max-blocks`, `blocks-per-tick`, `sneak-disables`, `damage-tool`, `respect-protection-plugins`, `logs`, `tools` |
+| `durability-scaling` | `full-performance-above`, `minimum-performance`, `affects.*`(근접/방어/채굴/원거리 개별 on-off) |
+| `anvil` | `recipes.*` — 대상·재료·수량·인챈트·수리량 |
+| `hud` | `enabled`, `interval-ticks` |
+| `xp-sources` | `per-mob-kill`, `per-tree-log` |
+| `proximity-chat` | `range`, `format`, `hide-out-of-range`, `warn-voice-range-mismatch` |
+| `gui` | `title`, `size`(27~54의 9의 배수) |
 
-## 검증 상태
+### 아이템 목록 쓰는 법
 
-**Paper 26.2 (빌드 121, Java 25) 실서버에서 데이터팩 + 플러그인을 함께 구동해 확인했습니다.** 봇 클라이언트로 실제 접속해 아래를 직접 검증했고, 전 구동 로그에 예외 0건입니다.
+`weight.tiers.*.items`, `tree-felling.logs` / `tools`, `anvil` 의 `target` 은 모두 같은 문법입니다.
 
-| 검증 항목 | 결과 |
-|---|---|
-| 26.2 빌드/기동 | Paper 26.2 API로 컴파일(JDK 25), 플러그인 정상 활성화, 데이터팩 경고 0건 |
-| 데이터팩 태그 로딩 | 5개 태그 전부 정상 로드, **242개** 아이템 분류 (`config.yml` 폴백 0건). 26.2에서 늘어난 구리 장비도 바닐라 태그를 타고 자동 편입 (벌목 도구 6종 → 7종) |
-| `pack.mcmeta` | `min_format`/`max_format` 병기로 26.2에서 경고 없이 로드 (1.21.4~26.2 범위 선언) |
-| 최초 접속 / 재접속 | 초기 지급 5포인트, 재접속 시 스코어보드에서 복구 |
-| `/stats` GUI | 슬롯 4·8·10-14·16·19·22·25·26 정상 배치, STR 클릭 → 포인트 차감 + 즉시 재출력 |
-| 내구도 → 근접/채굴 (임계 80%) | 내구도 60% → 공격력 7.0 → **6.09** (-0.13). 내구도 19% → 채굴속도 1.0 → **0.61**, 공격력도 동일 배율. 내구도 **정확히 80%면 모디파이어 없음** |
-| 내구도 → 방어력 | 다이아 상의(5%)+투구(17%) → 평균 11% → 방어력 11.0 → **6.16** (-0.44) |
-| **내구도 → 원거리** | 활 내구도 24% → 화살 기본 피해 2.0 → **1.3**. 새 활 → **2.0**. 삼지창 내구도 14% → **4.64**, 새 삼지창 → **8.0** |
-| HUD / 경고 | `GEAR 87%` 구간 표시, 온전한 장비에서는 구간 없음 |
-| **모루 — 무료 무제한 반복** | 다이아 검 + 부싯돌로 7회 연속 강화 → **날카로움 1→7 (바닐라 상한 5 초과)**, 매회 부싯돌 2개만 소모, **경험치 레벨 0 유지**, "너무 비쌉니다" 차단 없음 |
-| 모루 — 수리 | 다이아 곡괭이 damage 1000 + 숫돌 1 → **damage 610** (정확히 최대치의 25%), 무료 |
-| 모루 — 바닐라 보존 | 다이아 곡괭이 + 다이아 4 = 바닐라 수리 정상(레벨 40→37), 이름 변경 정상 |
-| 무게 단계 | 240/100 → 3단계, 이동속도 -50%(`weight_speed` -0.5), 허기 + 채굴 피로 |
-| 연쇄 벌목 | 원목 11칸 연쇄 제거, XP +10, 웅크리면 비활성 / 안 웅크리면 정상 연쇄 |
-| 근접 채팅 | 3블록 수신 O / 400블록 수신 X, 플레이어가 입력한 `&c` 색코드는 그대로 텍스트로 출력 |
-| 관리자 명령 | `reload` / `recipes` / `givexp` / `reset` |
+```yaml
+items:
+  - minecraft:stone            # 낱개 ID
+  - '#minecraft:planks'        # 바닐라 태그 (그 태그에 속한 전부)
+  - '#myserver:custom_gear'    # 서버에 깔린 다른 데이터팩 태그
+```
 
-남은 제약:
+이 서버 버전에 없는 항목은 **경고만 남기고 건너뜁니다.** 목록 전체가 죽지 않으므로
+설정 하나로 여러 버전을 커버할 수 있습니다.
 
-- **Paper 26.2 및 Java 25 전용입니다.** 플러그인 바이트코드가 Java 25(클래스 파일 69)이고 `api-version`이 `26.2`라, 그 아래 서버에서는 로드되지 않습니다. 1.21.x를 계속 쓰려면 이 커밋 직전 태그를 쓰세요.
-- **Geyser/Floodgate와 Simple Voice Chat 연동은 이 환경에 해당 서버가 없어 실행 검증하지 못했습니다.** 소스는 각 공식 API(`floodgate-api 2.2.2-SNAPSHOT`, `cumulus 1.1.2`, `voicechat-api 2.5.36`)로 컴파일됩니다. 두 연동 모두 실패해도 다른 기능에 영향이 없도록 격리·폴백되어 있으며, 로그에 경고만 남깁니다.
-- `Bukkit.getTag`로 데이터팩 커스텀 태그를 읽습니다. 서버 빌드가 이를 지원하지 않으면 자동으로 `config.yml` 목록으로 폴백하고, 시작 로그에 어느 쪽을 썼는지 출력합니다.
-- 어트리뷰트 모디파이어 키의 네임스페이스는 `plugin.yml`의 플러그인 이름에서 나오므로 `rpgcoreplugin:*`입니다 (예: `/attribute <player> minecraft:movement_speed modifier value get rpgcoreplugin:weight_speed`). 스코어보드 오브젝티브(`rpgcore.*`)·데이터팩 태그(`rpgcore:*`)와 네임스페이스가 다르니 주의하세요.
-- 인챈트 레벨 상한을 없앴으므로, 조합법을 반복하면 바닐라 상한을 넘는 아이템이 나옵니다. 서버 운영 정책에 따라 `max-level`을 다시 넣으세요.
+### 모루 조합법 추가하기
 
-## 디렉터리 구조
+```yaml
+anvil:
+  recipes:
+    my-recipe:                                        # 아무 키나 가능
+      name: "&b내 조합"                                # /rpgcore recipes 표시용
+      target: ['#minecraft:enchantable/sharp_weapon']  # 왼쪽 칸에 올 수 있는 것
+      ingredient: minecraft:flint                      # 오른쪽 칸 재료
+      ingredient-amount: 2
+      repair-percent: 0                                # 최대 내구도의 N% 회복
+      enchantments:
+        sharpness: 1                                   # 1회당 올릴 레벨
+```
+
+- `level-cost` 는 기본 0(무료), 인챈트 상한도 기본으로 없습니다. 되살리려면 명시하세요:
+  ```yaml
+      level-cost: 5
+      enchantments:
+        sharpness:
+          levels: 1
+          max-level: 5
+  ```
+- 안전 하드 상한은 255입니다.
+- **재료 선택 주의**: 그 장비의 바닐라 수리 재료(철 갑옷 + 철 주괴 등)를 쓰면 바닐라 수리를
+  덮어씁니다. 기본 조합법이 철 '주괴' 대신 철 '블록', 숫돌을 쓰는 이유입니다.
+- 자주 쓰는 대상 태그: `#minecraft:enchantable/sharp_weapon`(검·도끼),
+  `#minecraft:enchantable/mining`(채굴 도구), `#minecraft:enchantable/armor`(방어구),
+  `#minecraft:enchantable/durability`(내구도 있는 장비 전부).
+
+### 새 스탯 추가하기
+
+`stats/StatType.java` 에 한 줄 추가하면 GUI 슬롯과 스코어보드 오브젝티브가 자동 생성됩니다.
+효과만 `StatsService.recalculate()` 에 적으면 됩니다.
+
+## 베드락(Geyser/Floodgate) 호환
+
+모든 로직이 서버 사이드라 **베드락에서 별도 설정 없이 그대로 동작합니다.**
+UI도 일반 상자 GUI 하나만 쓰므로 Geyser가 알아서 베드락 화면으로 번역합니다.
+아이콘도 양쪽에서 동일하게 렌더되는 것만 씁니다.
+
+유일한 차이는 **점프력 페널티**입니다. 베드락에는 플레이어 jump_strength 어트리뷰트가
+없어 적용되지 않습니다. 이동속도 페널티와 허기는 그대로 걸립니다.
+
+## 데이터 저장
+
+플레이어 상태는 `rpgcore.*` **바닐라 스코어보드 오브젝티브**에 미러링되어 월드와 함께
+저장됩니다. 별도 데이터 파일이 없고, 다른 데이터팩이나 커맨드 블록에서 읽을 수도 있습니다.
 
 ```
-datapack/
-  pack.mcmeta
-  data/rpgcore/tags/item/    weight_light|medium|heavy|very_heavy, treefell_tool
-  data/rpgcore/tags/block/   tree_log
+/scoreboard players get <player> rpgcore.level
+```
+
+접속 중인 플레이어의 값을 손으로 고치는 것은 소용이 없습니다 (메모리 캐시가 덮어씁니다).
+오프라인일 때 고치거나, `/rpgcore givexp` · `/rpgcore reset` 을 쓰세요.
+
+어트리뷰트 모디파이어 네임스페이스는 플러그인 이름에서 나오므로 `rpgcoreplugin:*` 입니다.
+
+```
+/attribute <player> minecraft:movement_speed modifier value get rpgcoreplugin:weight_speed
+```
+
+## 검증
+
+Paper 26.2 (빌드 121, Java 25) 실서버에 봇 클라이언트로 접속해 위 기능을 직접 확인했습니다.
+구동 로그 예외 0건. Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어
+실행 검증하지 못했습니다.
+
+## 구조
+
+```
 plugin/
-  pom.xml
+  pom.xml                    의존성 1개 (paper-api, provided)
   src/main/resources/        plugin.yml, config.yml
   src/main/java/com/rpgcore/plugin/
-    RpgCorePlugin.java       진입점, 커맨드, 태스크 2개 등록
-    config/RpgConfig.java    config.yml 타입 뷰 (핫패스에서 YAML 파싱 없음)
-    data/                    PlayerData 캐시 + 스코어보드 미러 write-through
-    stats/                   StatType, StatsService(레벨/배분/어트리뷰트), 세션·XP 리스너
-    weight/                  ItemWeightTable(태그/설정 로딩), WeightService, WeightListener
-    tree/                    TreeFellService(큐 기반 연쇄 벌목), TreeFellListener
-    gear/                    GearService(내구도 → 성능), GearListener, RangedListener(투사체)
-    anvil/                   AnvilRecipe, AnvilService(설정 로딩/결과 생성), AnvilListener
-    hud/HudTask.java         액션바 HUD
-    gui/                     상자 GUI
-    chat/                    근접 텍스트 채팅
-    platform/                Geyser/Floodgate 감지 + 베드락 네이티브 폼
-    voice/                   Simple Voice Chat 소프트 연동
-    util/                    스코어보드 미러, 버전 안전 어트리뷰트/인챈트 헬퍼, 태그 해석(MaterialSets)
+    RpgCorePlugin.java       진입점, 커맨드, 반복 태스크 2개
+    config/                  config.yml 타입 뷰 (핫패스에서 YAML 파싱 없음)
+    data/                    PlayerData 캐시 + 스코어보드 미러
+    stats/                   StatType, 레벨/배분/어트리뷰트, 세션·XP 리스너
+    weight/                  무게 테이블, 계산, 리스너
+    gear/                    내구도 → 성능, 투사체 처리
+    anvil/                   조합법 로딩·결과 생성·모루 연동
+    tree/                    큐 기반 연쇄 벌목
+    hud/ gui/ chat/          액션바, 상자 GUI, 근접 채팅
+    voice/                   Simple Voice Chat 거리 확인 (의존성 없음)
+    util/                    스코어보드, 어트리뷰트·인챈트·태그 헬퍼
 ```

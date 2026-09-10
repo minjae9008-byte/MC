@@ -1,9 +1,0 @@
-{
-  "pack": {
-    "pack_format": 61,
-    "supported_formats": [61, 81],
-    "min_format": 61,
-    "max_format": 107,
-    "description": "RPGCore data layer - item/block classification tags read by the RPGCore plugin. Contains no functions and no per-tick logic."
-  }
-}

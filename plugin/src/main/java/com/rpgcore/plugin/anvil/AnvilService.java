@@ -15,7 +15,6 @@ import org.bukkit.inventory.meta.Repairable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -222,14 +221,5 @@ public final class AnvilService {
 
     private static String key(Enchantment enchantment) {
         return enchantment.getKey().getKey();
-    }
-
-    /** Exposed for the GUI/log: recipes grouped by the ingredient they need. */
-    public Map<Material, List<AnvilRecipe>> byIngredient() {
-        Map<Material, List<AnvilRecipe>> out = new java.util.EnumMap<>(Material.class);
-        for (AnvilRecipe recipe : recipes) {
-            out.computeIfAbsent(recipe.ingredient(), k -> new ArrayList<>()).add(recipe);
-        }
-        return out;
     }
 }

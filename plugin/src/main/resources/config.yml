@@ -1,9 +1,15 @@
 # RPGCore configuration.
 #
-# The plugin owns all gameplay logic. The bundled datapack only supplies the
-# item/block classification tags (#rpgcore:weight_*, #rpgcore:tree_log,
-# #rpgcore:treefell_tool); when those tags are present they win, and the lists
-# further down are the fallback for servers running without the datapack.
+# 이 파일 하나가 전부입니다. 데이터팩도, 추가 플러그인도 필요 없습니다.
+# 대부분의 값은 /rpgcore reload 로 재시작 없이 반영됩니다.
+#
+# 아이템/블록 목록(weight.tiers.*.items, tree-felling.logs/tools, anvil target)은
+# 아이템 ID 와 태그를 섞어 쓸 수 있습니다:
+#   minecraft:stone            낱개 ID
+#   '#minecraft:planks'        바닐라 태그 (그 태그에 속한 전부)
+#   '#myserver:custom'         서버에 깔린 다른 데이터팩의 태그
+# 이 서버 버전에 없는 항목은 경고만 남기고 건너뛰므로, 한 설정으로 여러 버전을
+# 커버할 수 있습니다.
 
 leveling:
   xp-base: 100          # XP needed for level 2
@@ -29,21 +35,120 @@ weight:
   scans-per-tick: 8
   safety-rescan-ticks: 200
   default-item-weight: 1
-  # Weight per item, multiplied by stack size. Each tier prefers the matching
-  # #rpgcore:weight_<tier> datapack tag; the items list is the fallback.
+  # 아이템 1개당 무게이며 개수만큼 곱해집니다.
   tiers:
     light:
       weight: 1
-      items: [minecraft:stick, minecraft:string, minecraft:feather, minecraft:paper, minecraft:redstone, minecraft:gunpowder, minecraft:arrow, minecraft:wheat, minecraft:leather]
+      items:
+        - minecraft:stick
+        - minecraft:string
+        - minecraft:feather
+        - minecraft:paper
+        - minecraft:gunpowder
+        - minecraft:redstone
+        - minecraft:glowstone_dust
+        - minecraft:ender_pearl
+        - minecraft:arrow
+        - minecraft:flint
+        - minecraft:wheat_seeds
+        - minecraft:beetroot_seeds
+        - minecraft:melon_seeds
+        - minecraft:pumpkin_seeds
+        - minecraft:wheat
+        - minecraft:sugar
+        - minecraft:bone_meal
+        - minecraft:leather
+        - minecraft:white_dye
+        - minecraft:orange_dye
+        - minecraft:magenta_dye
+        - minecraft:light_blue_dye
+        - minecraft:yellow_dye
+        - minecraft:lime_dye
+        - minecraft:pink_dye
+        - minecraft:gray_dye
+        - minecraft:light_gray_dye
+        - minecraft:cyan_dye
+        - minecraft:purple_dye
+        - minecraft:blue_dye
+        - minecraft:brown_dye
+        - minecraft:green_dye
+        - minecraft:red_dye
+        - minecraft:black_dye
+        - '#minecraft:small_flowers'
+        - '#minecraft:saplings'
     medium:
       weight: 3
-      items: [minecraft:oak_planks, minecraft:oak_log, minecraft:iron_sword, minecraft:iron_axe, minecraft:bread, minecraft:bucket, minecraft:iron_ingot, minecraft:gold_ingot]
+      items:
+        - '#minecraft:planks'
+        - '#minecraft:logs'
+        - '#minecraft:wool'
+        - '#minecraft:swords'
+        - '#minecraft:axes'
+        - '#minecraft:hoes'
+        - '#minecraft:shovels'
+        - minecraft:bow
+        - minecraft:crossbow
+        - minecraft:trident
+        - minecraft:shield
+        - minecraft:bread
+        - minecraft:cooked_beef
+        - minecraft:cooked_porkchop
+        - minecraft:cooked_chicken
+        - minecraft:apple
+        - minecraft:golden_apple
+        - minecraft:bucket
+        - minecraft:water_bucket
+        - minecraft:lava_bucket
+        - minecraft:milk_bucket
+        - minecraft:iron_ingot
+        - minecraft:gold_ingot
+        - minecraft:copper_ingot
     heavy:
       weight: 8
-      items: [minecraft:cobblestone, minecraft:stone, minecraft:deepslate, minecraft:obsidian, minecraft:iron_block, minecraft:raw_iron, minecraft:chest, minecraft:furnace, minecraft:anvil, minecraft:iron_chestplate, minecraft:diamond_chestplate]
+      items:
+        - '#minecraft:pickaxes'
+        - '#minecraft:stone_tool_materials'
+        - minecraft:cobblestone
+        - minecraft:stone
+        - minecraft:deepslate
+        - minecraft:netherrack
+        - minecraft:obsidian
+        - minecraft:iron_block
+        - minecraft:gold_block
+        - minecraft:copper_block
+        - minecraft:raw_iron
+        - minecraft:raw_gold
+        - minecraft:raw_copper
+        - minecraft:iron_ore
+        - minecraft:gold_ore
+        - minecraft:deepslate_iron_ore
+        - minecraft:deepslate_gold_ore
+        - minecraft:chest
+        - minecraft:barrel
+        - minecraft:furnace
+        - minecraft:anvil
+        - minecraft:chipped_anvil
+        - minecraft:damaged_anvil
+        - minecraft:iron_chestplate
+        - minecraft:iron_leggings
+        - minecraft:diamond_chestplate
+        - minecraft:diamond_leggings
     very_heavy:
       weight: 20
-      items: [minecraft:netherite_ingot, minecraft:netherite_block, minecraft:beacon, minecraft:diamond_block, minecraft:emerald_block, minecraft:shulker_box, minecraft:enchanting_table]
+      items:
+        - '#minecraft:shulker_boxes'
+        - minecraft:netherite_ingot
+        - minecraft:netherite_block
+        - minecraft:netherite_helmet
+        - minecraft:netherite_chestplate
+        - minecraft:netherite_leggings
+        - minecraft:netherite_boots
+        - minecraft:beacon
+        - minecraft:diamond_block
+        - minecraft:emerald_block
+        - minecraft:lodestone
+        - minecraft:respawn_anchor
+        - minecraft:enchanting_table
 
 tree-felling:
   enabled: true
@@ -57,8 +162,31 @@ tree-felling:
   respect-protection-plugins: true
   damage-tool: true
   sneak-disables: true
-  # Fallbacks used only when the datapack tags are absent.
-  logs: ['#minecraft:logs']
+  # 연쇄로 잘릴 블록. '#minecraft:logs' 로 한 줄에 끝낼 수도 있지만, 그러면
+  # 6면 원목(oak_wood 등)까지 포함되어 원목으로 지은 건축물도 연쇄로 부서집니다.
+  logs:
+    - minecraft:oak_log
+    - minecraft:spruce_log
+    - minecraft:birch_log
+    - minecraft:jungle_log
+    - minecraft:acacia_log
+    - minecraft:dark_oak_log
+    - minecraft:mangrove_log
+    - minecraft:cherry_log
+    - minecraft:pale_oak_log
+    - minecraft:crimson_stem
+    - minecraft:warped_stem
+    - minecraft:stripped_oak_log
+    - minecraft:stripped_spruce_log
+    - minecraft:stripped_birch_log
+    - minecraft:stripped_jungle_log
+    - minecraft:stripped_acacia_log
+    - minecraft:stripped_dark_oak_log
+    - minecraft:stripped_mangrove_log
+    - minecraft:stripped_cherry_log
+    - minecraft:stripped_pale_oak_log
+    - minecraft:stripped_crimson_stem
+    - minecraft:stripped_warped_stem
   tools: ['#minecraft:axes']
 
 # 내구도에 따른 성능 저하.
@@ -163,18 +291,12 @@ proximity-chat:
   #         (real proximity chat).
   # false = everyone still receives it; only the [근접] formatting is applied.
   hide-out-of-range: true
-
-voicechat:
-  # Real voice audio comes from the Simple Voice Chat plugin (Java clients
-  # only). Set its own voice_chat_distance to match proximity-chat.range.
-  sync-range-with-proximity-chat: true
+  # Simple Voice Chat 이 깔려 있으면 그쪽 voice_chat_distance 와 위 range 가
+  # 어긋날 때 기동 로그에 경고를 남깁니다. (음성 자체는 그 플러그인이 담당)
+  warn-voice-range-mismatch: true
 
 gui:
   title: "&8캐릭터 정보"
+  # 27~54 사이 9의 배수. 벗어나면 자동으로 맞춰집니다.
   size: 27
 
-bedrock:
-  # With Geyser + Floodgate installed, show Bedrock players a native Bedrock
-  # form for /stats instead of the chest GUI. Falls back to the chest GUI
-  # automatically if Floodgate is missing or its API doesn't match.
-  use-native-forms: true

@@ -42,8 +42,4 @@ public enum StatType {
     public String description() {
         return description;
     }
-
-    public String configKey() {
-        return name().toLowerCase();
-    }
 }

@@ -4,7 +4,6 @@ import com.rpgcore.plugin.stats.StatType;
 
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * In-memory cache of one player's RPG state. Everything the HUD and the weight
@@ -13,8 +12,6 @@ import java.util.UUID;
  * vanilla scoreboard (which is also what persists them across restarts).
  */
 public final class PlayerData {
-
-    private final UUID uuid;
 
     private int level = 1;
     private int xp;
@@ -52,15 +49,10 @@ public final class PlayerData {
     private boolean gearWarned;
     private long lastGearWarnMs;
 
-    public PlayerData(UUID uuid) {
-        this.uuid = uuid;
+    public PlayerData() {
         for (StatType type : StatType.values()) {
             stats.put(type, 0);
         }
-    }
-
-    public UUID uuid() {
-        return uuid;
     }
 
     public int level() {
@@ -158,10 +150,6 @@ public final class PlayerData {
 
     public boolean weightDirty() {
         return weightDirty;
-    }
-
-    public void markWeightDirty() {
-        this.weightDirty = true;
     }
 
     public void clearWeightDirty() {

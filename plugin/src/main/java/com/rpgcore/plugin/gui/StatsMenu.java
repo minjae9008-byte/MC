@@ -3,7 +3,6 @@ package com.rpgcore.plugin.gui;
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.anvil.AnvilRecipe;
 import com.rpgcore.plugin.data.PlayerData;
-import com.rpgcore.plugin.platform.BedrockPlatform;
 import com.rpgcore.plugin.stats.StatType;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -12,16 +11,15 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.SkullMeta;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Chest GUI for Java players (Geyser also translates it for Bedrock as a
- * fallback). Clicking a stat calls StatsService directly - the old build went
- * through /trigger because the datapack owned the rules; the plugin owns them
- * now, so the round-trip is gone.
+ * The stats GUI, identical on every platform: a plain chest inventory, which
+ * Geyser translates into a native Bedrock container screen on its own. Every
+ * icon is an ordinary block or item that renders the same in both clients, so
+ * there is no second UI path to keep in sync.
  *
  * Slots: 4 head/level, 8 anvil recipes, 10-14 stats (from StatType order),
  * 16 HP, 19 weight, 22 unspent points, 25 gear condition, and the last slot of
@@ -39,7 +37,6 @@ public final class StatsMenu {
     private static final int MAX_SIZE = 54;
 
     private final RpgCorePlugin plugin;
-    private final BedrockPlatform bedrockPlatform;
 
     /** Marker holder so StatsMenuListener can reliably recognise this GUI. */
     public static final class Holder implements InventoryHolder {
@@ -65,9 +62,8 @@ public final class StatsMenu {
         }
     }
 
-    public StatsMenu(RpgCorePlugin plugin, BedrockPlatform bedrockPlatform) {
+    public StatsMenu(RpgCorePlugin plugin) {
         this.plugin = plugin;
-        this.bedrockPlatform = bedrockPlatform;
     }
 
     public static int slotOf(StatType type) {
@@ -167,30 +163,16 @@ public final class StatsMenu {
         return Math.min(MAX_SIZE, Math.max(MIN_SIZE, rounded));
     }
 
+    /**
+     * Player card. A written book, not a player head: head skins are fetched
+     * per platform and come out blank for Bedrock players often enough that
+     * one shared icon is simply better than two code paths.
+     */
     private ItemStack buildHeadItem(Player player, PlayerData data) {
-        List<String> lore = List.of(
+        return buildInfoItem(Material.WRITABLE_BOOK,
+                ChatColor.GOLD + player.getName(),
                 ChatColor.YELLOW + "Lv. " + data.level(),
-                ChatColor.GREEN + "XP " + data.xp() + " / " + data.xpNeed()
-        );
-
-        // Player-head skins resolve through Floodgate for Bedrock players and
-        // can end up blank, so give them a plain icon instead.
-        if (bedrockPlatform.isBedrockPlayer(player)) {
-            ItemStack item = new ItemStack(Material.BOOK);
-            ItemMeta meta = item.getItemMeta();
-            meta.setDisplayName(ChatColor.GOLD + player.getName());
-            meta.setLore(lore);
-            item.setItemMeta(meta);
-            return item;
-        }
-
-        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
-        SkullMeta meta = (SkullMeta) item.getItemMeta();
-        meta.setOwningPlayer(player);
-        meta.setDisplayName(ChatColor.GOLD + player.getName());
-        meta.setLore(lore);
-        item.setItemMeta(meta);
-        return item;
+                ChatColor.GREEN + "XP " + data.xp() + " / " + data.xpNeed());
     }
 
     private ItemStack buildStatItem(PlayerData data, StatType type) {

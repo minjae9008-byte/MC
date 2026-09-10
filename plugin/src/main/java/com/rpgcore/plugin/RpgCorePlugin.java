@@ -13,14 +13,13 @@ import com.rpgcore.plugin.gear.RangedListener;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.gui.StatsMenuListener;
 import com.rpgcore.plugin.hud.HudTask;
-import com.rpgcore.plugin.platform.BedrockPlatform;
 import com.rpgcore.plugin.stats.PlayerSessionListener;
 import com.rpgcore.plugin.stats.StatType;
 import com.rpgcore.plugin.stats.StatsService;
 import com.rpgcore.plugin.tree.TreeFellListener;
 import com.rpgcore.plugin.tree.TreeFellService;
 import com.rpgcore.plugin.util.RpgScoreboard;
-import com.rpgcore.plugin.voice.SimpleVoiceChatHook;
+import com.rpgcore.plugin.voice.VoiceChatHook;
 import com.rpgcore.plugin.weight.ItemWeightTable;
 import com.rpgcore.plugin.weight.WeightListener;
 import com.rpgcore.plugin.weight.WeightService;
@@ -56,8 +55,6 @@ public final class RpgCorePlugin extends JavaPlugin {
     private GearService gear;
     private AnvilService anvil;
     private StatsMenu statsMenu;
-    private BedrockPlatform bedrockPlatform;
-    private SimpleVoiceChatHook voiceChatHook;
 
     @Override
     public void onEnable() {
@@ -80,9 +77,7 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.anvil = new AnvilService(this);
         this.anvil.load();
 
-        this.bedrockPlatform = new BedrockPlatform(this);
-        this.bedrockPlatform.detect();
-        this.statsMenu = new StatsMenu(this, bedrockPlatform);
+        this.statsMenu = new StatsMenu(this);
 
         getServer().getPluginManager().registerEvents(new PlayerSessionListener(this), this);
         getServer().getPluginManager().registerEvents(new StatsMenuListener(this), this);
@@ -107,8 +102,7 @@ public final class RpgCorePlugin extends JavaPlugin {
         }.runTaskTimer(this, 1L, 1L);
         new HudTask(this).runTaskTimer(this, 20L, rpgConfig.hudInterval());
 
-        this.voiceChatHook = new SimpleVoiceChatHook(this);
-        this.voiceChatHook.tryHook();
+        new VoiceChatHook(this).check();
 
         // Players are already online after a /reload.
         for (Player player : getServer().getOnlinePlayers()) {
@@ -158,7 +152,6 @@ public final class RpgCorePlugin extends JavaPlugin {
                 weightTable.load();
                 treeFell.load();
                 anvil.load();
-                bedrockPlatform.detect();
                 for (Player player : getServer().getOnlinePlayers()) {
                     stats.recalculate(player);
                 }
@@ -227,15 +220,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         }
     }
 
-    /**
-     * Single entry point for "show me my stats": a native Bedrock form for
-     * Geyser players when available, otherwise the chest GUI (which Geyser
-     * can also translate, so Bedrock players are never left without a menu).
-     */
+    /** Opens the stats GUI. Same screen for Java and Bedrock players. */
     public void openStatsMenu(Player player) {
-        if (bedrockPlatform.openStatsForm(player)) {
-            return;
-        }
         statsMenu.open(player);
     }
 
@@ -255,10 +241,6 @@ public final class RpgCorePlugin extends JavaPlugin {
         return weight;
     }
 
-    public TreeFellService treeFell() {
-        return treeFell;
-    }
-
     public GearService gear() {
         return gear;
     }
@@ -269,9 +251,5 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public StatsMenu statsMenu() {
         return statsMenu;
-    }
-
-    public BedrockPlatform bedrockPlatform() {
-        return bedrockPlatform;
     }
 }

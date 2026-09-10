@@ -8,7 +8,6 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.Collection;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -16,11 +15,13 @@ import java.util.Set;
  * Turns a config list of ids into a material set.
  *
  * An entry is either a plain id (<code>minecraft:flint</code>) or a tag
- * reference (<code>#minecraft:enchantable/sword</code>,
- * <code>#rpgcore:gear</code>). Tags are resolved through the server's tag
- * registry, which also holds datapack-defined tags - so operators can classify
- * with a vanilla tag, a tag from this datapack, or a bare id, and none of them
- * needs a code change.
+ * reference (<code>#minecraft:enchantable/sword</code>). Tags are resolved
+ * through the server's tag registry, which also holds tags from any datapack
+ * the server happens to run - so one line can classify a whole family of
+ * items, and an operator with their own datapack can reference its tags too.
+ *
+ * Unknown entries are skipped with a warning rather than failing the list,
+ * which is what lets one config cover several game versions.
  */
 public final class MaterialSets {
 
@@ -81,17 +82,4 @@ public final class MaterialSets {
         }
     }
 
-    /**
-     * Prefers this datapack's {@code #rpgcore:<name>} tag and falls back to a
-     * config list when the datapack is not installed. Returns the source that
-     * was actually used, for the startup log.
-     */
-    public static String loadTagOrConfig(Plugin plugin, String registry, String tagName,
-                                         List<String> fallback, String context, Set<Material> target) {
-        if (addTag(plugin, registry, "rpgcore:" + tagName, context, target)) {
-            return "datapack tag #rpgcore:" + tagName;
-        }
-        addAll(plugin, registry, fallback, context, target);
-        return "config.yml";
-    }
 }
