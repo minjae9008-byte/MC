@@ -273,6 +273,101 @@ anvil:
       ingredient-amount: 1
       repair-percent: 25
 
+# 직업(클래스). 스탯 보너스·어트리뷰트·경험치 배율·소지무게를 전부 설정으로 정합니다.
+# attributes 에는 바닐라 어트리뷰트 ID 를 그대로 쓸 수 있습니다
+# (max_health, attack_damage, armor, knockback_resistance, block_break_speed ...).
+#   add      = 고정값 더하기
+#   multiply = 합계에 비율 곱하기 (0.1 = +10%)
+jobs:
+  enabled: true
+  allow-change: true          # false 면 한 번 고르면 못 바꿈
+  change-cost-levels: 0       # 변경 시 소모할 바닐라 경험치 레벨
+  menu-title: "&8직업 선택"
+  list:
+    warrior:
+      name: "&c전사"
+      icon: minecraft:iron_sword
+      description:
+        - "&7앞에서 버티며 싸우는 직업."
+      stat-bonus:
+        str: 3
+        vit: 2
+      weight-bonus: 40
+      attributes:
+        add:
+          max_health: 4
+        multiply:
+          knockback_resistance: 0.15
+    archer:
+      name: "&a궁수"
+      icon: minecraft:bow
+      description:
+        - "&7거리를 두고 싸우는 직업."
+      stat-bonus:
+        dex: 3
+        agi: 2
+      attributes:
+        multiply:
+          movement_speed: 0.08
+    miner:
+      name: "&e광부"
+      icon: minecraft:iron_pickaxe
+      description:
+        - "&7캐고 나르는 데 특화된 직업."
+      stat-bonus:
+        str: 2
+        vit: 1
+      weight-bonus: 80
+      xp-multiplier: 1.1
+      attributes:
+        multiply:
+          block_break_speed: 0.25
+    rogue:
+      name: "&b도적"
+      icon: minecraft:golden_sword
+      description:
+        - "&7빠르고 운이 좋은 직업."
+      min-level: 5
+      stat-bonus:
+        agi: 3
+        luck: 3
+      attributes:
+        multiply:
+          movement_speed: 0.12
+          attack_speed: 0.1
+    guardian:
+      name: "&9수호자"
+      icon: minecraft:shield
+      description:
+        - "&7맞아주는 데 특화된 직업."
+      min-level: 10
+      stat-bonus:
+        vit: 4
+      weight-bonus: 60
+      attributes:
+        add:
+          armor: 4
+          armor_toughness: 2
+          max_health: 6
+
+# 순위표. 데이터는 스코어보드 미러에서 읽으므로 오프라인 플레이어도 집계됩니다.
+leaderboard:
+  size: 10            # /leaderboard 에 보여줄 인원
+  cache-seconds: 30   # 이 시간 동안은 정렬 결과를 재사용
+
+# 파티. 메모리에만 유지되며 서버 재시작 시 사라집니다.
+party:
+  enabled: true
+  max-size: 5
+  invite-timeout-seconds: 60
+  friendly-fire: false        # false 면 파티원끼리 피해를 주지 않음
+  chat-prefix: "&d[파티] "
+  xp:
+    # 파티가 획득한 XP 는 사거리 안의 파티원끼리 똑같이 나눕니다.
+    # 총량 = 원래 XP x (1 + bonus-per-member x (인원-1))
+    share-range: 50           # 블록. 0 이면 같은 월드 전체
+    bonus-per-member: 0.05
+
 hud:
   enabled: true
   # Action-bar text persists ~3s, so once a second is smooth and cheap.

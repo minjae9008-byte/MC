@@ -27,6 +27,16 @@ public enum StatType {
         this.description = description;
     }
 
+    /** Case-insensitive lookup for config keys; null when unknown. */
+    public static StatType byName(String name) {
+        for (StatType type : values()) {
+            if (type.name().equalsIgnoreCase(name)) {
+                return type;
+            }
+        }
+        return null;
+    }
+
     public String label() {
         return label;
     }

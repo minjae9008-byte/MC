@@ -87,7 +87,7 @@ public final class TreeFellService {
                 // already quit would re-create their cached PlayerData after
                 // PlayerQuitEvent unloaded it, leaking the entry for good.
                 if (job.broken > 0 && job.player.isOnline()) {
-                    plugin.stats().addXp(job.player, job.broken * plugin.rpgConfig().xpPerTreeLog());
+                    plugin.stats().awardXp(job.player, job.broken * plugin.rpgConfig().xpPerTreeLog());
                 }
                 it.remove();
                 continue;

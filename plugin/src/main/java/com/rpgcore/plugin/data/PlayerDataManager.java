@@ -58,6 +58,8 @@ public final class PlayerDataManager {
     private PlayerData load(Player player) {
         PlayerData data = new PlayerData();
 
+        data.jobId(plugin.jobs().readStored(player));
+
         if (board.read(player, RpgScoreboard.INITIALISED) != 1) {
             applyFirstJoinDefaults(data);
             data.markInventoryDirty();

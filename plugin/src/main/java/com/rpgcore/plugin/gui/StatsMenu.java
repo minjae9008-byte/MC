@@ -2,6 +2,7 @@ package com.rpgcore.plugin.gui;
 
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.anvil.AnvilRecipe;
+import com.rpgcore.plugin.job.RpgJob;
 import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.stats.StatType;
 import org.bukkit.ChatColor;
@@ -21,13 +22,15 @@ import java.util.List;
  * icon is an ordinary block or item that renders the same in both clients, so
  * there is no second UI path to keep in sync.
  *
- * Slots: 4 head/level, 8 anvil recipes, 10-14 stats (from StatType order),
- * 16 HP, 19 weight, 22 unspent points, 25 gear condition, and the last slot of
- * the inventory closes the menu.
+ * Slots: 0 job, 4 player card, 8 anvil recipes, 10-14 stats (from StatType
+ * order), 16 HP, 19 weight, 22 unspent points, 25 gear condition, and the last
+ * slot of the inventory closes the menu.
  */
 public final class StatsMenu {
 
     private static final int FIRST_STAT_SLOT = 10;
+    /** Opens the job picker. */
+    public static final int JOB_SLOT = 0;
     /**
      * The fixed slots above need three rows; gui.size is clamped to a legal
      * chest size (a multiple of 9, at most six rows) that is at least this
@@ -87,6 +90,7 @@ public final class StatsMenu {
         holder.setInventory(inv);
         holder.setCloseSlot(size - 1);
 
+        inv.setItem(JOB_SLOT, buildJobItem(player));
         inv.setItem(4, buildHeadItem(player, data));
 
         for (StatType type : StatType.values()) {
@@ -169,17 +173,39 @@ public final class StatsMenu {
      * one shared icon is simply better than two code paths.
      */
     private ItemStack buildHeadItem(Player player, PlayerData data) {
+        RpgJob job = plugin.jobs().byId(data.jobId());
         return buildInfoItem(Material.WRITABLE_BOOK,
                 ChatColor.GOLD + player.getName(),
                 ChatColor.YELLOW + "Lv. " + data.level(),
-                ChatColor.GREEN + "XP " + data.xp() + " / " + data.xpNeed());
+                ChatColor.GREEN + "XP " + data.xp() + " / " + data.xpNeed(),
+                ChatColor.GRAY + "직업: " + (job == null ? ChatColor.DARK_GRAY + "없음" : job.displayName()));
+    }
+
+    /** Job button; also the only hint that jobs exist, so it reads as a button. */
+    private ItemStack buildJobItem(Player player) {
+        RpgJob job = plugin.jobs().of(player);
+        List<String> lore = new ArrayList<>();
+        if (job == null) {
+            lore.add(ChatColor.GRAY + "아직 직업이 없습니다.");
+        } else {
+            lore.addAll(plugin.jobs().describe(job));
+        }
+        lore.add("");
+        lore.add(ChatColor.YELLOW + "클릭하여 직업 선택 창 열기");
+        return buildInfoItem(job == null ? Material.WOODEN_SWORD : job.icon(),
+                ChatColor.LIGHT_PURPLE + "직업"
+                        + (job == null ? "" : ChatColor.GRAY + " - " + job.displayName()),
+                lore.toArray(new String[0]));
     }
 
     private ItemStack buildStatItem(PlayerData data, StatType type) {
         ItemStack item = new ItemStack(type.icon());
         ItemMeta meta = item.getItemMeta();
+        int own = data.stat(type);
+        int total = plugin.stats().effectiveStat(data, type);
         meta.setDisplayName(ChatColor.AQUA + type.label() + ChatColor.GRAY + ": "
-                + ChatColor.WHITE + data.stat(type));
+                + ChatColor.WHITE + total
+                + (total != own ? ChatColor.GRAY + " (" + own + " +" + (total - own) + " 직업)" : ""));
         meta.setLore(List.of(
                 ChatColor.GRAY + type.description(),
                 ChatColor.GREEN + "클릭하여 포인트 1개 사용 (+1 " + type.label() + ")"

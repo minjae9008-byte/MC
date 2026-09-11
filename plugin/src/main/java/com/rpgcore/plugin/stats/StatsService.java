@@ -3,12 +3,16 @@ package com.rpgcore.plugin.stats;
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.config.RpgConfig;
 import com.rpgcore.plugin.data.PlayerData;
+import com.rpgcore.plugin.job.RpgJob;
 import com.rpgcore.plugin.util.Attributes;
 import org.bukkit.ChatColor;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
+
+import java.util.List;
 
 /**
  * Owns levelling, stat allocation and every derived value. Nothing here runs
@@ -34,6 +38,43 @@ public final class StatsService {
         this.agiSpeedKey = new NamespacedKey(plugin, "agi_speed");
         this.agiJumpKey = new NamespacedKey(plugin, "agi_jump");
         this.luckKey = new NamespacedKey(plugin, "luck_bonus");
+    }
+
+    /**
+     * XP earned in play, as opposed to {@link #addXp} which hands a player an
+     * exact amount. This is where the job's XP rate and party sharing apply,
+     * so the /rpgcore givexp path stays an exact grant.
+     */
+    public void awardXp(Player earner, int amount) {
+        if (amount <= 0) {
+            return;
+        }
+        List<Player> share = plugin.parties().shareTargets(earner);
+        if (share.size() <= 1) {
+            addXp(earner, scaleForJob(earner, amount));
+            return;
+        }
+        // A party pools its XP and splits it evenly, with a size bonus so
+        // grouping up is not a straight loss for the player who earned it.
+        double pot = amount * (1.0D + plugin.rpgConfig().partyXpBonusPerMember() * (share.size() - 1));
+        int each = Math.max(1, (int) Math.round(pot / share.size()));
+        for (Player member : share) {
+            addXp(member, scaleForJob(member, each));
+        }
+    }
+
+    private int scaleForJob(Player player, int amount) {
+        RpgJob job = plugin.jobs().of(player);
+        if (job == null || job.xpMultiplier() == 1.0D) {
+            return amount;
+        }
+        return Math.max(1, (int) Math.round(amount * job.xpMultiplier()));
+    }
+
+    /** A stat as it actually counts: the player's own points plus the job's. */
+    public int effectiveStat(PlayerData data, StatType type) {
+        RpgJob job = plugin.jobs().byId(data.jobId());
+        return data.stat(type) + (job == null ? 0 : job.statBonus(type));
     }
 
     public void addXp(Player player, int amount) {
@@ -101,7 +142,7 @@ public final class StatsService {
         // recalculate() throw.
         int maxHealth = Math.clamp((long) config.baseHp()
                 + (long) data.level() * config.hpPerLevel()
-                + (long) data.stat(StatType.VIT) * config.hpPerVit(), 1, MAX_ATTRIBUTE_HEALTH);
+                + (long) effectiveStat(data, StatType.VIT) * config.hpPerVit(), 1, MAX_ATTRIBUTE_HEALTH);
         data.maxHealth(maxHealth);
         Attributes.setBase(player, Attributes.maxHealth(), maxHealth);
         if (player.getHealth() > maxHealth) {
@@ -109,21 +150,55 @@ public final class StatsService {
         }
 
         Attributes.setModifier(player, Attributes.attackDamage(), strDamageKey,
-                data.stat(StatType.STR) * config.attackPerStr(), AttributeModifier.Operation.ADD_NUMBER);
+                effectiveStat(data, StatType.STR) * config.attackPerStr(), AttributeModifier.Operation.ADD_NUMBER);
         Attributes.setModifier(player, Attributes.attackSpeed(), dexAttackSpeedKey,
-                data.stat(StatType.DEX) * config.attackSpeedPerDex(), AttributeModifier.Operation.ADD_NUMBER);
+                effectiveStat(data, StatType.DEX) * config.attackSpeedPerDex(), AttributeModifier.Operation.ADD_NUMBER);
         Attributes.setModifier(player, Attributes.movementSpeed(), agiSpeedKey,
-                data.stat(StatType.AGI) * config.speedPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
+                effectiveStat(data, StatType.AGI) * config.speedPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
         Attributes.setModifier(player, Attributes.jumpStrength(), agiJumpKey,
-                data.stat(StatType.AGI) * config.jumpPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
+                effectiveStat(data, StatType.AGI) * config.jumpPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
         Attributes.setModifier(player, Attributes.luck(), luckKey,
-                data.stat(StatType.LUCK) * config.luckPerLuck(), AttributeModifier.Operation.ADD_NUMBER);
+                effectiveStat(data, StatType.LUCK) * config.luckPerLuck(), AttributeModifier.Operation.ADD_NUMBER);
 
-        data.weightMax(config.weightBase() + data.stat(StatType.STR) * config.weightPerStr());
+        applyJobAttributes(player, data);
+
+        data.weightMax(config.weightBase()
+                + effectiveStat(data, StatType.STR) * config.weightPerStr()
+                + jobWeightBonus(data));
         // Capacity changed, so the encumbrance tier may have changed with it;
         // and this runs on join/respawn/reload, where the gear penalty also
         // needs re-applying.
         data.markInventoryDirty();
+    }
+
+    private int jobWeightBonus(PlayerData data) {
+        RpgJob job = plugin.jobs().byId(data.jobId());
+        return job == null ? 0 : job.weightBonus();
+    }
+
+    /**
+     * Walks every attribute any configured job touches, not just the ones the
+     * current job uses, so switching away from a job actually takes its bonus
+     * off. A zero amount removes the modifier.
+     */
+    private void applyJobAttributes(Player player, PlayerData data) {
+        RpgJob job = plugin.jobs().byId(data.jobId());
+        for (String id : plugin.jobs().managedAttributes()) {
+            Attribute attribute = Attributes.byId(id);
+            if (attribute == null) {
+                continue;
+            }
+            double add = job == null ? 0.0D : job.attributeAdd().getOrDefault(id, 0.0D);
+            double mul = job == null ? 0.0D : job.attributeMul().getOrDefault(id, 0.0D);
+            Attributes.setModifier(player, attribute, jobKey("add", id), add,
+                    AttributeModifier.Operation.ADD_NUMBER);
+            Attributes.setModifier(player, attribute, jobKey("mul", id), mul,
+                    AttributeModifier.Operation.MULTIPLY_SCALAR_1);
+        }
+    }
+
+    private NamespacedKey jobKey(String kind, String attributeId) {
+        return new NamespacedKey(plugin, "job_" + kind + "_" + attributeId.replace(':', '.'));
     }
 
     private void announceLevelUp(Player player, PlayerData data) {

@@ -58,6 +58,17 @@ public final class RpgConfig {
     private boolean proximityHideOutOfRange;
     private String proximityFormat;
 
+    private int leaderboardSize;
+    private int leaderboardCacheSeconds;
+
+    private boolean partyEnabled;
+    private int partyMaxSize;
+    private int partyInviteSeconds;
+    private boolean partyFriendlyFire;
+    private String partyChatPrefix;
+    private double partyXpShareRange;
+    private double partyXpBonusPerMember;
+
     public RpgConfig(RpgCorePlugin plugin) {
         this.plugin = plugin;
         reload();
@@ -115,6 +126,17 @@ public final class RpgConfig {
         proximityRange = c.getDouble("proximity-chat.range", 24);
         proximityHideOutOfRange = c.getBoolean("proximity-chat.hide-out-of-range", true);
         proximityFormat = c.getString("proximity-chat.format", "&7[근접] &f%player%&7: &f%message%");
+
+        leaderboardSize = Math.clamp(c.getInt("leaderboard.size", 10), 1, 50);
+        leaderboardCacheSeconds = Math.max(0, c.getInt("leaderboard.cache-seconds", 30));
+
+        partyEnabled = c.getBoolean("party.enabled", true);
+        partyMaxSize = Math.max(2, c.getInt("party.max-size", 5));
+        partyInviteSeconds = Math.max(5, c.getInt("party.invite-timeout-seconds", 60));
+        partyFriendlyFire = c.getBoolean("party.friendly-fire", false);
+        partyChatPrefix = c.getString("party.chat-prefix", "&d[파티] ");
+        partyXpShareRange = Math.max(0, c.getDouble("party.xp.share-range", 50));
+        partyXpBonusPerMember = Math.max(0, c.getDouble("party.xp.bonus-per-member", 0.05));
     }
 
     public int xpBase() {
@@ -267,5 +289,41 @@ public final class RpgConfig {
 
     public String proximityFormat() {
         return proximityFormat;
+    }
+
+    public int leaderboardSize() {
+        return leaderboardSize;
+    }
+
+    public int leaderboardCacheSeconds() {
+        return leaderboardCacheSeconds;
+    }
+
+    public boolean partyEnabled() {
+        return partyEnabled;
+    }
+
+    public int partyMaxSize() {
+        return partyMaxSize;
+    }
+
+    public int partyInviteSeconds() {
+        return partyInviteSeconds;
+    }
+
+    public boolean partyFriendlyFire() {
+        return partyFriendlyFire;
+    }
+
+    public String partyChatPrefix() {
+        return partyChatPrefix;
+    }
+
+    public double partyXpShareRange() {
+        return partyXpShareRange;
+    }
+
+    public double partyXpBonusPerMember() {
+        return partyXpBonusPerMember;
     }
 }

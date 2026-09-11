@@ -66,6 +66,6 @@ public final class PlayerSessionListener implements Listener {
         if (killer == null) {
             return;
         }
-        plugin.stats().addXp(killer, plugin.rpgConfig().xpPerMobKill());
+        plugin.stats().awardXp(killer, plugin.rpgConfig().xpPerMobKill());
     }
 }

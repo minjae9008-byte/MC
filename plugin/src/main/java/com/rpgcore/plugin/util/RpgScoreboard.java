@@ -6,6 +6,8 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Score;
 import org.bukkit.scoreboard.Scoreboard;
 
+import java.util.Set;
+
 /**
  * Mirror of the plugin's state onto the vanilla scoreboard.
  *
@@ -39,12 +41,26 @@ public final class RpgScoreboard {
     }
 
     public int read(Player player, String objective) {
+        return read(player.getName(), objective);
+    }
+
+    /**
+     * By entry name rather than by Player, which is what lets the leaderboard
+     * rank people who are not online - the mirror keeps their scores.
+     */
+    public int read(String entry, String objective) {
         Objective obj = objective(objective);
         if (obj == null) {
             return 0;
         }
-        Score score = obj.getScore(player.getName());
+        Score score = obj.getScore(entry);
         return score.isScoreSet() ? score.getScore() : 0;
+    }
+
+    /** Every entry the main scoreboard tracks, RPGCore's and otherwise. */
+    public Set<String> entries() {
+        Scoreboard board = board();
+        return board == null ? Set.of() : board.getEntries();
     }
 
     public void write(Player player, String objective, int value) {

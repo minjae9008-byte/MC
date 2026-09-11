@@ -8,6 +8,7 @@ import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
+import java.util.Locale;
 
 /**
  * Attribute access that survives Mojang's renames.
@@ -61,6 +62,22 @@ public final class Attributes {
      */
     public static Attribute blockBreakSpeed() {
         return resolve("block_break_speed", "player.block_break_speed");
+    }
+
+    /**
+     * Looks up any attribute by the id an operator wrote in config.yml -
+     * "max_health", "minecraft:max_health" and the pre-1.21.2 spelling
+     * "generic.max_health" all resolve to the same thing. null when this
+     * server has no such attribute, which every helper here tolerates.
+     */
+    public static Attribute byId(String id) {
+        String key = id.toLowerCase(Locale.ROOT);
+        if (key.startsWith("minecraft:")) {
+            key = key.substring("minecraft:".length());
+        }
+        int dot = key.lastIndexOf('.');
+        String bare = dot >= 0 ? key.substring(dot + 1) : key;
+        return resolve(key, bare, "generic." + bare, "player." + bare);
     }
 
     private static Attribute resolve(String... keys) {

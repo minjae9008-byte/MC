@@ -17,6 +17,8 @@ public final class PlayerData {
     private int xp;
     private int xpNeed;
     private int points;
+    /** Job id, or null when the player has not picked one. */
+    private String jobId;
     private final Map<StatType, Integer> stats = new EnumMap<>(StatType.class);
 
     private int weight;
@@ -89,6 +91,14 @@ public final class PlayerData {
     public void points(int points) {
         this.points = points;
         this.dirty = true;
+    }
+
+    public String jobId() {
+        return jobId;
+    }
+
+    public void jobId(String jobId) {
+        this.jobId = jobId;
     }
 
     public int stat(StatType type) {
