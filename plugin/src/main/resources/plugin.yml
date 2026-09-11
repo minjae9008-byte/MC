@@ -4,10 +4,10 @@ main: com.rpgcore.plugin.RpgCorePlugin
 api-version: '26.2'
 author: RPGCore
 description: >
-  RPG stats, jobs, leaderboards, parties, encumbrance, gear wear, chain
-  tree-felling, custom anvil upgrades and proximity chat. Everything is
-  server-side, so Java and Bedrock (Geyser) players get identical
-  behaviour. No dependencies.
+  RPG stats, jobs, leaderboards, persistent parties, player trading,
+  encumbrance, gear wear, chain tree-felling, custom anvil upgrades and
+  proximity chat. Everything is server-side, so Java and Bedrock (Geyser)
+  players get identical behaviour. No dependencies.
 
 commands:
   stats:
@@ -25,6 +25,9 @@ commands:
   p:
     description: Send a message to your party.
     aliases: [pchat, partychat]
+  trade:
+    description: Trade items with another player.
+    aliases: [거래, tr]
   rpgcore:
     description: RPGCore admin commands (reload, recipes, givexp, reset).
     permission: rpgcore.admin

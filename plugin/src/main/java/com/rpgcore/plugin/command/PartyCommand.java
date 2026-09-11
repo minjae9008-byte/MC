@@ -12,13 +12,12 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 
 /** /party - create, invite, accept, leave, kick, disband, list. */
 public final class PartyCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBS =
-            List.of("create", "invite", "accept", "deny", "leave", "kick", "disband", "list");
+            List.of("create", "name", "invite", "accept", "deny", "leave", "kick", "disband", "list");
 
     private final RpgCorePlugin plugin;
 
@@ -42,7 +41,8 @@ public final class PartyCommand implements CommandExecutor, TabCompleter {
         }
 
         switch (args[0].toLowerCase(Locale.ROOT)) {
-            case "create" -> plugin.parties().create(player);
+            case "create" -> plugin.parties().create(player, join(args, 1));
+            case "name", "rename" -> plugin.parties().rename(player, join(args, 1));
             case "invite" -> {
                 if (args.length < 2) {
                     player.sendMessage(ChatColor.RED + "/party invite <플레이어>");
@@ -72,25 +72,31 @@ public final class PartyCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /** Joins the remaining arguments so party names may contain spaces. */
+    private String join(String[] args, int from) {
+        return args.length <= from ? null : String.join(" ", java.util.Arrays.copyOfRange(args, from, args.length));
+    }
+
     private void list(Player player) {
         Party party = plugin.parties().partyOf(player);
         if (party == null) {
-            player.sendMessage(ChatColor.YELLOW + "[파티] 파티에 속해 있지 않습니다. /party create 로 만드세요.");
+            player.sendMessage(ChatColor.YELLOW + "[파티] 파티에 속해 있지 않습니다. /party create [이름] 으로 만드세요.");
             return;
         }
-        player.sendMessage(ChatColor.GOLD + "===== 파티 (" + party.size() + "/"
-                + plugin.rpgConfig().partyMaxSize() + ") =====");
+        player.sendMessage(ChatColor.GOLD + "===== " + ChatColor.WHITE + party.name() + ChatColor.GOLD
+                + " (" + party.size() + "/" + plugin.rpgConfig().partyMaxSize() + ") =====");
         for (String line : plugin.parties().roster(party)) {
             player.sendMessage(line);
         }
         double range = plugin.rpgConfig().partyXpShareRange();
-        player.sendMessage(ChatColor.GRAY + "경험치는 " + (range > 0 ? range + "블록 안의 " : "같은 월드의 ")
-                + "파티원끼리 나눕니다.");
+        player.sendMessage(ChatColor.GRAY + "경험치는 " + (range > 0 ? (int) range + "블록 안의 " : "같은 월드의 ")
+                + "접속 중인 파티원끼리만 나눕니다.");
     }
 
     private void usage(Player player) {
         player.sendMessage(ChatColor.GOLD + "[파티] 사용법:");
-        player.sendMessage(ChatColor.YELLOW + "  /party create" + ChatColor.GRAY + " - 파티 생성");
+        player.sendMessage(ChatColor.YELLOW + "  /party create [이름]" + ChatColor.GRAY + " - 파티 생성");
+        player.sendMessage(ChatColor.YELLOW + "  /party name <이름>" + ChatColor.GRAY + " - 이름 변경 (파티장)");
         player.sendMessage(ChatColor.YELLOW + "  /party invite <플레이어>" + ChatColor.GRAY + " - 초대");
         player.sendMessage(ChatColor.YELLOW + "  /party accept [플레이어]" + ChatColor.GRAY + " - 초대 수락");
         player.sendMessage(ChatColor.YELLOW + "  /party deny" + ChatColor.GRAY + " - 초대 거절");
@@ -122,13 +128,8 @@ public final class PartyCommand implements CommandExecutor, TabCompleter {
                 if (party == null) {
                     return List.of();
                 }
-                List<String> names = new ArrayList<>();
-                for (UUID uuid : party.members()) {
-                    Player member = plugin.getServer().getPlayer(uuid);
-                    if (member != null && !member.equals(player)) {
-                        names.add(member.getName());
-                    }
-                }
+                List<String> names = new ArrayList<>(plugin.parties().memberNames(party));
+                names.remove(player.getName());
                 return prefixed(names, args[1]);
             }
         }

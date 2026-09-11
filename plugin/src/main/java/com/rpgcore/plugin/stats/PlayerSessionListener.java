@@ -34,6 +34,8 @@ public final class PlayerSessionListener implements Listener {
         plugin.stats().recalculate(player, data);
         plugin.players().flush(player, data);
 
+        plugin.parties().handleJoin(player);
+
         if (firstJoin) {
             player.sendMessage(ChatColor.GOLD + "[RPGCore] " + ChatColor.YELLOW
                     + "환영합니다! 레벨 1로 시작합니다. 스탯 포인트 "

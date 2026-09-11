@@ -6,27 +6,48 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Party membership, invites and the XP share list.
+ * Party membership, names, invites and the XP share list.
  *
  * Every mutation goes through here so the two indexes - party by member and
- * pending invites - can never drift apart, and so every message about a party
- * change reaches the whole party from one place.
+ * pending invites - cannot drift apart, and so every change is written back to
+ * parties.yml from one place. Parties survive a restart; the invites, being
+ * short-lived by design, do not.
  */
 public final class PartyService {
 
     private final RpgCorePlugin plugin;
+    private final PartyStorage storage;
+    private final Map<UUID, Party> byId = new LinkedHashMap<>();
     private final Map<UUID, Party> byMember = new ConcurrentHashMap<>();
     /** invited player -> (inviter -> expiry millis). */
     private final Map<UUID, Map<UUID, Long>> invites = new ConcurrentHashMap<>();
 
     public PartyService(RpgCorePlugin plugin) {
         this.plugin = plugin;
+        this.storage = new PartyStorage(plugin);
+    }
+
+    public void load() {
+        byId.clear();
+        byMember.clear();
+        for (Party party : storage.load()) {
+            byId.put(party.id(), party);
+            for (UUID member : party.members()) {
+                byMember.put(member, party);
+            }
+        }
+        plugin.getLogger().info("Parties loaded: " + byId.size() + ".");
+    }
+
+    public void save() {
+        storage.save(byId.values());
     }
 
     public boolean enabled() {
@@ -43,9 +64,12 @@ public final class PartyService {
     }
 
     /**
-     * Who a player's earned XP is split between: the earner plus the party
-     * members who are online, in the same world and within range. A player
-     * with no party is a list of one, so callers need no special case.
+     * Who a player's earned XP is split between: the earner plus party members
+     * who are <em>online</em>, in the same world and within range. Offline
+     * members never take a share - a party that persists across restarts would
+     * otherwise quietly tax everyone for members who are not playing.
+     *
+     * A player with no party is a list of one, so callers need no special case.
      */
     public List<Player> shareTargets(Player earner) {
         List<Player> targets = new ArrayList<>();
@@ -72,16 +96,75 @@ public final class PartyService {
         return targets;
     }
 
-    public Party create(Player leader) {
-        Party existing = partyOf(leader);
-        if (existing != null) {
+    public Party create(Player leader, String requestedName) {
+        if (partyOf(leader) != null) {
             leader.sendMessage(ChatColor.RED + "[파티] 이미 파티에 속해 있습니다.");
             return null;
         }
-        Party party = new Party(leader.getUniqueId());
+        String name = sanitiseName(leader, requestedName, leader.getName() + "의 파티");
+        if (name == null) {
+            return null;
+        }
+
+        Party party = new Party(UUID.randomUUID(), name, leader.getUniqueId(), leader.getName());
+        byId.put(party.id(), party);
         byMember.put(leader.getUniqueId(), party);
-        leader.sendMessage(ChatColor.GREEN + "[파티] 파티를 만들었습니다. /party invite <플레이어> 로 초대하세요.");
+        save();
+        leader.sendMessage(ChatColor.GREEN + "[파티] '" + ChatColor.WHITE + name + ChatColor.GREEN
+                + "' 파티를 만들었습니다. /party invite <플레이어> 로 초대하세요.");
         return party;
+    }
+
+    public void rename(Player leader, String requestedName) {
+        Party party = partyOf(leader);
+        if (party == null) {
+            leader.sendMessage(ChatColor.RED + "[파티] 파티에 속해 있지 않습니다.");
+            return;
+        }
+        if (!party.isLeader(leader.getUniqueId())) {
+            leader.sendMessage(ChatColor.RED + "[파티] 파티장만 이름을 바꿀 수 있습니다.");
+            return;
+        }
+        String name = sanitiseName(leader, requestedName, null);
+        if (name == null) {
+            return;
+        }
+        party.name(name);
+        save();
+        broadcast(party, ChatColor.GREEN + "[파티] 파티 이름이 '" + ChatColor.WHITE + name
+                + ChatColor.GREEN + "' 으로 바뀌었습니다.");
+    }
+
+    /**
+     * Trims a requested name to something usable, or returns null after
+     * telling the player why it was refused. Colour codes are stripped so a
+     * party cannot disguise itself as another one in chat.
+     */
+    private String sanitiseName(Player player, String requested, String fallback) {
+        if (requested == null || requested.isBlank()) {
+            if (fallback != null) {
+                return fallback;
+            }
+            player.sendMessage(ChatColor.RED + "[파티] 이름을 입력하세요.");
+            return null;
+        }
+        String name = ChatColor.stripColor(requested.replace('§', '&')).trim();
+        int max = plugin.rpgConfig().partyNameMaxLength();
+        if (name.isEmpty()) {
+            player.sendMessage(ChatColor.RED + "[파티] 쓸 수 없는 이름입니다.");
+            return null;
+        }
+        if (name.length() > max) {
+            player.sendMessage(ChatColor.RED + "[파티] 이름은 " + max + "자까지입니다.");
+            return null;
+        }
+        for (Party other : byId.values()) {
+            if (!other.contains(player.getUniqueId()) && other.name().equalsIgnoreCase(name)) {
+                player.sendMessage(ChatColor.RED + "[파티] 이미 쓰이는 이름입니다: " + name);
+                return null;
+            }
+        }
+        return name;
     }
 
     public void invite(Player inviter, Player target) {
@@ -91,7 +174,7 @@ public final class PartyService {
         }
         Party party = partyOf(inviter);
         if (party == null) {
-            party = create(inviter);
+            party = create(inviter, null);
             if (party == null) {
                 return;
             }
@@ -115,7 +198,8 @@ public final class PartyService {
                 .put(inviter.getUniqueId(), expiry);
 
         inviter.sendMessage(ChatColor.GREEN + "[파티] " + target.getName() + " 을(를) 초대했습니다.");
-        target.sendMessage(ChatColor.GOLD + "[파티] " + inviter.getName() + " 이(가) 파티에 초대했습니다. "
+        target.sendMessage(ChatColor.GOLD + "[파티] " + inviter.getName() + " 이(가) '"
+                + ChatColor.WHITE + party.name() + ChatColor.GOLD + "' 파티에 초대했습니다. "
                 + ChatColor.YELLOW + "/party accept " + inviter.getName()
                 + ChatColor.GRAY + " (" + plugin.rpgConfig().partyInviteSeconds() + "초 안에)");
     }
@@ -137,8 +221,7 @@ public final class PartyService {
         if (inviter == null) {
             return;
         }
-        Player leader = plugin.getServer().getPlayer(inviter);
-        Party party = leader == null ? null : partyOf(leader);
+        Party party = byMember.get(inviter);
         if (party == null) {
             player.sendMessage(ChatColor.RED + "[파티] 그 파티는 더 이상 없습니다.");
             pending.remove(inviter);
@@ -150,8 +233,9 @@ public final class PartyService {
         }
 
         pending.remove(inviter);
-        party.add(player.getUniqueId());
+        party.add(player.getUniqueId(), player.getName());
         byMember.put(player.getUniqueId(), party);
+        save();
         broadcast(party, ChatColor.GREEN + "[파티] " + player.getName() + " 이(가) 파티에 들어왔습니다. ("
                 + party.size() + "/" + plugin.rpgConfig().partyMaxSize() + ")");
     }
@@ -189,7 +273,9 @@ public final class PartyService {
             player.sendMessage(ChatColor.RED + "[파티] 파티에 속해 있지 않습니다.");
             return;
         }
-        if (party.isLeader(player.getUniqueId())) {
+        // A leader leaving hands the party over rather than taking everyone
+        // else down with them; /party disband is there for that on purpose.
+        if (party.isLeader(player.getUniqueId()) && party.size() == 1) {
             disband(player);
             return;
         }
@@ -204,18 +290,22 @@ public final class PartyService {
             leader.sendMessage(ChatColor.RED + "[파티] 파티장만 추방할 수 있습니다.");
             return;
         }
+        // Matched on the stored name so an offline member can be removed too.
         for (UUID uuid : party.members()) {
-            Player member = plugin.getServer().getPlayer(uuid);
-            if (member != null && member.getName().equalsIgnoreCase(targetName)) {
-                if (party.isLeader(uuid)) {
-                    leader.sendMessage(ChatColor.RED + "[파티] 자기 자신은 추방할 수 없습니다.");
-                    return;
-                }
-                removeMember(party, uuid);
-                member.sendMessage(ChatColor.RED + "[파티] 파티에서 추방되었습니다.");
-                broadcast(party, ChatColor.YELLOW + "[파티] " + member.getName() + " 이(가) 추방되었습니다.");
+            if (!targetName.equalsIgnoreCase(party.nameOf(uuid))) {
+                continue;
+            }
+            if (party.isLeader(uuid)) {
+                leader.sendMessage(ChatColor.RED + "[파티] 자기 자신은 추방할 수 없습니다.");
                 return;
             }
+            removeMember(party, uuid);
+            Player member = plugin.getServer().getPlayer(uuid);
+            if (member != null && member.isOnline()) {
+                member.sendMessage(ChatColor.RED + "[파티] 파티에서 추방되었습니다.");
+            }
+            broadcast(party, ChatColor.YELLOW + "[파티] " + targetName + " 이(가) 추방되었습니다.");
+            return;
         }
         leader.sendMessage(ChatColor.RED + "[파티] 파티에 그런 플레이어가 없습니다: " + targetName);
     }
@@ -230,32 +320,34 @@ public final class PartyService {
             leader.sendMessage(ChatColor.RED + "[파티] 파티장만 해체할 수 있습니다.");
             return;
         }
-        broadcast(party, ChatColor.YELLOW + "[파티] 파티가 해체되었습니다.");
+        broadcast(party, ChatColor.YELLOW + "[파티] '" + ChatColor.WHITE + party.name()
+                + ChatColor.YELLOW + "' 파티가 해체되었습니다.");
         for (UUID uuid : party.members()) {
             byMember.remove(uuid);
         }
+        byId.remove(party.id());
+        save();
     }
 
-    /** Drops a party once nobody in it is online, so no ghosts linger. */
-    public void handleQuit(Player player) {
-        invites.remove(player.getUniqueId());
+    /** Keeps the stored name current, in case the player renamed. */
+    public void handleJoin(Player player) {
         Party party = partyOf(player);
         if (party == null) {
             return;
         }
-        broadcast(party, ChatColor.GRAY + "[파티] " + player.getName() + " 이(가) 접속을 종료했습니다.");
-        boolean anyOnline = false;
-        for (UUID uuid : party.members()) {
-            Player member = plugin.getServer().getPlayer(uuid);
-            if (member != null && member.isOnline() && !member.equals(player)) {
-                anyOnline = true;
-                break;
-            }
+        if (!player.getName().equals(party.nameOf(player.getUniqueId()))) {
+            party.refreshName(player.getUniqueId(), player.getName());
+            save();
         }
-        if (!anyOnline) {
-            for (UUID uuid : party.members()) {
-                byMember.remove(uuid);
-            }
+        player.sendMessage(ChatColor.GRAY + "[파티] '" + ChatColor.WHITE + party.name()
+                + ChatColor.GRAY + "' 파티에 속해 있습니다. (" + party.size() + "명)");
+    }
+
+    public void handleQuit(Player player) {
+        invites.remove(player.getUniqueId());
+        Party party = partyOf(player);
+        if (party != null) {
+            broadcast(party, ChatColor.GRAY + "[파티] " + player.getName() + " 이(가) 접속을 종료했습니다.");
         }
     }
 
@@ -274,7 +366,8 @@ public final class PartyService {
             sender.sendMessage(ChatColor.RED + "[파티] 파티에 속해 있지 않습니다.");
             return;
         }
-        String prefix = ChatColor.translateAlternateColorCodes('&', plugin.rpgConfig().partyChatPrefix());
+        String prefix = ChatColor.translateAlternateColorCodes('&',
+                plugin.rpgConfig().partyChatPrefix().replace("%party%", party.name()));
         broadcast(party, prefix + ChatColor.WHITE + sender.getName() + ChatColor.GRAY + ": "
                 + ChatColor.WHITE + message);
     }
@@ -283,25 +376,40 @@ public final class PartyService {
         List<String> lines = new ArrayList<>();
         for (UUID uuid : party.ordered()) {
             Player member = plugin.getServer().getPlayer(uuid);
-            String name = member != null ? member.getName() : uuid.toString().substring(0, 8);
+            boolean online = member != null && member.isOnline();
             String role = party.isLeader(uuid) ? ChatColor.GOLD + "[장] " : ChatColor.GRAY + "    ";
-            String state = member != null && member.isOnline()
-                    ? ChatColor.GREEN + "온라인" : ChatColor.DARK_GRAY + "오프라인";
+            String state = online ? ChatColor.GREEN + "온라인" : ChatColor.DARK_GRAY + "오프라인";
             String level = "";
-            if (member != null && plugin.players().cached(uuid) != null) {
+            if (online && plugin.players().cached(uuid) != null) {
                 level = ChatColor.GRAY + " Lv." + plugin.players().cached(uuid).level();
             }
-            lines.add(role + ChatColor.WHITE + name + level + ChatColor.GRAY + " - " + state);
+            lines.add(role + (online ? ChatColor.WHITE : ChatColor.GRAY) + party.nameOf(uuid)
+                    + level + ChatColor.GRAY + " - " + state);
         }
         return lines;
     }
 
+    /** Names of every party member, for tab completion of /party kick. */
+    public List<String> memberNames(Party party) {
+        List<String> names = new ArrayList<>();
+        for (UUID uuid : party.ordered()) {
+            names.add(party.nameOf(uuid));
+        }
+        return names;
+    }
+
     private void removeMember(Party party, UUID uuid) {
+        boolean wasLeader = party.isLeader(uuid);
         party.remove(uuid);
         byMember.remove(uuid);
-        if (party.isLeader(uuid) && party.size() > 0) {
-            party.leader(party.ordered().iterator().next());
+        if (party.size() == 0) {
+            byId.remove(party.id());
+        } else if (wasLeader) {
+            UUID heir = party.ordered().iterator().next();
+            party.leader(heir);
+            broadcast(party, ChatColor.GOLD + "[파티] " + party.nameOf(heir) + " 이(가) 새 파티장이 되었습니다.");
         }
+        save();
     }
 
     private void purgeExpired(Map<UUID, Long> pending) {

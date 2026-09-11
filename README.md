@@ -1,7 +1,7 @@
 # RPGCore
 
-Paper 서버용 RPG 플러그인. 스탯/레벨, 직업, 순위표, 파티, 소지 무게, 장비 내구도
-페널티, 연쇄 벌목, 모루 커스텀 강화, 근접 채팅을 한 덩어리로 제공합니다.
+Paper 서버용 RPG 플러그인. 스탯/레벨, 직업, 순위표, 파티, 플레이어 간 거래, 소지 무게,
+장비 내구도 페널티, 연쇄 벌목, 모루 커스텀 강화, 근접 채팅을 한 덩어리로 제공합니다.
 
 - **jar 하나가 전부입니다.** 데이터팩도, 다른 플러그인도, 외부 라이브러리도 필요 없습니다.
 - **전부 서버 사이드 로직**이라 자바와 베드락(Geyser) 플레이어가 **완전히 동일하게** 동작합니다.
@@ -25,6 +25,7 @@ Paper 서버용 RPG 플러그인. 스탯/레벨, 직업, 순위표, 파티, 소�
 [RPGCorePlugin] Tree felling: 22 log types, 7 tools.
 [RPGCorePlugin] Anvil recipes loaded: 7.
 [RPGCorePlugin] Jobs loaded: 5.
+[RPGCorePlugin] Parties loaded: 0.
 ```
 
 **(선택) 근접 음성**: [Simple Voice Chat](https://modrinth.com/plugin/simple-voice-chat) 을 함께 깔면 실제 음성이 됩니다.
@@ -71,14 +72,41 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 서버에 부담이 없습니다.
 
 ### 파티
-`/party` 로 만들고 초대합니다. 파티는 메모리에만 있으며 서버 재시작 시 사라집니다.
+`/party create [이름]` 으로 만들고 초대합니다. **파티는 서버를 재시작해도 유지됩니다.**
 
-- **경험치 공유** — 파티가 얻은 XP 는 사거리(기본 50블록) 안의 파티원끼리 똑같이 나눕니다.
-  인원이 늘면 총량에 보너스가 붙습니다: `총량 = 원래 XP × (1 + 0.05 × (인원-1))`.
-  예) 3명이 10 XP 를 벌면 11 XP 가 되어 각자 4 XP.
+- **이름** — 파티마다 고유한 이름을 붙입니다. 이름은 파티 채팅 접두사, 초대 문구, `/party list`
+  에 그대로 쓰입니다. `/party name <새이름>` 으로 바꿉니다(파티장만). 색코드는 제거되고,
+  이미 쓰이는 이름이나 길이 초과(기본 16자)는 거부됩니다.
+- **경험치 공유** — 파티가 얻은 XP 는 사거리(기본 50블록) 안에 있고 **접속 중인** 파티원끼리만
+  나눕니다. 오프라인 파티원은 몫도 받지 않고 인원 보너스에도 들어가지 않습니다.
+  `총량 = 원래 XP × (1 + 0.05 × (접속 인원-1))`
+  예) 3명 접속 중 10 XP → 11 XP → 각자 4 XP. 한 명이 나가면 → 10.5 XP → 각자 5 XP.
 - **아군 공격 차단** — 기본적으로 파티원끼리는 근접·투사체 피해가 들어가지 않습니다.
-- **파티 채팅** — `/p <메시지>` 는 거리와 무관하게 파티원 전체에게 갑니다.
-- 파티장만 초대·추방·해체할 수 있고, 파티원이 전부 접속을 종료하면 파티는 자동으로 사라집니다.
+- **파티 채팅** — `/p <메시지>` 는 거리와 무관하게 접속 중인 파티원 전체에게 갑니다.
+- 오프라인 파티원도 `/party list` 에 보이고 추방할 수 있습니다. 파티장이 `/party leave` 하면
+  다음 사람에게 파티장이 넘어가고, 파티를 없애려면 `/party disband` 를 씁니다.
+
+### 플레이어 간 거래
+`/trade <플레이어>` 로 요청하고, 상대가 `/trade accept` 하면 **양쪽이 같은 상자 UI 하나**를
+함께 봅니다.
+
+```
+ 내가 내놓는 것        상대가 내놓는 것
+ ┌───────────┐ │ ┌───────────┐
+ │ ■ ■ ■ ■   │ │ │   ■ ■ ■ ■ │
+ │ ■ ■ ■ ■   │ │ │   ■ ■ ■ ■ │   왼쪽 4칸 = 내 물건
+ │ ■ ■ ■ ■   │ │ │   ■ ■ ■ ■ │   오른쪽 4칸 = 상대 물건
+ │ ■ ■ ■ ■   │ │ │   ■ ■ ■ ■ │
+ └───────────┘ │ └───────────┘
+   [내 확정]    │   [상대 확정]
+```
+
+- 화면을 **하나만** 쓰므로 한쪽에게만 다르게 보이는 일이 구조적으로 불가능합니다.
+- 자기 칸에만 물건을 올릴 수 있습니다. 상대 칸 클릭, 드래그, 더블클릭 모으기는 전부 막힙니다.
+- 물건이 바뀌면 **양쪽 확정이 자동으로 풀립니다.** 확정 직전에 몰래 바꿔치기할 수 없습니다.
+- 양쪽이 확정하면 교환됩니다. 받을 공간이 모자라면 **아무것도 옮기지 않고** 알려줍니다.
+- 창을 닫거나, 접속을 종료하거나, 죽거나, `/trade cancel` 하거나, 서버가 꺼지면
+  **올려둔 물건은 전부 주인에게 돌아갑니다.**
 
 ### 소지 무게
 인벤토리 + 방어구 + 보조손 41칸을 `개수 × 등급 무게` 로 계산합니다.
@@ -144,8 +172,9 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 | `/stats` | 모두 | 스탯 창 열기 (별칭 `/rpg`) |
 | `/job [직업]` | 모두 | 직업 선택 창 / 바로 선택 (별칭 `/class`) |
 | `/leaderboard [항목]` | 모두 | 순위표 (별칭 `/top`, `/lb`) |
-| `/party <하위명령>` | 모두 | 파티 생성·초대·수락·추방·해체·목록 |
+| `/party <하위명령>` | 모두 | 파티 생성·이름변경·초대·수락·추방·해체·목록 |
 | `/p <메시지>` | 모두 | 파티 채팅 |
+| `/trade <플레이어>` | 모두 | 거래 요청 (`accept`/`deny`/`cancel`) |
 | `/rpgcore reload` | `rpgcore.admin` | config.yml 다시 읽기 |
 | `/rpgcore recipes` | `rpgcore.admin` | 모루 조합법 목록 |
 | `/rpgcore givexp <player> <amount>` | `rpgcore.admin` | XP 지급 |
@@ -165,7 +194,8 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 | `anvil` | `recipes.*` — 대상·재료·수량·인챈트·수리량 |
 | `jobs` | `allow-change`, `change-cost-levels`, `list.*`(직업 정의) |
 | `leaderboard` | `size`(표시 인원), `cache-seconds` |
-| `party` | `max-size`, `invite-timeout-seconds`, `friendly-fire`, `chat-prefix`, `xp.share-range`, `xp.bonus-per-member` |
+| `party` | `max-size`, `name-max-length`, `invite-timeout-seconds`, `friendly-fire`, `chat-prefix`(`%party%` 사용 가능), `xp.share-range`, `xp.bonus-per-member` |
+| `trade` | `enabled`, `request-timeout-seconds`, `max-distance`, `title` |
 | `hud` | `enabled`, `interval-ticks` |
 | `xp-sources` | `per-mob-kill`, `per-tree-log` |
 | `proximity-chat` | `range`, `format`, `hide-out-of-range`, `warn-voice-range-mismatch` |
@@ -275,7 +305,10 @@ UI도 일반 상자 GUI 하나만 쓰므로 Geyser가 알아서 베드락 화면
 /data get entity <player> data
 ```
 
-파티는 메모리에만 있고 저장되지 않습니다.
+**파티**는 이름·구성원을 가진 그룹이라 스코어보드에도 개인 데이터에도 맞지 않아,
+`plugins/RPGCorePlugin/parties.yml` 에 저장됩니다. 파티가 바뀔 때마다 즉시 기록되므로
+서버가 갑자기 내려가도 남습니다. 진행 중인 거래는 저장되지 않고, 서버 종료 시 물건을
+주인에게 돌려준 뒤 정리됩니다.
 
 어트리뷰트 모디파이어 네임스페이스는 플러그인 이름에서 나오므로 `rpgcoreplugin:*` 입니다.
 
@@ -286,8 +319,15 @@ UI도 일반 상자 GUI 하나만 쓰므로 Geyser가 알아서 베드락 화면
 ## 검증
 
 Paper 26.2 (빌드 121, Java 25) 실서버에 봇 3명을 접속시켜 위 기능을 직접 확인했습니다.
-구동 로그 예외 0건. 직업 보너스와 해제, 재접속 후 직업 유지, 3인 파티의 XP 분배(각 +4),
-아군 공격·화살 차단, 순위표 정렬까지 실측으로 검증했습니다. Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어
+구동 로그 예외 0건.
+
+- 직업 보너스 적용과 직업 변경 시 이전 보너스 해제, 재접속 후 직업 유지
+- 순위표 정렬과 본인 순위 표시
+- 파티: 이름 중복·길이 검증, **서버 재시작 후 파티 유지**, 오프라인 멤버 표시·추방,
+  파티장 승계, 아군 공격·화살 차단
+- 파티 XP: 3명 접속 시 각 +4, 한 명이 나가면 각 +5 이고 **나간 사람은 그대로**
+- 거래: 다이아 5 ↔ 에메랄드 7 정확히 교환, 상대 칸 탈취 차단, 공간 부족 시 미진행,
+  취소·창 닫기·접속 종료 시 물건 전량 반환 Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어
 실행 검증하지 못했습니다.
 
 ## 구조
@@ -307,8 +347,9 @@ plugin/
     tree/                    큐 기반 연쇄 벌목
     job/                     직업 정의·선택·어트리뷰트 적용, 선택 GUI
     leaderboard/             스코어보드 미러 기반 순위 집계 (캐시 포함)
-    party/                   파티 상태·초대·XP 분배, 아군 공격 차단
-    command/                 /job, /leaderboard, /party, /p
+    party/                   파티 상태·이름·초대·XP 분배, parties.yml 저장
+    trade/                   공유 상자 UI 기반 1:1 거래
+    command/                 /job, /leaderboard, /party, /p, /trade
     hud/ gui/ chat/          액션바, 상자 GUI, 근접 채팅
     voice/                   Simple Voice Chat 거리 확인 (의존성 없음)
     util/                    스코어보드, 어트리뷰트·인챈트·태그 헬퍼

@@ -14,6 +14,7 @@ import com.rpgcore.plugin.command.JobCommand;
 import com.rpgcore.plugin.command.LeaderboardCommand;
 import com.rpgcore.plugin.command.PartyChatCommand;
 import com.rpgcore.plugin.command.PartyCommand;
+import com.rpgcore.plugin.command.TradeCommand;
 import com.rpgcore.plugin.gui.MenuListener;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.job.JobMenu;
@@ -21,6 +22,8 @@ import com.rpgcore.plugin.job.JobService;
 import com.rpgcore.plugin.leaderboard.LeaderboardService;
 import com.rpgcore.plugin.party.PartyListener;
 import com.rpgcore.plugin.party.PartyService;
+import com.rpgcore.plugin.trade.TradeListener;
+import com.rpgcore.plugin.trade.TradeService;
 import com.rpgcore.plugin.hud.HudTask;
 import com.rpgcore.plugin.stats.PlayerSessionListener;
 import com.rpgcore.plugin.stats.StatType;
@@ -66,6 +69,7 @@ public final class RpgCorePlugin extends JavaPlugin {
     private JobMenu jobMenu;
     private LeaderboardService leaderboard;
     private PartyService parties;
+    private TradeService trades;
 
     @Override
     public void onEnable() {
@@ -91,6 +95,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.jobs = new JobService(this);
         this.jobs.load();
         this.parties = new PartyService(this);
+        this.parties.load();
+        this.trades = new TradeService(this);
         this.leaderboard = new LeaderboardService(this, scoreboard);
 
         this.statsMenu = new StatsMenu(this);
@@ -104,6 +110,7 @@ public final class RpgCorePlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new RangedListener(this), this);
         getServer().getPluginManager().registerEvents(new AnvilListener(this, anvil), this);
         getServer().getPluginManager().registerEvents(new PartyListener(this), this);
+        getServer().getPluginManager().registerEvents(new TradeListener(this), this);
         if (rpgConfig.proximityEnabled()) {
             getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
         }
@@ -124,6 +131,7 @@ public final class RpgCorePlugin extends JavaPlugin {
         registerCommand("leaderboard", new LeaderboardCommand(this));
         registerCommand("party", new PartyCommand(this));
         registerCommand("p", new PartyChatCommand(this));
+        registerCommand("trade", new TradeCommand(this));
 
         new VoiceChatHook(this).check();
 
@@ -137,6 +145,12 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Items sitting in an open trade window belong to their owners, not to
+        // the void, so every live trade is unwound before anything else.
+        for (Player player : getServer().getOnlinePlayers()) {
+            trades.endIfTrading(player, "서버가 종료됩니다.");
+        }
+        parties.save();
         for (Player player : getServer().getOnlinePlayers()) {
             players.unload(player);
         }
@@ -283,6 +297,10 @@ public final class RpgCorePlugin extends JavaPlugin {
         return parties;
     }
 
+    public TradeService trades() {
+        return trades;
+    }
+
     public RpgConfig rpgConfig() {
         return rpgConfig;
     }
@@ -307,7 +325,4 @@ public final class RpgCorePlugin extends JavaPlugin {
         return anvil;
     }
 
-    public StatsMenu statsMenu() {
-        return statsMenu;
-    }
 }

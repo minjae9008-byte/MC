@@ -68,6 +68,11 @@ public final class RpgConfig {
     private String partyChatPrefix;
     private double partyXpShareRange;
     private double partyXpBonusPerMember;
+    private int partyNameMaxLength;
+
+    private boolean tradeEnabled;
+    private int tradeRequestSeconds;
+    private double tradeMaxDistance;
 
     public RpgConfig(RpgCorePlugin plugin) {
         this.plugin = plugin;
@@ -137,6 +142,11 @@ public final class RpgConfig {
         partyChatPrefix = c.getString("party.chat-prefix", "&d[파티] ");
         partyXpShareRange = Math.max(0, c.getDouble("party.xp.share-range", 50));
         partyXpBonusPerMember = Math.max(0, c.getDouble("party.xp.bonus-per-member", 0.05));
+        partyNameMaxLength = Math.clamp(c.getInt("party.name-max-length", 16), 1, 32);
+
+        tradeEnabled = c.getBoolean("trade.enabled", true);
+        tradeRequestSeconds = Math.max(5, c.getInt("trade.request-timeout-seconds", 60));
+        tradeMaxDistance = Math.max(0, c.getDouble("trade.max-distance", 0));
     }
 
     public int xpBase() {
@@ -325,5 +335,21 @@ public final class RpgConfig {
 
     public double partyXpBonusPerMember() {
         return partyXpBonusPerMember;
+    }
+
+    public int partyNameMaxLength() {
+        return partyNameMaxLength;
+    }
+
+    public boolean tradeEnabled() {
+        return tradeEnabled;
+    }
+
+    public int tradeRequestSeconds() {
+        return tradeRequestSeconds;
+    }
+
+    public double tradeMaxDistance() {
+        return tradeMaxDistance;
     }
 }
