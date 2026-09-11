@@ -32,6 +32,10 @@ weight:
   scans-per-tick: 8
   safety-rescan-ticks: 200
   default-item-weight: 1
+  # 아이템 설명(툴팁)에 붙는 무게 한 줄. %weight% 는 "1개당" 무게입니다.
+  # 개수와 무관한 값이라야 같은 아이템끼리 계속 겹쳐지므로 총합은 넣지 않습니다.
+  # 끄려면 settings.yml 의 features.item-weight-lore 를 false 로.
+  lore-format: "&8무게 %weight%"
   # 아이템 1개당 무게이며 개수만큼 곱해집니다.
   tiers:
     light:
@@ -298,6 +302,30 @@ trade:
 hud:
   # Action-bar text persists ~3s, so once a second is smooth and cheap.
   interval-ticks: 20
+
+# 머리 위 이름표와 플레이어 목록(Tab)에 붙는 정보.
+# 스코어보드 팀 기능으로 붙이므로 자바/베드락(Geyser) 모두 똑같이 보입니다.
+#
+#   이름표  ->  [파티] 이름 Lv.12 전사
+#   목록    ->  [파티] 이름 Lv.12
+#
+# 파티가 없거나 직업이 없으면 그 조각은 통째로 빠집니다(빈 괄호가 남지 않음).
+# 다른 플러그인이 이름표/팀을 관리한다면 settings.yml 의 features.nameplate 를
+# false 로 두세요.
+display:
+  # 조각별 서식. %party% %level% %job% 이 바뀝니다. ""(빈 값)이면 표시 안 함.
+  party-format: "&8[&d%party%&8]"
+  level-format: "&7Lv.&e%level%"
+  job-format: "&b%job%"
+
+  nameplate:
+    show-party: true
+    show-level: true
+    show-job: true
+  tablist:
+    show-party: true
+    show-level: true
+    show-job: false
 
 proximity-chat:
   range: 24

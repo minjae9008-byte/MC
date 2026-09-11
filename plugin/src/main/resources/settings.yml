@@ -52,3 +52,6 @@ features:
   anvil-recipes: true       # 모루 커스텀 강화
   proximity-chat: true      # 근접 채팅
   hud: true                 # 액션바 HUD
+  nameplate: true           # 머리 위 이름표에 파티/레벨/직업 표시
+  tablist: true             # 플레이어 목록(Tab)에 파티/레벨 표시
+  item-weight-lore: true    # 아이템 설명에 무게 한 줄 표시

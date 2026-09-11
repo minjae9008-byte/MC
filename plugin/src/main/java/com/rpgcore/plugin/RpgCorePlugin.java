@@ -7,6 +7,7 @@ import com.rpgcore.plugin.chat.ProximityChatListener;
 import com.rpgcore.plugin.config.RpgConfig;
 import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.data.PlayerDataManager;
+import com.rpgcore.plugin.display.NameplateService;
 import com.rpgcore.plugin.gear.GearListener;
 import com.rpgcore.plugin.gear.GearService;
 import com.rpgcore.plugin.gear.RangedListener;
@@ -70,6 +71,7 @@ public final class RpgCorePlugin extends JavaPlugin {
     private LeaderboardService leaderboard;
     private PartyService parties;
     private TradeService trades;
+    private NameplateService nameplates;
 
     @Override
     public void onEnable() {
@@ -98,6 +100,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.parties.load();
         this.trades = new TradeService(this);
         this.leaderboard = new LeaderboardService(this, scoreboard);
+
+        this.nameplates = new NameplateService(this);
 
         this.statsMenu = new StatsMenu(this);
         this.jobMenu = new JobMenu(this);
@@ -152,6 +156,7 @@ public final class RpgCorePlugin extends JavaPlugin {
         }
         parties.save();
         for (Player player : getServer().getOnlinePlayers()) {
+            nameplates.clear(player);
             players.unload(player);
         }
         getLogger().info("RPGCore plugin disabled.");
@@ -301,6 +306,9 @@ public final class RpgCorePlugin extends JavaPlugin {
         line(sender, "순위표", rpgConfig.leaderboardEnabled(), rpgConfig.leaderboardSize() + "명 표시");
         line(sender, "근접 채팅", rpgConfig.proximityEnabled(), (int) rpgConfig.proximityRange() + "블록");
         line(sender, "HUD", rpgConfig.hudEnabled(), rpgConfig.hudInterval() + "틱 간격");
+        line(sender, "머리 위 이름표", rpgConfig.nameplateEnabled(), rpgConfig.displaySummary(NameplateService.NAMEPLATE));
+        line(sender, "플레이어 목록", rpgConfig.tablistEnabled(), rpgConfig.displaySummary(NameplateService.TABLIST));
+        line(sender, "무게 툴팁", rpgConfig.weightLoreEnabled(), rpgConfig.weightLoreFormat().replace("%weight%", "n"));
 
         sender.sendMessage(ChatColor.GRAY + "레벨: 최대 "
                 + (rpgConfig.maxLevel() > 0 ? String.valueOf(rpgConfig.maxLevel()) : "무제한")
@@ -319,6 +327,20 @@ public final class RpgCorePlugin extends JavaPlugin {
     /** Opens the stats GUI. Same screen for Java and Bedrock players. */
     public void openStatsMenu(Player player) {
         statsMenu.open(player);
+    }
+
+    /**
+     * True for the inventories RPGCore itself puts on screen. Listeners that
+     * rewrite items in passing use this to keep their hands off menu furniture.
+     */
+    public boolean isOwnMenu(org.bukkit.inventory.InventoryHolder holder) {
+        return holder instanceof StatsMenu.Holder
+                || holder instanceof JobMenu.Holder
+                || holder instanceof com.rpgcore.plugin.trade.TradeSession;
+    }
+
+    public NameplateService nameplates() {
+        return nameplates;
     }
 
     public JobService jobs() {

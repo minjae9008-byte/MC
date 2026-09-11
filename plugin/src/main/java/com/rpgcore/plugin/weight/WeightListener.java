@@ -8,6 +8,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
@@ -15,6 +16,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerItemBreakEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.inventory.ItemStack;
 
 /**
  * Marks a player's weight (and gear) dirty whenever their carried items can
@@ -44,6 +46,35 @@ public final class WeightListener implements Listener {
     public void onPickup(EntityPickupItemEvent event) {
         if (event.getEntity() instanceof Player player) {
             mark(player);
+        }
+    }
+
+    /**
+     * Stamps the weight tooltip on the way in rather than waiting for the next
+     * scan. Two stacks only merge when their lore already matches, so an
+     * unstamped stack dropped next to a stamped one - or picked up on top of
+     * one - would sit in a slot of its own forever. Stamping an item the
+     * moment it enters the world is what keeps the vanilla merge working.
+     */
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onItemSpawn(ItemSpawnEvent event) {
+        ItemStack stack = event.getEntity().getItemStack();
+        if (plugin.weight().lore().apply(stack)) {
+            event.getEntity().setItemStack(stack);
+        }
+    }
+
+    /** Same reasoning, for a stack being taken out of a chest or a furnace. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onClickStampLore(InventoryClickEvent event) {
+        // RPGCore's own menus are furniture, and the trade window's buttons
+        // are furniture too - neither is anybody's carried load.
+        if (plugin.isOwnMenu(event.getView().getTopInventory().getHolder())) {
+            return;
+        }
+        ItemStack stack = event.getCurrentItem();
+        if (plugin.weight().lore().apply(stack)) {
+            event.setCurrentItem(stack);
         }
     }
 

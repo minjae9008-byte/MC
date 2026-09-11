@@ -8,7 +8,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
 /**
- * Action-bar HUD. Runs on its own interval (default once a second) rather than
+ * Action-bar HUD, plus the once-a-second nameplate refresh. Runs on its own interval (default once a second) rather than
  * every tick - the bar holds its text for ~3 seconds, so this looks identical
  * while sending 20x fewer packets than the datapack version did, which matters
  * doubly for Bedrock players since Geyser has to translate each one.
@@ -32,6 +32,11 @@ public final class HudTask extends BukkitRunnable {
             if (data.weightTier() >= 2) {
                 plugin.weight().applyOverloadEffects(player, data);
             }
+            // Cheapest correct place for this: the name only ever changes when
+            // a level, party or job does, and this interval already exists.
+            // refresh() compares before it writes, so a name that has not
+            // moved costs one string compare.
+            plugin.nameplates().refresh(player, data);
             if (hud) {
                 player.sendActionBar(render(player, data));
             }

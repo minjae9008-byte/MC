@@ -47,6 +47,10 @@ public final class PlayerSessionListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
+        // Before unloading: the plate is a scoreboard team, and the scoreboard
+        // is saved with the world, so leaving it behind would accumulate one
+        // dead team per player who ever logged in.
+        plugin.nameplates().clear(event.getPlayer());
         plugin.players().unload(event.getPlayer());
     }
 

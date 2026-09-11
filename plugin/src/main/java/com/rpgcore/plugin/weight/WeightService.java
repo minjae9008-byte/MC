@@ -25,6 +25,7 @@ public final class WeightService {
 
     private final RpgCorePlugin plugin;
     private final ItemWeightTable table;
+    private final WeightLore lore;
 
     private final NamespacedKey speedPenaltyKey;
     private final NamespacedKey jumpPenaltyKey;
@@ -34,8 +35,14 @@ public final class WeightService {
     public WeightService(RpgCorePlugin plugin, ItemWeightTable table) {
         this.plugin = plugin;
         this.table = table;
+        this.lore = new WeightLore(plugin, table);
         this.speedPenaltyKey = new NamespacedKey(plugin, "weight_speed");
         this.jumpPenaltyKey = new NamespacedKey(plugin, "weight_jump");
+    }
+
+    /** The weight tooltip writer, shared with the pickup/click listeners. */
+    public WeightLore lore() {
+        return lore;
     }
 
     /** Runs every tick; processes only dirty players, capped per tick. */
@@ -71,12 +78,19 @@ public final class WeightService {
 
         int total = 0;
         // PlayerInventory#getContents covers the 36 main slots plus armour and
-        // offhand, so one call is the whole carried load.
-        for (ItemStack stack : player.getInventory().getContents()) {
+        // offhand, so one pass is the whole carried load.
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int slot = 0; slot < contents.length; slot++) {
+            ItemStack stack = contents[slot];
             if (stack == null || stack.getType().isAir()) {
                 continue;
             }
             total += table.weightOf(stack.getType()) * stack.getAmount();
+            // The scan already has every carried stack in hand, so the weight
+            // tooltip rides along on it instead of costing a pass of its own.
+            if (lore.apply(stack)) {
+                player.getInventory().setItem(slot, stack);
+            }
         }
 
         data.weight(total);

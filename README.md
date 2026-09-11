@@ -2,6 +2,7 @@
 
 Paper 서버용 RPG 플러그인. 스탯/레벨, 직업, 순위표, 파티, 플레이어 간 거래, 소지 무게,
 장비 내구도 페널티, 연쇄 벌목, 모루 커스텀 강화, 근접 채팅을 한 덩어리로 제공합니다.
+이름표와 플레이어 목록, 아이템 툴팁에도 RPG 정보가 함께 표시됩니다.
 
 - **jar 하나가 전부입니다.** 데이터팩도, 다른 플러그인도, 외부 라이브러리도 필요 없습니다.
 - **전부 서버 사이드 로직**이라 자바와 베드락(Geyser) 플레이어가 **완전히 동일하게** 동작합니다.
@@ -170,6 +171,29 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 설정한 거리 안의 플레이어에게만 채팅이 전달됩니다. 플레이어가 입력한 `&` 색코드는
 그대로 텍스트로 나가므로 채팅을 꾸미거나 위장할 수 없습니다.
 
+### 이름표 · 플레이어 목록
+머리 위 이름표와 Tab 플레이어 목록에 파티·레벨·직업이 함께 나옵니다.
+
+```
+머리 위   [푸른사슴] Alpha Lv.6 전사
+Tab 목록  [푸른사슴] Alpha Lv.6
+```
+
+- 파티가 없거나 직업이 없으면 **그 조각만 통째로 빠집니다** — 빈 괄호가 남지 않습니다.
+- 무엇을 보여줄지는 두 곳에서 따로 정합니다(기본값: 목록에는 직업 미표시).
+- 스코어보드 팀 기능으로 붙이므로 **베드락(Geyser)에서도 똑같이 보이고**, 별도 패킷을
+  매 틱 쏘지 않습니다. 레벨·파티·직업이 실제로 바뀔 때만 갱신됩니다.
+- 접속을 끊으면 붙였던 팀도 같이 지워집니다(월드 스코어보드에 쌓이지 않음).
+  다른 플러그인이 이름표를 관리한다면 `features.nameplate` 를 끄면 됩니다.
+
+### 아이템 무게 툴팁
+아이템 설명 맨 아래에 작은 회색 글씨로 `무게 8` 한 줄이 붙습니다.
+
+- **1개당 무게**입니다. 개수와 무관한 값이라야 같은 아이템끼리 계속 겹쳐집니다.
+- 바닥에 떨어진 아이템, 상자에서 꺼낸 아이템에도 같은 줄이 붙으므로 **묶음이 갈라지지 않습니다.**
+- 다른 플러그인이 넣은 설명이나 플레이어가 붙인 이름은 건드리지 않고, 이 한 줄만 관리합니다.
+- 무게 설정을 바꾸고 `/rpgcore reload` 하면 줄도 따라서 갱신되고, 기능을 끄면 다시 지워집니다.
+
 ### UI
 - `/stats` (별칭 `/rpg`, `/rpgstats`) — 상자 GUI. 스탯 배분, 직업, 장비 상태, 모루 조합법 목록.
 - `/job` — 직업 선택 GUI. 잠긴 직업은 회색으로 표시됩니다.
@@ -211,6 +235,9 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
  O 연쇄 벌목 - 22종 원목 / 7종 도구, 반경 5, 최대 256블록
  O 모루 강화 - 7종 조합법
  O 소지 무게 - 242종 분류
+ O 머리 위 이름표 - 파티 + 레벨 + 직업
+ O 플레이어 목록 - 파티 + 레벨
+ O 무게 툴팁 - &8무게 n
  ...
 레벨: 최대 무제한, 곡선 x1.0 (Lv2 100 / Lv10 500 / Lv20 1000 XP)
 인챈트 한계: 최대 255
@@ -250,6 +277,9 @@ features:               # 끄면 관련 명령어도 막힙니다
   anvil-recipes: true
   proximity-chat: true
   hud: true
+  nameplate: true         # 머리 위 이름표
+  tablist: true           # 플레이어 목록(Tab)
+  item-weight-lore: true  # 아이템 설명의 무게 한 줄
 ```
 
 **최대 레벨** — `level.max` 에 닿으면 더 이상 XP 가 쌓이지 않습니다. 남은 XP 를 쌓아두지 않으므로,
@@ -319,6 +349,7 @@ list:
 | `leaderboard` | `size`, `cache-seconds` |
 | `proximity-chat` | `range`, `format`, `hide-out-of-range` |
 | `gui` | `title`, `size`(27~54의 9의 배수) |
+| `display` | 이름표·플레이어 목록 서식 (아래) |
 
 #### 아이템 목록 쓰는 법
 
@@ -355,6 +386,35 @@ anvil:
   `#minecraft:enchantable/durability`(내구도 있는 장비 전부).
 - **재료 선택 주의**: 그 장비의 바닐라 수리 재료(철 갑옷 + 철 주괴 등)를 쓰면 바닐라 수리를
   덮어씁니다. 기본 조합법이 철 '주괴' 대신 철 '블록', 숫돌을 쓰는 이유입니다.
+
+#### 이름표 / 플레이어 목록 꾸미기
+
+```yaml
+weight:
+  lore-format: "&8무게 %weight%"   # 아이템 툴팁 한 줄. ""(빈 값)이면 표시 안 함
+
+display:
+  # 조각별 서식. %party% %level% %job% 이 바뀝니다.
+  party-format: "&8[&d%party%&8]"
+  level-format: "&7Lv.&e%level%"
+  job-format: "&b%job%"
+
+  nameplate:        # 머리 위
+    show-party: true
+    show-level: true
+    show-job: true
+  tablist:          # Tab 목록
+    show-party: true
+    show-level: true
+    show-job: false
+```
+
+- 파티 조각은 **이름 앞**, 레벨과 직업은 **이름 뒤**에 붙습니다. 사이 공백은 자동이라
+  서식에 넣지 않아도 됩니다.
+- 해당 정보가 없으면(파티 없음·직업 없음) 그 조각은 아예 빠집니다.
+- 서식을 `""` 로 비우면 양쪽 모두에서 그 조각이 사라집니다.
+- 이름표 자체를 끄려면 `settings.yml` 의 `features.nameplate`, 목록은 `features.tablist`,
+  무게 툴팁은 `features.item-weight-lore` 를 `false` 로 두세요.
 
 #### 벌목 범위 조정
 
@@ -429,21 +489,28 @@ Paper 26.2 (빌드 121, Java 25) 실서버에 봇 3명을 접속시켜 위 기�
   자작·껍질벗긴·네더 줄기 / 나무 도끼 / 중간 캐기 / `max-blocks` 상한 — 전부 확인.
   옆 나무는 번지지 않고(반경 5), 캔 블록 아래로도 내려가지 않음
 - 설정: 최대 레벨 3 적용 시 Lv.3 에서 XP 정지, 배수 1.5 적용 시 Lv20 요구 XP 1,000 → 1,477,892,
-  `respect-vanilla-limits: true` 에서 날카로움 5 추가 강화 거부 Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어
-실행 검증하지 못했습니다.
+  `respect-vanilla-limits: true` 에서 날카로움 5 추가 강화 거부
+- 이름표/목록: 파티 가입·이름 변경·탈퇴, 직업 선택, 레벨업이 두 곳에 모두 반영.
+  기능을 끄면 팀이 사라지고(`team list` → 없음) 목록 이름도 원래대로, 다시 켜면 복구.
+  접속 종료 시 팀 제거, 단 다른 구성원이 들어 있는 팀은 건드리지 않음
+- 무게 툴팁: 아이템·도구 모두에 기울임 없는 회색 한 줄, 바닥에 떨어진 아이템도 표기됨.
+  표기된 5개 + 표기 안 된 7개를 주워 **한 칸 12개로 합쳐짐**, 상자에서 꺼낸 9개도 합쳐져 14개.
+  기능을 끄면 줄과 표식이 모두 제거됨
+
+Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어 실행 검증하지 못했습니다.
 
 ## 구조
 
 ```
 plugin/
   pom.xml                    의존성 1개 (paper-api, provided)
-  src/main/resources/        plugin.yml, config.yml
+  src/main/resources/        plugin.yml, settings.yml, jobs.yml, config.yml
   src/main/java/com/rpgcore/plugin/
     RpgCorePlugin.java       진입점, 커맨드, 반복 태스크 2개
     config/                  settings/jobs/config.yml 타입 뷰 + 기본값 병합
     data/                    PlayerData 캐시 + 스코어보드 미러
     stats/                   StatType, 레벨/배분/어트리뷰트, 세션·XP 리스너
-    weight/                  무게 테이블, 계산, 리스너
+    weight/                  무게 테이블, 계산, 툴팁 표기, 리스너
     gear/                    내구도 → 성능, 투사체 처리
     anvil/                   조합법 로딩·결과 생성·모루 연동
     tree/                    큐 기반 연쇄 벌목
@@ -452,6 +519,7 @@ plugin/
     party/                   파티 상태·이름·초대·XP 분배, parties.yml 저장
     trade/                   공유 상자 UI 기반 1:1 거래
     command/                 /job, /leaderboard, /party, /p, /trade
+    display/                 이름표(스코어보드 팀) + 플레이어 목록
     hud/ gui/ chat/          액션바, 상자 GUI, 근접 채팅
     voice/                   Simple Voice Chat 거리 확인 (의존성 없음)
     util/                    스코어보드, 어트리뷰트·인챈트·태그 헬퍼

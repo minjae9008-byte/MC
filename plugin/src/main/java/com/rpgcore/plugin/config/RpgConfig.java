@@ -3,6 +3,12 @@ package com.rpgcore.plugin.config;
 import com.rpgcore.plugin.RpgCorePlugin;
 import org.bukkit.configuration.file.FileConfiguration;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 /**
  * Typed view over the three config files. Values are read once per reload and
  * cached in fields, so nothing on a hot path parses YAML.
@@ -18,6 +24,11 @@ public final class RpgConfig {
 
     public static final String SETTINGS_FILE = "settings.yml";
     public static final String JOBS_FILE = "jobs.yml";
+
+    private static final List<String> DISPLAY_SEGMENTS = List.of("party", "level", "job");
+    private static final List<String> DISPLAY_SURFACES = List.of("nameplate", "tablist");
+    private static final Map<String, String> DISPLAY_LABELS =
+            Map.of("party", "파티", "level", "레벨", "job", "직업");
 
     private final RpgCorePlugin plugin;
     private FileConfiguration settings;
@@ -42,6 +53,9 @@ public final class RpgConfig {
     private boolean anvilEnabled;
     private boolean proximityEnabled;
     private boolean hudEnabled;
+    private boolean nameplateEnabled;
+    private boolean tablistEnabled;
+    private boolean weightLoreEnabled;
 
     // --- config.yml ---
     private int baseHp;
@@ -57,6 +71,7 @@ public final class RpgConfig {
     private int weightPerStr;
     private int weightScanBatch;
     private int weightRescanInterval;
+    private String weightLoreFormat;
 
     private int treeFellMaxBlocks;
     private int treeFellPerTick;
@@ -73,6 +88,10 @@ public final class RpgConfig {
     private boolean durabilityAffectsRanged;
 
     private int hudInterval;
+
+    /** Segment name -> format string, and surface.segment -> shown. */
+    private final Map<String, String> displayFormats = new HashMap<>();
+    private final Set<String> displayShown = new HashSet<>();
 
     private double proximityRange;
     private boolean proximityHideOutOfRange;
@@ -131,6 +150,9 @@ public final class RpgConfig {
         anvilEnabled = settings.getBoolean("features.anvil-recipes", true);
         proximityEnabled = settings.getBoolean("features.proximity-chat", true);
         hudEnabled = settings.getBoolean("features.hud", true);
+        nameplateEnabled = settings.getBoolean("features.nameplate", true);
+        tablistEnabled = settings.getBoolean("features.tablist", true);
+        weightLoreEnabled = settings.getBoolean("features.item-weight-lore", true);
 
         baseHp = c.getInt("stats.base-hp", 20);
         hpPerLevel = c.getInt("stats.hp-per-level", 2);
@@ -145,6 +167,7 @@ public final class RpgConfig {
         weightPerStr = c.getInt("weight.capacity-per-str", 10);
         weightScanBatch = Math.max(1, c.getInt("weight.scans-per-tick", 8));
         weightRescanInterval = Math.max(20, c.getInt("weight.safety-rescan-ticks", 200));
+        weightLoreFormat = c.getString("weight.lore-format", "&8무게 %weight%");
 
         // Clamped: a zero here silently turns chain felling off, which looks
         // exactly like the feature being broken.
@@ -163,6 +186,20 @@ public final class RpgConfig {
         durabilityAffectsRanged = c.getBoolean("durability-scaling.affects.ranged-damage", true);
 
         hudInterval = Math.max(5, c.getInt("hud.interval-ticks", 20));
+
+        displayFormats.clear();
+        displayShown.clear();
+        for (String segment : DISPLAY_SEGMENTS) {
+            displayFormats.put(segment, c.getString("display." + segment + "-format", ""));
+            for (String surface : DISPLAY_SURFACES) {
+                // Defaulted per surface: the plate has room for all three, a
+                // player-list row is narrow and the job would crowd it out.
+                boolean fallback = !("tablist".equals(surface) && "job".equals(segment));
+                if (c.getBoolean("display." + surface + ".show-" + segment, fallback)) {
+                    displayShown.add(surface + '.' + segment);
+                }
+            }
+        }
 
         proximityRange = c.getDouble("proximity-chat.range", 24);
         proximityHideOutOfRange = c.getBoolean("proximity-chat.hide-out-of-range", true);
@@ -304,6 +341,43 @@ public final class RpgConfig {
 
     public boolean hudEnabled() {
         return hudEnabled;
+    }
+
+    public boolean nameplateEnabled() {
+        return nameplateEnabled;
+    }
+
+    public boolean tablistEnabled() {
+        return tablistEnabled;
+    }
+
+    public boolean weightLoreEnabled() {
+        return weightLoreEnabled;
+    }
+
+    public String weightLoreFormat() {
+        return weightLoreFormat;
+    }
+
+    /** Format for one nameplate segment ("party", "level", "job"). */
+    public String displayFormat(String segment) {
+        return displayFormats.getOrDefault(segment, "");
+    }
+
+    /** Whether a surface ("nameplate", "tablist") shows that segment. */
+    public boolean displayShows(String surface, String segment) {
+        return displayShown.contains(surface + '.' + segment);
+    }
+
+    /** What one surface is set to show, for /rpgcore check. */
+    public String displaySummary(String surface) {
+        StringBuilder out = new StringBuilder();
+        for (String segment : DISPLAY_SEGMENTS) {
+            if (displayShows(surface, segment)) {
+                out.append(out.isEmpty() ? "" : " + ").append(DISPLAY_LABELS.get(segment));
+            }
+        }
+        return out.isEmpty() ? "표시할 항목 없음" : out.toString();
     }
 
     public int baseHp() {
