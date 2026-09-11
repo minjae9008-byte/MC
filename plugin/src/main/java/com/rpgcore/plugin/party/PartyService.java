@@ -50,6 +50,10 @@ public final class PartyService {
         storage.save(byId.values());
     }
 
+    public int count() {
+        return byId.size();
+    }
+
     public boolean enabled() {
         return plugin.rpgConfig().partyEnabled();
     }

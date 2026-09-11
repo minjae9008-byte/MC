@@ -29,9 +29,9 @@ commands:
     description: Trade items with another player.
     aliases: [거래, tr]
   rpgcore:
-    description: RPGCore admin commands (reload, recipes, givexp, reset).
+    description: RPGCore admin commands (reload, check, recipes, givexp, reset).
     permission: rpgcore.admin
-    usage: /rpgcore reload | recipes | givexp <player> <amount> | reset <player>
+    usage: /rpgcore reload | check | recipes | givexp <player> <amount> | reset <player>
     default: op
 
 permissions:

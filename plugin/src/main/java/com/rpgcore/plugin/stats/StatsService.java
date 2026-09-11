@@ -82,15 +82,24 @@ public final class StatsService {
             return;
         }
         PlayerData data = plugin.players().get(player);
+        if (atMaxLevel(data)) {
+            // Capped: XP is dropped rather than banked, so lifting the cap
+            // later does not hand everyone a pile of instant levels.
+            announceMaxLevel(player, data);
+            return;
+        }
         data.xp(data.xp() + amount);
 
         boolean levelled = false;
-        while (data.xp() >= data.xpNeed() && data.xpNeed() > 0) {
+        while (data.xp() >= data.xpNeed() && data.xpNeed() > 0 && !atMaxLevel(data)) {
             data.xp(data.xp() - data.xpNeed());
             data.level(data.level() + 1);
             data.points(data.points() + plugin.rpgConfig().pointsPerLevel());
             data.xpNeed(xpNeedFor(data.level()));
             levelled = true;
+        }
+        if (atMaxLevel(data)) {
+            data.xp(0);
         }
 
         if (levelled) {
@@ -117,9 +126,26 @@ public final class StatsService {
         return true;
     }
 
+    /**
+     * XP needed to leave {@code level}:
+     *   (xp-base + (level-1) * xp-growth) * xp-multiplier^(level-1)
+     *
+     * A multiplier of 1.0 leaves the straight line the plugin always had, and
+     * anything above it bends the curve upward. Clamped because the
+     * exponential overflows an int quickly at high multipliers.
+     */
     public int xpNeedFor(int level) {
         RpgConfig config = plugin.rpgConfig();
-        return config.xpBase() + Math.max(0, level - 1) * config.xpGrowth();
+        int steps = Math.max(0, level - 1);
+        double linear = config.xpBase() + (double) steps * config.xpGrowth();
+        double curved = linear * Math.pow(config.xpMultiplier(), steps);
+        return (int) Math.clamp(Math.round(curved), 1L, (long) Integer.MAX_VALUE);
+    }
+
+    /** True when the player cannot level any further. */
+    public boolean atMaxLevel(PlayerData data) {
+        int max = plugin.rpgConfig().maxLevel();
+        return max > 0 && data.level() >= max;
     }
 
     public void recalculate(Player player) {
@@ -201,9 +227,20 @@ public final class StatsService {
         return new NamespacedKey(plugin, "job_" + kind + "_" + attributeId.replace(':', '.'));
     }
 
+    /** Told once per minute at most, so a capped player is not spammed. */
+    private void announceMaxLevel(Player player, PlayerData data) {
+        long now = System.currentTimeMillis();
+        if (now - data.lastMaxLevelNoticeMs() < 60_000L) {
+            return;
+        }
+        data.lastMaxLevelNoticeMs(now);
+        player.sendMessage(ChatColor.GOLD + "[RPGCore] 최대 레벨 " + data.level() + " 에 도달했습니다.");
+    }
+
     private void announceLevelUp(Player player, PlayerData data) {
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0F, 1.0F);
         player.sendMessage(ChatColor.GOLD + "[RPGCore] " + ChatColor.YELLOW + "LEVEL UP! Lv." + data.level()
+                + (atMaxLevel(data) ? ChatColor.GOLD + " (최대)" : "")
                 + ChatColor.AQUA + "  (스탯 포인트 " + data.points() + "개 보유)");
     }
 }

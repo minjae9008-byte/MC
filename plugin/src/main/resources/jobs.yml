@@ -1,0 +1,99 @@
+# ==========================================================================
+#  RPGCore - 직업(클래스) 정의
+# ==========================================================================
+#  직업을 추가하려면 list: 아래에 블록을 하나 더 붙이면 됩니다. 코드 수정 없음.
+#  고친 뒤 /rpgcore reload 하면 바로 반영됩니다.
+#
+#  쓸 수 있는 항목
+#    name           보여줄 이름. &0~&f 색코드 사용 가능
+#    icon           메뉴에 뜰 아이템 ID
+#    description    설명 줄 목록
+#    min-level      이 RPG 레벨부터 선택 가능 (없으면 1)
+#    stat-bonus     STR/DEX/VIT/AGI/LUCK 에 더해줄 값
+#    weight-bonus   최대 소지무게에 더해줄 값
+#    xp-multiplier  획득 경험치 배율 (1.0 = 그대로)
+#    attributes.add       바닐라 어트리뷰트에 고정값 더하기
+#    attributes.multiply  합계에 비율 곱하기 (0.1 = +10%)
+#
+#  attributes 에 쓸 수 있는 ID (이 서버에 없는 ID 는 경고만 남기고 무시):
+#    max_health  attack_damage  attack_speed  armor  armor_toughness
+#    movement_speed  knockback_resistance  block_break_speed  luck
+#    jump_strength  scale  step_height ...
+# ==========================================================================
+
+# 한 번 고른 직업을 바꿀 수 있는지.
+allow-change: true
+# 직업을 바꿀 때 소모할 바닐라 경험치 레벨 (0 = 무료).
+change-cost-levels: 0
+# 직업 선택 창 제목.
+menu-title: "&8직업 선택"
+
+allow-change: true          # false 면 한 번 고르면 못 바꿈
+change-cost-levels: 0       # 변경 시 소모할 바닐라 경험치 레벨
+menu-title: "&8직업 선택"
+list:
+  warrior:
+    name: "&c전사"
+    icon: minecraft:iron_sword
+    description:
+      - "&7앞에서 버티며 싸우는 직업."
+    stat-bonus:
+      str: 3
+      vit: 2
+    weight-bonus: 40
+    attributes:
+      add:
+        max_health: 4
+      multiply:
+        knockback_resistance: 0.15
+  archer:
+    name: "&a궁수"
+    icon: minecraft:bow
+    description:
+      - "&7거리를 두고 싸우는 직업."
+    stat-bonus:
+      dex: 3
+      agi: 2
+    attributes:
+      multiply:
+        movement_speed: 0.08
+  miner:
+    name: "&e광부"
+    icon: minecraft:iron_pickaxe
+    description:
+      - "&7캐고 나르는 데 특화된 직업."
+    stat-bonus:
+      str: 2
+      vit: 1
+    weight-bonus: 80
+    xp-multiplier: 1.1
+    attributes:
+      multiply:
+        block_break_speed: 0.25
+  rogue:
+    name: "&b도적"
+    icon: minecraft:golden_sword
+    description:
+      - "&7빠르고 운이 좋은 직업."
+    min-level: 5
+    stat-bonus:
+      agi: 3
+      luck: 3
+    attributes:
+      multiply:
+        movement_speed: 0.12
+        attack_speed: 0.1
+  guardian:
+    name: "&9수호자"
+    icon: minecraft:shield
+    description:
+      - "&7맞아주는 데 특화된 직업."
+    min-level: 10
+    stat-bonus:
+      vit: 4
+    weight-bonus: 60
+    attributes:
+      add:
+        armor: 4
+        armor_toughness: 2
+        max_health: 6

@@ -48,8 +48,17 @@ public final class ItemWeightTable {
             }
         }
 
-        plugin.getLogger().info("Weight table loaded: " + weights.size() + " materials; "
-                + "anything unlisted weighs " + defaultWeight + ".");
+        if (weights.isEmpty()) {
+            plugin.getLogger().warning("The weight table is empty - every item will weigh "
+                    + defaultWeight + ". Check weight.tiers in config.yml, then /rpgcore check.");
+        } else {
+            plugin.getLogger().info("Weight table loaded: " + weights.size() + " materials; "
+                    + "anything unlisted weighs " + defaultWeight + ".");
+        }
+    }
+
+    public int size() {
+        return weights.size();
     }
 
     public int weightOf(Material material) {

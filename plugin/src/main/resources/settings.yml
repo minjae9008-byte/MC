@@ -1,0 +1,54 @@
+# ==========================================================================
+#  RPGCore - 간단 설정
+# ==========================================================================
+#  자주 바꾸는 값만 모아둔 파일입니다. 고친 뒤 /rpgcore reload 하면 바로 반영됩니다.
+#
+#   - 직업을 만들거나 고치려면      -> jobs.yml
+#   - 아이템 무게, 모루 조합법 등    -> config.yml
+#   - 지금 설정이 어떻게 읽혔는지     -> /rpgcore check
+# ==========================================================================
+
+level:
+  # 최대 레벨. 0 이면 제한 없음.
+  # 최대 레벨에 닿으면 더 이상 XP 가 쌓이지 않고 안내 메시지가 한 번 나갑니다.
+  max: 0
+
+  # 레벨 곡선. 다음 레벨까지 필요한 XP 는 이렇게 계산됩니다.
+  #   (xp-base + (현재레벨-1) x xp-growth) x (xp-multiplier ^ (현재레벨-1))
+  #
+  #   xp-multiplier 1.0  = 직선.      Lv2:100  Lv5:250  Lv10:550  Lv20:1050
+  #   xp-multiplier 1.05 = 완만한 곡선. Lv2:100  Lv5:289  Lv10:769  Lv20:2117
+  #   xp-multiplier 1.15 = 가파른 곡선. Lv2:100  Lv5:437  Lv10:1946 Lv20:15330
+  xp-base: 100
+  xp-growth: 50
+  xp-multiplier: 1.0
+
+  # 레벨업 때 주는 스탯 포인트와, 처음 시작할 때 주는 포인트.
+  points-per-level: 1
+  starting-points: 5
+
+# 경험치를 어디서 얼마나 받는지.
+xp-sources:
+  per-mob-kill: 10
+  per-tree-log: 1
+
+# 모루 강화(config.yml 의 anvil.recipes)로 올릴 수 있는 인챈트 한계.
+enchant:
+  # true  = 바닐라 최대 레벨까지만 (날카로움 5, 보호 4 ...)
+  # false = 아래 max-level 까지 계속 올릴 수 있음
+  respect-vanilla-limits: false
+  # respect-vanilla-limits 가 false 일 때의 상한. 1 ~ 255.
+  # 조합법마다 max-level 을 따로 적으면 그쪽이 우선입니다.
+  max-level: 255
+
+# 기능을 통째로 켜고 끕니다. 끄면 관련 명령어도 막힙니다.
+features:
+  jobs: true                # 직업 (/job)
+  parties: true             # 파티 (/party, /p)
+  trading: true             # 거래 (/trade)
+  leaderboard: true         # 순위표 (/leaderboard)
+  tree-felling: true        # 연쇄 벌목
+  durability-scaling: true  # 내구도에 따른 성능 저하
+  anvil-recipes: true       # 모루 커스텀 강화
+  proximity-chat: true      # 근접 채팅
+  hud: true                 # 액션바 HUD

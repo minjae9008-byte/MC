@@ -16,7 +16,10 @@ Paper 서버용 RPG 플러그인. 스탯/레벨, 직업, 순위표, 파티, 플�
    cd plugin && JAVA_HOME=/path/to/jdk-25 mvn package
    ```
 2. jar 를 서버 `plugins/` 에 넣고 재시작.
-3. 끝. `plugins/RPGCorePlugin/config.yml` 이 자동 생성됩니다.
+3. 끝. `plugins/RPGCorePlugin/` 에 설정 파일 3개가 자동 생성됩니다.
+   - `settings.yml` — 최대 레벨, 경험치 곡선, 인챈트 한계, 기능 on/off (**주로 여기만**)
+   - `jobs.yml` — 직업 정의
+   - `config.yml` — 아이템 분류, 모루 조합법 등 세부 설정
 
 기동 로그에 아래처럼 뜨면 정상입니다.
 
@@ -47,6 +50,7 @@ STR · DEX · VIT · AGI · LUCK. 레벨업마다 포인트를 받아 `/stats` �
 | LUCK | 행운 |
 
 XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
+**최대 레벨**과 **경험치 곡선(배수)** 은 `settings.yml` 에서 정합니다.
 
 ### 직업 (클래스)
 `/job` 으로 고릅니다. 직업은 **스탯 보너스 + 어트리뷰트 + 경험치 배율 + 소지무게**를 주며,
@@ -151,9 +155,15 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 이름 변경 모두 정상 동작합니다. 내구도 페널티와 맞물려 **수리 = 성능 회복**입니다.
 
 ### 연쇄 벌목
-도끼로 원목을 캐면 위·옆으로 이어진 같은 원목이 순차 제거됩니다 (2x2 굵은 나무 지원).
+도끼로 원목을 캐면 이어진 같은 원목이 전부 순차 제거됩니다. **가지와 대각선 줄기까지 따라갑니다**
+— 참나무·정글나무 가지, 아카시아의 비스듬한 줄기, 2x2 굵은 나무 모두 한 번에 잘립니다.
+
+번지는 범위는 두 가지로 묶여 있습니다.
+- **캔 블록보다 아래로는 내려가지 않습니다** — 바닥에 깔린 원목이나 옆 나무 밑동을 파먹지 않습니다.
+- **가로 반경 제한**(`max-horizontal-radius`, 기본 5) — 원목이 줄지어 있어도 옆 나무로 옮겨붙지 않습니다.
+
 큐를 틱당 몇 블록씩만 소비하므로 대형 나무에서도 렉이 없습니다.
-웅크리면 비활성, 크리에이티브 제외, 블록 수 상한 있음.
+웅크리면 비활성, 크리에이티브 제외, `max-blocks` 상한 적용.
 6면 원목(`oak_wood` 등)은 기본 목록에 없어 원목 건축물은 안전합니다.
 
 ### 근접 채팅
@@ -175,33 +185,142 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 | `/party <하위명령>` | 모두 | 파티 생성·이름변경·초대·수락·추방·해체·목록 |
 | `/p <메시지>` | 모두 | 파티 채팅 |
 | `/trade <플레이어>` | 모두 | 거래 요청 (`accept`/`deny`/`cancel`) |
-| `/rpgcore reload` | `rpgcore.admin` | config.yml 다시 읽기 |
+| `/rpgcore reload` | `rpgcore.admin` | 설정 파일 다시 읽기 |
+| `/rpgcore check` | `rpgcore.admin` | 각 기능이 실제로 뭘 읽었는지 점검 |
 | `/rpgcore recipes` | `rpgcore.admin` | 모루 조합법 목록 |
 | `/rpgcore givexp <player> <amount>` | `rpgcore.admin` | XP 지급 |
 | `/rpgcore reset <player>` | `rpgcore.admin` | 스탯 초기화 |
 
 ## 설정
 
-`plugins/RPGCorePlugin/config.yml` 하나만 보면 됩니다.
+설정은 `plugins/RPGCorePlugin/` 안의 **파일 3개**로 나뉩니다. 목적이 달라서 나눠 뒀으니,
+바꾸고 싶은 게 어디 있는지만 알면 됩니다.
+
+| 파일 | 무엇이 들어 있나 | 언제 여나 |
+|---|---|---|
+| **`settings.yml`** | 최대 레벨, 경험치 곡선, 인챈트 한계, 기능 on/off | **대부분 여기만 보면 됩니다** |
+| **`jobs.yml`** | 직업 정의 | 직업을 만들거나 고칠 때 |
+| `config.yml` | 아이템 무게 분류, 모루 조합법, 벌목 대상, GUI, 채팅 | 세부 조정이 필요할 때 |
+
+고친 뒤 **`/rpgcore reload`** 하면 재시작 없이 반영됩니다.
+지금 설정이 실제로 어떻게 읽혔는지는 **`/rpgcore check`** 로 확인하세요.
+
+```
+===== RPGCore 점검 =====
+ O 직업 - 5종 (jobs.yml)
+ O 연쇄 벌목 - 22종 원목 / 7종 도구, 반경 5, 최대 256블록
+ O 모루 강화 - 7종 조합법
+ O 소지 무게 - 242종 분류
+ ...
+레벨: 최대 무제한, 곡선 x1.0 (Lv2 100 / Lv10 500 / Lv20 1000 XP)
+인챈트 한계: 최대 255
+```
+
+> 예전 버전에서 올라온 서버라면 `config.yml` 이 옛 구조일 수 있습니다. jar 안의 기본값이
+> 항상 뒤에 깔리므로 **빠진 항목은 기본값으로 동작하고 파일은 그대로 둡니다.**
+> `settings.yml` 이 처음 만들어질 때 `config.yml` 에 직접 적어 둔 값(경험치, 기능 on/off 등)은
+> 자동으로 옮겨오고 로그에 알려줍니다.
+
+### settings.yml — 자주 바꾸는 것
+
+```yaml
+level:
+  max: 0                # 최대 레벨. 0 이면 제한 없음
+  xp-base: 100          # 레벨 2 가 되는 데 필요한 XP
+  xp-growth: 50         # 레벨이 오를 때마다 추가로 붙는 XP
+  xp-multiplier: 1.0    # 레벨당 곱해지는 배수
+  points-per-level: 1
+  starting-points: 5
+
+xp-sources:
+  per-mob-kill: 10
+  per-tree-log: 1
+
+enchant:
+  respect-vanilla-limits: false   # true 면 바닐라 최대 레벨까지만
+  max-level: 255                  # 위가 false 일 때의 상한
+
+features:               # 끄면 관련 명령어도 막힙니다
+  jobs: true
+  parties: true
+  trading: true
+  leaderboard: true
+  tree-felling: true
+  durability-scaling: true
+  anvil-recipes: true
+  proximity-chat: true
+  hud: true
+```
+
+**최대 레벨** — `level.max` 에 닿으면 더 이상 XP 가 쌓이지 않습니다. 남은 XP 를 쌓아두지 않으므로,
+나중에 상한을 올려도 전원이 한꺼번에 레벨업하는 일은 없습니다.
+
+**레벨 배수** — 다음 레벨까지 필요한 XP 는 이렇게 계산됩니다.
+
+```
+(xp-base + (현재레벨-1) × xp-growth) × (xp-multiplier ^ (현재레벨-1))
+```
+
+| xp-multiplier | Lv2 | Lv10 | Lv20 |
+|---|---|---|---|
+| `1.0` (직선) | 100 | 500 | 1,000 |
+| `1.05` (완만) | 100 | 769 | 2,117 |
+| `1.5` (아주 가파름) | 100 | 12,814 | 1,477,892 |
+
+**인챈트 한계** — 모루 커스텀 강화로 올릴 수 있는 상한입니다.
+`respect-vanilla-limits: true` 면 날카로움 5, 보호 4 처럼 바닐라 최대치에서 멈춥니다.
+`false` 면 `max-level`(최대 255)까지 계속 올라갑니다. 조합법마다 `max-level` 을 따로 적으면
+**둘 중 낮은 쪽**이 적용됩니다.
+
+### jobs.yml — 직업 만들기
+
+`list:` 아래에 블록을 하나 더 붙이면 끝입니다. 코드 수정은 필요 없습니다.
+
+```yaml
+allow-change: true        # false 면 한 번 고르면 못 바꿈
+change-cost-levels: 0     # 변경 시 소모할 바닐라 경험치 레벨
+menu-title: "&8직업 선택"
+
+list:
+  mage:                          # 이게 /job <id> 의 id 입니다
+    name: "&5마법사"
+    icon: minecraft:blaze_rod
+    description:
+      - "&7설명 줄."
+    min-level: 15                # 이 RPG 레벨부터 선택 가능
+    stat-bonus:                  # 직접 찍은 포인트 위에 더해짐
+      luck: 5
+      dex: 2
+    weight-bonus: 0              # 최대 소지무게에 더하기
+    xp-multiplier: 1.2           # 획득 경험치 배율
+    attributes:
+      add:                       # 고정값 더하기
+        max_health: 2
+      multiply:                  # 합계에 비율 곱하기 (0.1 = +10%)
+        movement_speed: 0.05
+```
+
+`attributes` 에는 **바닐라 어트리뷰트 ID 를 그대로** 씁니다:
+`max_health` `attack_damage` `attack_speed` `armor` `armor_toughness`
+`movement_speed` `knockback_resistance` `block_break_speed` `luck` `jump_strength` 등.
+이 서버에 없는 ID 는 경고만 남기고 무시하므로 설정이 통째로 깨지지 않습니다.
+
+### config.yml — 세부 설정
 
 | 섹션 | 주요 값 |
 |---|---|
-| `leveling` | `xp-base`(레벨2 요구량), `xp-growth`(레벨당 증가), `starting-points`, `points-per-level` |
 | `stats` | 스탯 1당 배율 — `attack-damage-per-str`, `hp-per-vit`, `movement-speed-per-agi` 등 |
-| `weight` | `base-capacity`, `capacity-per-str`, `default-item-weight`, `tiers.*`(등급별 무게와 아이템 목록) |
-| `tree-felling` | `max-blocks`, `blocks-per-tick`, `sneak-disables`, `damage-tool`, `respect-protection-plugins`, `logs`, `tools` |
-| `durability-scaling` | `full-performance-above`, `minimum-performance`, `affects.*`(근접/방어/채굴/원거리 개별 on-off) |
+| `weight` | `base-capacity`, `capacity-per-str`, `default-item-weight`, `tiers.*` |
+| `tree-felling` | `max-blocks`, `blocks-per-tick`, **`max-horizontal-radius`**, `sneak-disables`, `damage-tool`, `logs`, `tools` |
+| `durability-scaling` | `full-performance-above`, `minimum-performance`, `affects.*` |
 | `anvil` | `recipes.*` — 대상·재료·수량·인챈트·수리량 |
-| `jobs` | `allow-change`, `change-cost-levels`, `list.*`(직업 정의) |
-| `leaderboard` | `size`(표시 인원), `cache-seconds` |
-| `party` | `max-size`, `name-max-length`, `invite-timeout-seconds`, `friendly-fire`, `chat-prefix`(`%party%` 사용 가능), `xp.share-range`, `xp.bonus-per-member` |
-| `trade` | `enabled`, `request-timeout-seconds`, `max-distance`, `title` |
-| `hud` | `enabled`, `interval-ticks` |
-| `xp-sources` | `per-mob-kill`, `per-tree-log` |
-| `proximity-chat` | `range`, `format`, `hide-out-of-range`, `warn-voice-range-mismatch` |
+| `party` | `max-size`, `name-max-length`, `friendly-fire`, `chat-prefix`(`%party%`), `xp.*` |
+| `trade` | `request-timeout-seconds`, `max-distance`, `title` |
+| `leaderboard` | `size`, `cache-seconds` |
+| `proximity-chat` | `range`, `format`, `hide-out-of-range` |
 | `gui` | `title`, `size`(27~54의 9의 배수) |
 
-### 아이템 목록 쓰는 법
+#### 아이템 목록 쓰는 법
 
 `weight.tiers.*.items`, `tree-felling.logs` / `tools`, `anvil` 의 `target` 은 모두 같은 문법입니다.
 
@@ -215,7 +334,7 @@ items:
 이 서버 버전에 없는 항목은 **경고만 남기고 건너뜁니다.** 목록 전체가 죽지 않으므로
 설정 하나로 여러 버전을 커버할 수 있습니다.
 
-### 모루 조합법 추가하기
+#### 모루 조합법 추가하기
 
 ```yaml
 anvil:
@@ -226,51 +345,29 @@ anvil:
       ingredient: minecraft:flint                      # 오른쪽 칸 재료
       ingredient-amount: 2
       repair-percent: 0                                # 최대 내구도의 N% 회복
+      level-cost: 0                                    # 소모할 경험치 레벨
       enchantments:
         sharpness: 1                                   # 1회당 올릴 레벨
 ```
 
-- `level-cost` 는 기본 0(무료), 인챈트 상한도 기본으로 없습니다. 되살리려면 명시하세요:
-  ```yaml
-      level-cost: 5
-      enchantments:
-        sharpness:
-          levels: 1
-          max-level: 5
-  ```
-- 안전 하드 상한은 255입니다.
-- **재료 선택 주의**: 그 장비의 바닐라 수리 재료(철 갑옷 + 철 주괴 등)를 쓰면 바닐라 수리를
-  덮어씁니다. 기본 조합법이 철 '주괴' 대신 철 '블록', 숫돌을 쓰는 이유입니다.
 - 자주 쓰는 대상 태그: `#minecraft:enchantable/sharp_weapon`(검·도끼),
   `#minecraft:enchantable/mining`(채굴 도구), `#minecraft:enchantable/armor`(방어구),
   `#minecraft:enchantable/durability`(내구도 있는 장비 전부).
+- **재료 선택 주의**: 그 장비의 바닐라 수리 재료(철 갑옷 + 철 주괴 등)를 쓰면 바닐라 수리를
+  덮어씁니다. 기본 조합법이 철 '주괴' 대신 철 '블록', 숫돌을 쓰는 이유입니다.
 
-### 직업 추가하기
+#### 벌목 범위 조정
 
 ```yaml
-jobs:
-  list:
-    mage:                         # 아무 키나 가능. 이게 /job <id> 의 id 입니다
-      name: "&5마법사"
-      icon: minecraft:blaze_rod
-      description:
-        - "&7설명 줄."
-      min-level: 15               # 이 레벨부터 선택 가능
-      stat-bonus:                 # 직접 찍은 포인트 위에 더해짐
-        luck: 5
-      weight-bonus: 0
-      xp-multiplier: 1.2
-      attributes:
-        add:                      # 고정값 더하기
-          max_health: 2
-        multiply:                 # 합계에 비율 곱하기 (0.1 = +10%)
-          movement_speed: 0.05
+tree-felling:
+  max-blocks: 256              # 한 그루당 상한
+  blocks-per-tick: 12          # 틱당 제거 수
+  max-horizontal-radius: 5     # 원점에서 가로로 이만큼까지만 번짐
 ```
 
-`attributes` 에는 **바닐라 어트리뷰트 ID 를 그대로** 쓸 수 있습니다 — `max_health`,
-`attack_damage`, `attack_speed`, `armor`, `armor_toughness`, `movement_speed`,
-`knockback_resistance`, `block_break_speed`, `luck` 등. 이 서버에 없는 ID 는 경고만
-남기고 무시합니다.
+`max-horizontal-radius` 가 가지를 따라 어디까지 번질지를 정합니다. 기본 5 면 아카시아처럼
+가지가 긴 나무도 다 잘리면서 옆 나무로는 옮겨붙지 않습니다. 나무가 빽빽한 서버라면 3~4 로
+줄이고, 거대 정글나무를 통째로 자르고 싶으면 7~8 로 올리세요.
 
 ### 새 스탯 추가하기
 
@@ -327,7 +424,12 @@ Paper 26.2 (빌드 121, Java 25) 실서버에 봇 3명을 접속시켜 위 기�
   파티장 승계, 아군 공격·화살 차단
 - 파티 XP: 3명 접속 시 각 +4, 한 명이 나가면 각 +5 이고 **나간 사람은 그대로**
 - 거래: 다이아 5 ↔ 에메랄드 7 정확히 교환, 상대 칸 탈취 차단, 공간 부족 시 미진행,
-  취소·창 닫기·접속 종료 시 물건 전량 반환 Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어
+  취소·창 닫기·접속 종료 시 물건 전량 반환
+- 연쇄 벌목: 곧은 기둥 / 잎 달린 나무 / 2x2 정글 / **가지 달린 나무** / **아카시아식 대각선 줄기** /
+  자작·껍질벗긴·네더 줄기 / 나무 도끼 / 중간 캐기 / `max-blocks` 상한 — 전부 확인.
+  옆 나무는 번지지 않고(반경 5), 캔 블록 아래로도 내려가지 않음
+- 설정: 최대 레벨 3 적용 시 Lv.3 에서 XP 정지, 배수 1.5 적용 시 Lv20 요구 XP 1,000 → 1,477,892,
+  `respect-vanilla-limits: true` 에서 날카로움 5 추가 강화 거부 Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어
 실행 검증하지 못했습니다.
 
 ## 구조
@@ -338,7 +440,7 @@ plugin/
   src/main/resources/        plugin.yml, config.yml
   src/main/java/com/rpgcore/plugin/
     RpgCorePlugin.java       진입점, 커맨드, 반복 태스크 2개
-    config/                  config.yml 타입 뷰 (핫패스에서 YAML 파싱 없음)
+    config/                  settings/jobs/config.yml 타입 뷰 + 기본값 병합
     data/                    PlayerData 캐시 + 스코어보드 미러
     stats/                   StatType, 레벨/배분/어트리뷰트, 세션·XP 리스너
     weight/                  무게 테이블, 계산, 리스너

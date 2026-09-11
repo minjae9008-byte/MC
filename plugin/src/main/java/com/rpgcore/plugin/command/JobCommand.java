@@ -27,7 +27,7 @@ public final class JobCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("이 명령어는 플레이어만 사용할 수 있습니다.");
             return true;
         }
-        if (plugin.jobs().isEmpty()) {
+        if (!plugin.rpgConfig().jobsEnabled() || plugin.jobs().isEmpty()) {
             player.sendMessage(ChatColor.RED + "[RPGCore] 이 서버에는 직업이 설정되어 있지 않습니다.");
             return true;
         }

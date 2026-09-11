@@ -100,7 +100,12 @@ public final class AnvilService {
                 // No vanilla ceiling by default: a recipe can be applied as
                 // many times as the player has materials for. Set max-level
                 // explicitly to put a limit back.
-                int maxLevel = enchants.getInt(key + ".max-level", AnvilRecipe.HARD_LEVEL_CEILING);
+                // settings.yml sets the server-wide ceiling; a recipe may set
+                // its own max-level, and the lower of the two wins.
+                int serverCap = plugin.rpgConfig().enchantRespectVanilla()
+                        ? enchantment.getMaxLevel()
+                        : plugin.rpgConfig().enchantMaxLevel();
+                int maxLevel = Math.min(serverCap, enchants.getInt(key + ".max-level", serverCap));
                 grants.add(new AnvilRecipe.Grant(enchantment, levels,
                         Math.clamp(maxLevel, 1, AnvilRecipe.HARD_LEVEL_CEILING)));
             }
@@ -209,7 +214,7 @@ public final class AnvilService {
         }
         for (AnvilRecipe.Grant grant : recipe.grants()) {
             String limit = grant.maxLevel() >= AnvilRecipe.HARD_LEVEL_CEILING
-                    ? "" : " (최대 " + grant.maxLevel() + ")";
+                    ? " (상한 없음)" : " (최대 " + grant.maxLevel() + ")";
             effects.add(key(grant.enchantment()) + " +" + grant.levels() + limit);
         }
         return out.append(ChatColor.GREEN).append(String.join(", ", effects)).toString();

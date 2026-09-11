@@ -26,6 +26,10 @@ public final class LeaderboardCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!plugin.rpgConfig().leaderboardEnabled()) {
+            sender.sendMessage(ChatColor.RED + "[순위] 이 서버에서는 순위표가 꺼져 있습니다.");
+            return true;
+        }
         String category = args.length > 0 ? args[0].toLowerCase(Locale.ROOT) : "level";
         if (!plugin.leaderboard().isCategory(category)) {
             sender.sendMessage(ChatColor.RED + "[순위] 알 수 없는 항목: " + args[0]

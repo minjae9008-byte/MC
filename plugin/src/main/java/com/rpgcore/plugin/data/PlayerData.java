@@ -50,6 +50,7 @@ public final class PlayerData {
     private int armorCondition = 100;
     private boolean gearWarned;
     private long lastGearWarnMs;
+    private long lastMaxLevelNoticeMs;
 
     public PlayerData() {
         for (StatType type : StatType.values()) {
@@ -218,6 +219,14 @@ public final class PlayerData {
 
     public long lastGearWarnMs() {
         return lastGearWarnMs;
+    }
+
+    public long lastMaxLevelNoticeMs() {
+        return lastMaxLevelNoticeMs;
+    }
+
+    public void lastMaxLevelNoticeMs(long lastMaxLevelNoticeMs) {
+        this.lastMaxLevelNoticeMs = lastMaxLevelNoticeMs;
     }
 
     public void lastGearWarnMs(long lastGearWarnMs) {

@@ -54,7 +54,7 @@ public final class JobMenu {
         Holder holder = new Holder();
         Inventory inv = plugin.getServer().createInventory(holder, size,
                 ChatColor.translateAlternateColorCodes('&',
-                        plugin.getConfig().getString("jobs.menu-title", "&8직업 선택")));
+                        plugin.jobs().menuTitle()));
         holder.setInventory(inv);
 
         RpgJob current = plugin.jobs().of(player);
@@ -80,7 +80,7 @@ public final class JobMenu {
         } else if (!unlocked) {
             lore.add(ChatColor.RED + "레벨이 부족합니다.");
         } else {
-            int cost = plugin.getConfig().getInt("jobs.change-cost-levels", 0);
+            int cost = plugin.jobs().changeCostLevels();
             lore.add(ChatColor.YELLOW + "클릭하여 선택"
                     + (cost > 0 ? ChatColor.GRAY + " (경험치 레벨 " + cost + " 소모)" : ""));
         }

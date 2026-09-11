@@ -179,7 +179,7 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     private boolean adminCommand(CommandSender sender, String[] args) {
         if (args.length == 0) {
-            sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | recipes | givexp <player> <amount> | reset <player>");
+            sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | check | recipes | givexp <player> <amount> | reset <player>");
             return true;
         }
 
@@ -195,6 +195,10 @@ public final class RpgCorePlugin extends JavaPlugin {
                     stats.recalculate(player);
                 }
                 sender.sendMessage(ChatColor.GREEN + "[RPGCore] 설정을 다시 불러왔습니다.");
+                return true;
+            }
+            case "check" -> {
+                report(sender);
                 return true;
             }
             case "recipes" -> {
@@ -254,7 +258,7 @@ public final class RpgCorePlugin extends JavaPlugin {
                 return true;
             }
             default -> {
-                sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | recipes | givexp <player> <amount> | reset <player>");
+                sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | check | recipes | givexp <player> <amount> | reset <player>");
                 return true;
             }
         }
@@ -274,6 +278,42 @@ public final class RpgCorePlugin extends JavaPlugin {
         if (executor instanceof org.bukkit.command.TabCompleter completer) {
             command.setTabCompleter(completer);
         }
+    }
+
+    /**
+     * Prints what every subsystem actually loaded. A feature whose item list
+     * or recipe section came back empty behaves exactly like a broken plugin,
+     * so this makes that state readable instead of leaving operators guessing.
+     */
+    private void report(CommandSender sender) {
+        sender.sendMessage(ChatColor.GOLD + "===== RPGCore 점검 =====");
+        line(sender, "직업", rpgConfig.jobsEnabled(), jobs.jobs().size() + "종 (jobs.yml)");
+        line(sender, "연쇄 벌목", rpgConfig.treeFellEnabled(),
+                treeFell.logCount() + "종 원목 / " + treeFell.toolCount() + "종 도구, 반경 "
+                        + rpgConfig.treeFellRadius() + ", 최대 " + rpgConfig.treeFellMaxBlocks() + "블록");
+        line(sender, "모루 강화", rpgConfig.anvilEnabled(), anvil.recipes().size() + "종 조합법");
+        line(sender, "소지 무게", true, weightTable.size() + "종 분류");
+        line(sender, "내구도 페널티", rpgConfig.durabilityScalingEnabled(),
+                rpgConfig.durabilityFullAbove() + "% 이상 무패널티, 최저 " + rpgConfig.durabilityMinPerformance() + "%");
+        line(sender, "파티", rpgConfig.partyEnabled(), parties.count() + "개 활성");
+        line(sender, "거래", rpgConfig.tradeEnabled(), "최대 거리 "
+                + (rpgConfig.tradeMaxDistance() > 0 ? (int) rpgConfig.tradeMaxDistance() + "블록" : "제한 없음"));
+        line(sender, "순위표", rpgConfig.leaderboardEnabled(), rpgConfig.leaderboardSize() + "명 표시");
+        line(sender, "근접 채팅", rpgConfig.proximityEnabled(), (int) rpgConfig.proximityRange() + "블록");
+        line(sender, "HUD", rpgConfig.hudEnabled(), rpgConfig.hudInterval() + "틱 간격");
+
+        sender.sendMessage(ChatColor.GRAY + "레벨: 최대 "
+                + (rpgConfig.maxLevel() > 0 ? String.valueOf(rpgConfig.maxLevel()) : "무제한")
+                + ", 곡선 x" + rpgConfig.xpMultiplier()
+                + " (Lv2 " + stats.xpNeedFor(1) + " / Lv10 " + stats.xpNeedFor(9)
+                + " / Lv20 " + stats.xpNeedFor(19) + " XP)");
+        sender.sendMessage(ChatColor.GRAY + "인챈트 한계: "
+                + (rpgConfig.enchantRespectVanilla() ? "바닐라 최대 레벨" : "최대 " + rpgConfig.enchantMaxLevel()));
+    }
+
+    private void line(CommandSender sender, String label, boolean enabled, String detail) {
+        sender.sendMessage((enabled ? ChatColor.GREEN + " O " : ChatColor.DARK_GRAY + " X ")
+                + ChatColor.WHITE + label + ChatColor.GRAY + " - " + (enabled ? detail : "꺼짐"));
     }
 
     /** Opens the stats GUI. Same screen for Java and Bedrock players. */

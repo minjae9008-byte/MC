@@ -7,6 +7,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -38,6 +39,8 @@ public final class JobService {
      * just the attributes of the job now worn.
      */
     private final List<String> managedAttributes = new ArrayList<>();
+    /** jobs.yml, reloaded on every load() so edits need no restart. */
+    private FileConfiguration settings;
 
     public JobService(RpgCorePlugin plugin) {
         this.plugin = plugin;
@@ -47,13 +50,14 @@ public final class JobService {
     public void load() {
         jobs.clear();
         managedAttributes.clear();
-        if (!plugin.getConfig().getBoolean("jobs.enabled", true)) {
-            plugin.getLogger().info("Jobs are disabled.");
+        settings = plugin.rpgConfig().jobs();
+        if (!plugin.rpgConfig().jobsEnabled()) {
+            plugin.getLogger().info("Jobs are disabled (settings.yml features.jobs).");
             return;
         }
-        ConfigurationSection list = plugin.getConfig().getConfigurationSection("jobs.list");
+        ConfigurationSection list = settings.getConfigurationSection("list");
         if (list == null) {
-            plugin.getLogger().warning("jobs.list missing from config.yml - no jobs available.");
+            plugin.getLogger().warning("jobs.yml has no 'list:' section - no jobs available.");
             return;
         }
 
@@ -75,7 +79,7 @@ public final class JobService {
     }
 
     private RpgJob parse(String id, ConfigurationSection node) {
-        String context = "jobs.list." + id;
+        String context = "jobs.yml list." + id;
 
         Material icon = Material.matchMaterial(node.getString("icon", "minecraft:paper"));
         if (icon == null) {
@@ -129,6 +133,14 @@ public final class JobService {
         return Map.copyOf(out);
     }
 
+    public String menuTitle() {
+        return settings == null ? "&8직업 선택" : settings.getString("menu-title", "&8직업 선택");
+    }
+
+    public int changeCostLevels() {
+        return settings == null ? 0 : Math.max(0, settings.getInt("change-cost-levels", 0));
+    }
+
     public boolean isEmpty() {
         return jobs.isEmpty();
     }
@@ -168,7 +180,7 @@ public final class JobService {
                     + ChatColor.YELLOW + " 입니다.");
             return false;
         }
-        if (current != null && !plugin.getConfig().getBoolean("jobs.allow-change", true)) {
+        if (current != null && !settings.getBoolean("allow-change", true)) {
             player.sendMessage(ChatColor.RED + "[RPGCore] 이 서버에서는 직업을 바꿀 수 없습니다.");
             return false;
         }
@@ -178,7 +190,7 @@ public final class JobService {
             return false;
         }
 
-        int cost = current == null ? 0 : Math.max(0, plugin.getConfig().getInt("jobs.change-cost-levels", 0));
+        int cost = current == null ? 0 : changeCostLevels();
         if (cost > 0 && player.getLevel() < cost) {
             player.sendMessage(ChatColor.RED + "[RPGCore] 직업 변경에 경험치 레벨 " + cost
                     + " 이 필요합니다. (보유 " + player.getLevel() + ")");

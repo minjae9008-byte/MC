@@ -50,7 +50,21 @@ public final class TreeFellService {
                 plugin.getConfig().getStringList("tree-felling.logs"), "tree-felling.logs", logs);
         MaterialSets.addAll(plugin, Tag.REGISTRY_ITEMS,
                 plugin.getConfig().getStringList("tree-felling.tools"), "tree-felling.tools", tools);
-        plugin.getLogger().info("Tree felling: " + logs.size() + " log types, " + tools.size() + " tools.");
+        if (logs.isEmpty() || tools.isEmpty()) {
+            plugin.getLogger().warning("Tree felling resolved " + logs.size() + " log types and "
+                    + tools.size() + " tools - the feature will do nothing. Check tree-felling.logs"
+                    + " and tree-felling.tools in config.yml, then /rpgcore check.");
+        } else {
+            plugin.getLogger().info("Tree felling: " + logs.size() + " log types, " + tools.size() + " tools.");
+        }
+    }
+
+    public int logCount() {
+        return logs.size();
+    }
+
+    public int toolCount() {
+        return tools.size();
     }
 
     public boolean isLog(Material material) {
@@ -68,7 +82,7 @@ public final class TreeFellService {
     /** Starts a chain fell from the block the player just broke. */
     public void start(Player player, Block origin, ItemStack tool) {
         Job job = new Job(player, origin, tool, origin.getType());
-        job.enqueueNeighbours(origin, true);
+        job.enqueueNeighbours(origin, plugin.rpgConfig().treeFellRadius());
         jobs.add(job);
     }
 
@@ -79,6 +93,7 @@ public final class TreeFellService {
         }
         int perTick = plugin.rpgConfig().treeFellPerTick();
         int maxBlocks = plugin.rpgConfig().treeFellMaxBlocks();
+        int radius = plugin.rpgConfig().treeFellRadius();
 
         for (Iterator<Job> it = jobs.iterator(); it.hasNext(); ) {
             Job job = it.next();
@@ -101,7 +116,7 @@ public final class TreeFellService {
                 if (!breakBlock(job, block)) {
                     break;
                 }
-                job.enqueueNeighbours(block, false);
+                job.enqueueNeighbours(block, radius);
             }
         }
     }
@@ -169,7 +184,9 @@ public final class TreeFellService {
         private final Material logType;
         private final Deque<Block> queue = new ArrayDeque<>();
         private final Set<Block> seen = new HashSet<>();
+        private final int originX;
         private final int originY;
+        private final int originZ;
         private int broken;
         private boolean toolBroke;
 
@@ -177,18 +194,26 @@ public final class TreeFellService {
             this.player = player;
             this.tool = tool;
             this.logType = logType;
+            this.originX = origin.getX();
             this.originY = origin.getY();
+            this.originZ = origin.getZ();
             this.seen.add(origin);
         }
 
         /**
-         * The first ring also spreads sideways so 2x2 trunks (jungle/dark oak)
-         * are caught; after that propagation is upward-only, which keeps the
-         * fell from wandering into a neighbouring tree at ground level.
+         * Spreads to all 26 neighbours, which is what real trees need: oak and
+         * jungle canopies, and acacia trunks especially, run sideways as much
+         * as up, and an upward-only fill leaves most of the tree standing.
+         *
+         * Two bounds keep it from running away instead:
+         *   - nothing below the block that was broken, so a log floor or the
+         *     stump of a neighbouring tree is never eaten from above;
+         *   - a horizontal radius around the origin, so a row of logs cannot
+         *     carry the fell along into the next tree. max-blocks is the final
+         *     backstop.
          */
-        private void enqueueNeighbours(Block block, boolean firstRing) {
-            int minDy = firstRing ? 0 : 1;
-            for (int dy = minDy; dy <= 1; dy++) {
+        private void enqueueNeighbours(Block block, int radius) {
+            for (int dy = -1; dy <= 1; dy++) {
                 for (int dx = -1; dx <= 1; dx++) {
                     for (int dz = -1; dz <= 1; dz++) {
                         if (dx == 0 && dy == 0 && dz == 0) {
@@ -196,6 +221,10 @@ public final class TreeFellService {
                         }
                         Block next = block.getRelative(dx, dy, dz);
                         if (next.getY() < originY || next.getType() != logType) {
+                            continue;
+                        }
+                        if (Math.max(Math.abs(next.getX() - originX),
+                                Math.abs(next.getZ() - originZ)) > radius) {
                             continue;
                         }
                         if (seen.add(next)) {
