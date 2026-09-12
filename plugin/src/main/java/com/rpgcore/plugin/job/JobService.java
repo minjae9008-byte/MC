@@ -12,11 +12,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 
 /**
@@ -34,11 +36,13 @@ public final class JobService {
     private final NamespacedKey storageKey;
     private final Map<String, RpgJob> jobs = new LinkedHashMap<>();
     /**
-     * Every attribute any job touches. A job change has to clear the modifiers
-     * of the job left behind, so recalculate walks this whole set rather than
-     * just the attributes of the job now worn.
+     * Every attribute any job touches, or has touched since the server came
+     * up. A job change has to clear the modifiers of the job left behind, so
+     * recalculate walks this whole set rather than just the attributes of the
+     * job now worn - and it only ever grows, so a reload that removes a job
+     * does not also remove the way to take its bonus back off.
      */
-    private final List<String> managedAttributes = new ArrayList<>();
+    private final Set<String> managedAttributes = new TreeSet<>();
     /** jobs.yml, reloaded on every load() so edits need no restart. */
     private FileConfiguration settings;
 
@@ -49,19 +53,27 @@ public final class JobService {
 
     public void load() {
         jobs.clear();
-        managedAttributes.clear();
         settings = plugin.rpgConfig().jobs();
+        ConfigurationSection list = settings.getConfigurationSection("list");
+
+        // Collected before the feature check, and never dropped once seen.
+        // recalculate() takes a job's modifiers off by walking this set and
+        // writing zero, so an attribute that falls out of it loses the only
+        // thing that could ever remove it - and the modifier lives in the
+        // player's own saved data, where it would then sit forever. Turning
+        // features.jobs off, or deleting a job from jobs.yml, has to leave the
+        // clean-up path behind even though it takes the job itself away.
+        rememberAttributes(list);
+
         if (!plugin.rpgConfig().jobsEnabled()) {
             plugin.getLogger().info("Jobs are disabled (settings.yml features.jobs).");
             return;
         }
-        ConfigurationSection list = settings.getConfigurationSection("list");
         if (list == null) {
             plugin.getLogger().warning("jobs.yml has no 'list:' section - no jobs available.");
             return;
         }
 
-        TreeSet<String> touched = new TreeSet<>();
         for (String id : list.getKeys(false)) {
             ConfigurationSection node = list.getConfigurationSection(id);
             if (node == null) {
@@ -70,12 +82,39 @@ public final class JobService {
             RpgJob job = parse(id.toLowerCase(Locale.ROOT), node);
             if (job != null) {
                 jobs.put(job.id(), job);
-                touched.addAll(job.attributeAdd().keySet());
-                touched.addAll(job.attributeMul().keySet());
             }
         }
-        managedAttributes.addAll(touched);
         plugin.getLogger().info("Jobs loaded: " + jobs.size() + ".");
+    }
+
+    /**
+     * Adds every attribute named anywhere in jobs.yml to the managed set.
+     *
+     * Unknown ids are skipped silently here; {@link #readAttributes} warns
+     * about them when the job is actually parsed, and warning twice for one
+     * typo helps nobody.
+     */
+    private void rememberAttributes(ConfigurationSection list) {
+        if (list == null) {
+            return;
+        }
+        for (String id : list.getKeys(false)) {
+            ConfigurationSection node = list.getConfigurationSection(id);
+            if (node == null) {
+                continue;
+            }
+            for (String path : new String[]{"attributes.add", "attributes.multiply"}) {
+                ConfigurationSection section = node.getConfigurationSection(path);
+                if (section == null) {
+                    continue;
+                }
+                for (String key : section.getKeys(false)) {
+                    if (com.rpgcore.plugin.util.Attributes.byId(key) != null) {
+                        managedAttributes.add(key);
+                    }
+                }
+            }
+        }
     }
 
     private RpgJob parse(String id, ConfigurationSection node) {
@@ -149,7 +188,7 @@ public final class JobService {
         return List.copyOf(jobs.values());
     }
 
-    public List<String> managedAttributes() {
+    public Collection<String> managedAttributes() {
         return managedAttributes;
     }
 

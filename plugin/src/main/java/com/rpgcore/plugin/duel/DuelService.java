@@ -307,10 +307,15 @@ public final class DuelService {
             player.sendMessage(ChatColor.GRAY + "    쓰러뜨리면 승리합니다. 죽지는 않으니 아이템은 떨어지지 않습니다.");
             player.sendMessage(ChatColor.GRAY + "    포기하려면 " + ChatColor.YELLOW + "/duel forfeit");
             player.sendMessage("");
+            // Recorded before the heal below, never after: this is the health
+            // the player brought to the duel, and it is what the end of the
+            // duel hands back. Taking it afterwards would make the pre-duel
+            // heal permanent, and /duel accept + /duel forfeit a free full
+            // heal for two players willing to agree to one.
+            session.rememberHealth(player.getUniqueId(), player.getHealth());
             // A duel decided by who happened to be at three hearts is not a
-            // duel, so both start whole when the server asks for it. This is
-            // the one deliberate heal in a duel, and it is opt-out; the one at
-            // the end only puts players back where this left them.
+            // duel, so both start whole when the server asks for it. The heal
+            // lasts for the fight only.
             if (plugin.rpgConfig().duelHealBeforeStart()) {
                 healToFull(player);
             }
@@ -359,10 +364,6 @@ public final class DuelService {
         session.begin();
         for (Player player : List.of(a, b)) {
             Player other = player.equals(a) ? b : a;
-            // Taken here rather than at the accept: heal-before-start and the
-            // countdown both come first, so this is the health the duel is
-            // actually fought from and the health it should hand back.
-            session.rememberHealth(player.getUniqueId(), player.getHealth());
             player.sendActionBar(net.kyori.adventure.text.Component.text("⚔ " + other.getName()));
             player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.4F, 1.6F);
         }
@@ -581,8 +582,8 @@ public final class DuelService {
         double max = maxHealthOf(player);
         double target = session.healthAtStart(player.getUniqueId());
         if (target <= 0.0D) {
-            // The duel never reached begin() - nothing was taken off them by
-            // it, so there is nothing to give back.
+            // The duel never reached start() for this player, so it never
+            // touched their health and has nothing to give back.
             return;
         }
         player.setHealth(Math.clamp(target, 1.0D, max));

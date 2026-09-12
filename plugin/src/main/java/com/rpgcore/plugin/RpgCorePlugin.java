@@ -147,7 +147,6 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.titleMenu = new TitleMenu(this);
         this.collectionMenu = new CollectionMenu(this);
 
-        getServer().getPluginManager().registerEvents(new PlayerSessionListener(this), this);
         getServer().getPluginManager().registerEvents(new MenuListener(this), this);
         getServer().getPluginManager().registerEvents(new WeightListener(this), this);
         getServer().getPluginManager().registerEvents(new TreeFellListener(this, treeFell), this);
@@ -162,6 +161,13 @@ public final class RpgCorePlugin extends JavaPlugin {
         // Registered unconditionally; the listener itself honours the toggle,
         // so features.proximity-chat responds to /rpgcore reload like the rest.
         getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
+        // Last on purpose. Listeners of equal priority run in registration
+        // order, and this is the one that unloads a player's cached data on
+        // quit; the trade, duel and party handlers above all settle first and
+        // several of them read that cache to pay someone out. Unloading before
+        // them would let a settlement re-create the entry a moment after it was
+        // dropped, leaving it in the cache with nothing left to flush it.
+        getServer().getPluginManager().registerEvents(new PlayerSessionListener(this), this);
 
         // Two light repeating tasks total: one tick pump for the weight/tree
         // queues, and the HUD on its own slower interval.
@@ -362,7 +368,16 @@ public final class RpgCorePlugin extends JavaPlugin {
                 }
                 int amount;
                 try {
-                    amount = Integer.parseInt(args[2]);
+                    // Read as a long and range-checked, so a deduction cannot
+                    // be requested at Integer.MIN_VALUE - negating that gives
+                    // back a negative, which take() waves through as "nothing
+                    // to take" while this command reports a deduction.
+                    long requested = Long.parseLong(args[2]);
+                    if (requested < -Integer.MAX_VALUE || requested > Integer.MAX_VALUE) {
+                        sender.sendMessage(ChatColor.RED + "금액은 ±" + Integer.MAX_VALUE + " 이내여야 합니다.");
+                        return true;
+                    }
+                    amount = (int) requested;
                 } catch (NumberFormatException e) {
                     sender.sendMessage(ChatColor.RED + "숫자를 입력하세요: " + args[2]);
                     return true;
@@ -593,6 +608,14 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public AnvilService anvil() {
         return anvil;
+    }
+
+    public TreeFellService treeFell() {
+        return treeFell;
+    }
+
+    public ProgressListener progress() {
+        return progress;
     }
 
 }

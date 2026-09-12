@@ -77,7 +77,7 @@ public final class DuelSession {
         this.startedAtMs = System.currentTimeMillis();
     }
 
-    /** Records what a player was on when the fight actually started. */
+    /** Records what a player brought to the duel, before any pre-duel heal. */
     void rememberHealth(UUID uuid, double health) {
         healthAtStart.put(uuid, health);
     }

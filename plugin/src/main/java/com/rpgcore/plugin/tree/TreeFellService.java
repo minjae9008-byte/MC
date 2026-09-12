@@ -194,8 +194,14 @@ public final class TreeFellService {
         }
 
         // breakNaturally honours the tool's enchantments (silk touch, etc.).
+        Material broken = block.getType();
         block.breakNaturally(job.tool);
         job.broken++;
+        // Counted here rather than off the synthetic BlockBreakEvent above,
+        // because that event only exists when respect-protection-plugins is
+        // on. A felled log is a felled log either way, so the tally must not
+        // move with a setting that has nothing to do with it.
+        plugin.progress().countBlock(job.player, broken);
         return true;
     }
 

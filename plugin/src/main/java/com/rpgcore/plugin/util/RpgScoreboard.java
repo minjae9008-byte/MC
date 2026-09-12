@@ -84,8 +84,9 @@ public final class RpgScoreboard {
     }
 
     /**
-     * Moves every RPGCore objective from one entry name to another, leaving
-     * nothing behind under the old one.
+     * Moves the named objectives from one entry name to another, leaving none
+     * of them behind under the old one. Objectives not in the list - anyone
+     * else's - are left exactly as they were.
      *
      * The mirror is keyed by name because that is what makes it readable with
      * plain /scoreboard, and names are not stable - a player can change theirs,
@@ -103,14 +104,17 @@ public final class RpgScoreboard {
                 continue;
             }
             Score old = obj.getScore(from);
-            if (old.isScoreSet()) {
-                obj.getScore(to).setScore(old.getScore());
+            if (!old.isScoreSet()) {
+                continue;
             }
+            obj.getScore(to).setScore(old.getScore());
+            // Cleared one objective at a time, not with Scoreboard#resetScores:
+            // that clears the entry everywhere, and the main scoreboard is
+            // shared - other plugins, datapacks and command blocks key their
+            // own objectives by name too. Wiping theirs on the way past is not
+            // this plugin's to do; only what it wrote is its to remove.
+            old.resetScore();
         }
-        // resetScores clears the entry across every objective at once, which
-        // is exactly right: anything of ours left under the old name would be
-        // picked up by whoever registers that name next.
-        board.resetScores(from);
     }
 
     private Objective objective(String name) {

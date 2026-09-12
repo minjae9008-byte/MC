@@ -387,10 +387,10 @@ duel:
   max-gold-wager: 1000      # 한 번에 걸 수 있는 골드 상한. 0 이면 제한 없음
   max-duration-seconds: 300 # 이 시간이 지나면 무승부로 끝내고 건 것을 돌려줍니다
   countdown-seconds: 3      # 시작 전 카운트다운. 그동안은 서로 때릴 수 없습니다. 0 이면 즉시 시작
-  heal-before-start: true   # 시작할 때 양쪽 체력을 채워 공정하게 맞춥니다
+  # 시작할 때 양쪽 체력을 채워 공정하게 맞춥니다. 이 회복은 대결 동안만 유효하고,
+  # 끝나면 양쪽 다 대결을 시작할 때의 체력으로 돌아갑니다.
+  heal-before-start: true
   # 대결이 끝난 뒤 다음 대결까지 기다려야 하는 시간(초). 0 이면 제한 없음.
-  # heal-before-start 가 켜져 있으면 '수락 -> 기권'만 반복해도 양쪽이 계속
-  # 회복되므로, 이 값이 대결을 회복 수단으로 쓰지 못하게 막습니다.
   cooldown-seconds: 30
   announce-result: true
 

@@ -58,11 +58,28 @@ public final class ProgressListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
-        Player player = event.getPlayer();
+        // Chain-felled logs are counted by TreeFellService itself, not here.
+        // It only fires these synthetic events when respect-protection-plugins
+        // is on, so counting them here would make a player's mining tally - and
+        // every achievement written against it - quietly depend on a setting
+        // that is about protection-plugin compatibility and nothing else.
+        if (plugin.treeFell().isSelfBroken(event.getBlock())) {
+            return;
+        }
+        countBlock(event.getPlayer(), event.getBlock().getType());
+    }
+
+    /**
+     * Counts one broken block towards the mining tallies.
+     *
+     * Public because chain felling breaks blocks without a player swinging at
+     * each one, and those blocks are just as mined; routing both paths through
+     * here is what keeps the two counting the same things.
+     */
+    public void countBlock(Player player, Material type) {
         if (player.getGameMode() == GameMode.CREATIVE) {
             return;
         }
-        Material type = event.getBlock().getType();
         AchievementService achievements = plugin.achievements();
         achievements.bump(player, CounterType.BLOCKS_MINED, 1);
         if (ores.contains(type)) {
