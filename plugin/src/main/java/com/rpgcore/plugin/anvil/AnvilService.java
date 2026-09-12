@@ -21,7 +21,8 @@ import java.util.Set;
  * Loads and applies the custom anvil recipes.
  *
  * The recipes are pure config: a target set (ids or item tags, vanilla or from
- * this datapack), an ingredient, a level cost, and what the craft does -
+ * any datapack the server has installed), an ingredient, a level cost, and
+ * what the craft does -
  * restore durability, bump an enchantment, or both. Adding "flint sharpens a
  * sword" needs no code.
  *
@@ -29,6 +30,19 @@ import java.util.Set;
  * only asks this class "does anything match, and what would come out".
  */
 public final class AnvilService {
+
+    /**
+     * Level cost a recipe gets when it does not name one.
+     *
+     * Not zero, on purpose. Vanilla's anvil has historically gated the result
+     * slot on the repair cost being above zero - a free result is shown but
+     * cannot be picked up - and whether a given server build still does that
+     * is not something this plugin can ask. One level is the cheapest cost
+     * that is safe under either behaviour, so a recipe that says nothing about
+     * cost still works. An operator who knows their server allows it can put
+     * level-cost back to 0 explicitly; the load warning below says as much.
+     */
+    private static final int DEFAULT_LEVEL_COST = 1;
 
     private final RpgCorePlugin plugin;
     private final List<AnvilRecipe> recipes = new ArrayList<>();
@@ -69,6 +83,31 @@ public final class AnvilService {
             }
         }
         plugin.getLogger().info("Anvil recipes loaded: " + recipes.size() + ".");
+        warnAboutFreeRecipes();
+    }
+
+    /**
+     * Names any recipe an operator has explicitly set to cost nothing.
+     *
+     * A free result is the one custom-anvil failure that looks like the plugin
+     * not being installed at all: the recipe matches, the result renders, and
+     * the click that should take it does nothing. If that is what a server
+     * sees, this line in the log is the difference between a five-minute fix
+     * and a bug report.
+     */
+    private void warnAboutFreeRecipes() {
+        List<String> free = new ArrayList<>();
+        for (AnvilRecipe recipe : recipes) {
+            if (recipe.levelCost() <= 0) {
+                free.add(recipe.id());
+            }
+        }
+        if (!free.isEmpty()) {
+            plugin.getLogger().warning("Anvil recipes with level-cost 0: " + String.join(", ", free)
+                    + ". Vanilla can refuse to hand over a result that costs nothing, which looks like"
+                    + " the recipe doing nothing at all. Give them level-cost 1 or more if the result"
+                    + " cannot be taken out of the anvil.");
+        }
     }
 
     private AnvilRecipe parse(String id, ConfigurationSection node) {
@@ -123,7 +162,7 @@ public final class AnvilService {
                 targets,
                 ingredient,
                 Math.max(1, node.getInt("ingredient-amount", 1)),
-                Math.max(0, node.getInt("level-cost", 0)),
+                Math.max(0, node.getInt("level-cost", DEFAULT_LEVEL_COST)),
                 repairPercent,
                 List.copyOf(grants));
     }

@@ -155,7 +155,10 @@ weight:
 tree-felling:
   # Hard cap per tree, so a griefed "log wall" can never run away.
   max-blocks: 256
-  # Blocks removed per tick; the rest is queued, so big trees never spike.
+  # Blocks removed per tick, shared by every fell running on the server - not
+  # per tree. With respect-protection-plugins on this is also the ceiling on
+  # how many synthetic BlockBreakEvents other plugins have to answer per tick,
+  # which is the number that actually costs tick time.
   blocks-per-tick: 12
   # Fire a BlockBreakEvent for every chained block so WorldGuard/GriefPrevention
   # and friends can veto it. Costs one event per block; leave on unless you
@@ -212,8 +215,11 @@ durability-scaling:
 # target 은 아이템 ID 또는 태그(#minecraft:..., #rpgcore:...) 목록입니다.
 # 조합법이 일치하지 않는 조합은 전부 바닐라 모루 동작 그대로입니다.
 #
-# level-cost 는 기본 0(무료)이고, enchantments 의 max-level 을 적지 않으면
-# 상한이 없습니다 - 재료만 있으면 몇 번이든 반복해서 올릴 수 있습니다.
+# level-cost 는 적지 않으면 1 입니다. 0(무료)으로 두면 바닐라 모루가 결과물을
+# 꺼내지 못하게 막을 수 있습니다 - 결과 칸에 아이템은 보이는데 집히지 않으면
+# 그게 원인이며, 기동 로그에도 경고가 남습니다. 그럴 땐 1 이상으로 올리세요.
+# enchantments 의 max-level 을 적지 않으면 상한이 없습니다 - 재료만 있으면
+# 몇 번이든 반복해서 올릴 수 있습니다.
 # 바닐라의 "수리 비용이 너무 비쌉니다" 누적 제한도 커스텀 조합에는 걸리지
 # 않습니다(작업 횟수 비용을 올리지 않고 그대로 넘깁니다).
 # 상한을 되살리려면:
@@ -231,6 +237,7 @@ anvil:
       target: ['#minecraft:enchantable/sharp_weapon']
       ingredient: minecraft:flint
       ingredient-amount: 2
+      level-cost: 1
       enchantments:
         sharpness: 1
     smite:
@@ -238,6 +245,7 @@ anvil:
       target: ['#minecraft:enchantable/sharp_weapon']
       ingredient: minecraft:glowstone_dust
       ingredient-amount: 3
+      level-cost: 1
       enchantments:
         smite: 1
     bane:
@@ -245,6 +253,7 @@ anvil:
       target: ['#minecraft:enchantable/sharp_weapon']
       ingredient: minecraft:spider_eye
       ingredient-amount: 3
+      level-cost: 1
       enchantments:
         bane_of_arthropods: 1
     efficiency:
@@ -252,6 +261,7 @@ anvil:
       target: ['#minecraft:enchantable/mining']
       ingredient: minecraft:redstone
       ingredient-amount: 4
+      level-cost: 1
       enchantments:
         efficiency: 1
     protection:
@@ -259,6 +269,7 @@ anvil:
       target: ['#minecraft:enchantable/armor']
       ingredient: minecraft:iron_block
       ingredient-amount: 1
+      level-cost: 2
       enchantments:
         protection: 1
     reinforce:
@@ -266,6 +277,7 @@ anvil:
       target: ['#minecraft:enchantable/durability']
       ingredient: minecraft:obsidian
       ingredient-amount: 2
+      level-cost: 2
       enchantments:
         unbreaking: 1
     repair-kit:
@@ -273,6 +285,7 @@ anvil:
       target: ['#minecraft:enchantable/durability']
       ingredient: minecraft:grindstone
       ingredient-amount: 1
+      level-cost: 1
       repair-percent: 25
 
 # 순위표. 데이터는 스코어보드 미러에서 읽으므로 오프라인 플레이어도 집계됩니다.
@@ -302,6 +315,9 @@ trade:
 
 hud:
   # Action-bar text persists ~3s, so once a second is smooth and cheap.
+  # 이름표 갱신과 과적재 페널티 재적용도 이 주기를 탑니다. 과적재 효과 지속
+  # 시간은 이 값에 맞춰 늘어나므로 크게 올려도 페널티에 구멍이 생기지 않고,
+  # 이름표만 그만큼 늦게 갱신됩니다. /rpgcore reload 로 바로 반영됩니다.
   interval-ticks: 20
 
 # 머리 위 이름표와 플레이어 목록(Tab)에 붙는 정보.
@@ -372,6 +388,10 @@ duel:
   max-duration-seconds: 300 # 이 시간이 지나면 무승부로 끝내고 건 것을 돌려줍니다
   countdown-seconds: 3      # 시작 전 카운트다운. 그동안은 서로 때릴 수 없습니다. 0 이면 즉시 시작
   heal-before-start: true   # 시작할 때 양쪽 체력을 채워 공정하게 맞춥니다
+  # 대결이 끝난 뒤 다음 대결까지 기다려야 하는 시간(초). 0 이면 제한 없음.
+  # heal-before-start 가 켜져 있으면 '수락 -> 기권'만 반복해도 양쪽이 계속
+  # 회복되므로, 이 값이 대결을 회복 수단으로 쓰지 못하게 막습니다.
+  cooldown-seconds: 30
   announce-result: true
 
 # 도감과 칭호 화면 제목.

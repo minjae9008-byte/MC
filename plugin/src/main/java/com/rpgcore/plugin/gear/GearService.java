@@ -152,6 +152,11 @@ public final class GearService {
         Attributes.setModifier(player, attribute, key, amount, AttributeModifier.Operation.MULTIPLY_SCALAR_1);
     }
 
+    /** Public so shutdown can take the wear penalties off; see clearAll. */
+    public void clearModifiers(Player player) {
+        clearAll(player);
+    }
+
     private void clearAll(Player player) {
         Attributes.removeModifier(player, Attributes.attackDamage(), attackKey);
         Attributes.removeModifier(player, Attributes.blockBreakSpeed(), miningKey);

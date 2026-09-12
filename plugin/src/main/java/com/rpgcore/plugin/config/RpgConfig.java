@@ -132,6 +132,7 @@ public final class RpgConfig {
     private int duelMaxSeconds;
     private int duelCountdownSeconds;
     private boolean duelHealBeforeStart;
+    private int duelCooldownSeconds;
     private boolean duelAnnounce;
 
     public RpgConfig(RpgCorePlugin plugin) {
@@ -263,6 +264,7 @@ public final class RpgConfig {
         duelMaxSeconds = Math.max(0, c.getInt("duel.max-duration-seconds", 300));
         duelCountdownSeconds = Math.clamp(c.getInt("duel.countdown-seconds", 3), 0, 10);
         duelHealBeforeStart = c.getBoolean("duel.heal-before-start", true);
+        duelCooldownSeconds = Math.max(0, c.getInt("duel.cooldown-seconds", 30));
         duelAnnounce = c.getBoolean("duel.announce-result", true);
     }
 
@@ -476,6 +478,11 @@ public final class RpgConfig {
 
     public boolean duelHealBeforeStart() {
         return duelHealBeforeStart;
+    }
+
+    /** Seconds a player must wait after a duel before starting another. */
+    public int duelCooldownSeconds() {
+        return duelCooldownSeconds;
     }
 
     public boolean duelAnnounce() {

@@ -1,5 +1,7 @@
 package com.rpgcore.plugin.duel;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -12,6 +14,11 @@ public final class DuelSession {
     private final UUID second;
     private final DuelStake firstStake;
     private final DuelStake secondStake;
+    /**
+     * Health each side carried into the duel, so the cancelled killing blow
+     * can be undone without the duel itself becoming a healing potion.
+     */
+    private final Map<UUID, Double> healthAtStart = new HashMap<>();
     private long startedAtMs;
     /** Set the moment a result is decided, so a second hit cannot settle it twice. */
     private boolean finished;
@@ -68,6 +75,19 @@ public final class DuelSession {
     void begin() {
         this.pending = false;
         this.startedAtMs = System.currentTimeMillis();
+    }
+
+    /** Records what a player was on when the fight actually started. */
+    void rememberHealth(UUID uuid, double health) {
+        healthAtStart.put(uuid, health);
+    }
+
+    /**
+     * What that player should be put back on, or -1 when the duel never got
+     * far enough to record it.
+     */
+    double healthAtStart(UUID uuid) {
+        return healthAtStart.getOrDefault(uuid, -1.0D);
     }
 
     void finish() {

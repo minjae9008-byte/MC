@@ -48,7 +48,12 @@ public final class DuelListener implements Listener {
         }
         // getHealth() is still the pre-hit value here, and getFinalDamage() is
         // what the hit would really take off after armour and effects.
-        if (event.getFinalDamage() < victim.getHealth()) {
+        //
+        // Absorption counts: those hearts are taken off before real health is,
+        // so a player on two hearts behind a golden-apple shield survives a
+        // blow that "exceeds their health", and calling that a knockdown would
+        // end the duel while they were still standing.
+        if (event.getFinalDamage() < victim.getHealth() + victim.getAbsorptionAmount()) {
             return;
         }
         event.setCancelled(true);

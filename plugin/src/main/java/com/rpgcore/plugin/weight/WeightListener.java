@@ -2,6 +2,9 @@ package com.rpgcore.plugin.weight;
 
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.data.PlayerData;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.DoubleChest;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -16,6 +19,8 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerItemBreakEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 
 /**
@@ -64,18 +69,46 @@ public final class WeightListener implements Listener {
         }
     }
 
-    /** Same reasoning, for a stack being taken out of a chest or a furnace. */
+    /**
+     * Same reasoning, for a stack being taken out of a chest or a furnace.
+     *
+     * Restricted to real storage: the player's own inventory, and containers
+     * that belong to a block or an entity. A stack sitting in a menu another
+     * plugin built is not carried load - it is that plugin's furniture, and
+     * writing a line of lore into it is both wrong and actively breaking for
+     * the many plugins that identify their own menu items by their lore.
+     * {@link #isCarriedStorage} draws that line.
+     */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onClickStampLore(InventoryClickEvent event) {
-        // RPGCore's own menus are furniture, and the trade window's buttons
-        // are furniture too - neither is anybody's carried load.
-        if (plugin.isOwnMenu(event.getView().getTopInventory().getHolder())) {
+        Inventory clicked = event.getClickedInventory();
+        if (clicked == null || !isCarriedStorage(clicked)) {
             return;
         }
         ItemStack stack = event.getCurrentItem();
         if (plugin.weight().lore().apply(stack)) {
             event.setCurrentItem(stack);
         }
+    }
+
+    /**
+     * True for inventories whose contents are a player's to carry: their own
+     * inventory or ender chest, and block or entity containers (chests,
+     * barrels, furnaces, shulkers, hoppers, minecarts, llamas).
+     *
+     * An inventory built with {@code Bukkit.createInventory} has either no
+     * holder or a holder of the creating plugin's own type - including
+     * RPGCore's menus, which this therefore excludes without needing to name
+     * them - and those never get stamped. Crafting, anvil and enchanting
+     * views land here too; items in them came from the player's inventory
+     * already stamped, and anything new gets its line on the next scan.
+     */
+    private boolean isCarriedStorage(Inventory inventory) {
+        InventoryHolder holder = inventory.getHolder();
+        return holder instanceof Player
+                || holder instanceof BlockState
+                || holder instanceof DoubleChest
+                || holder instanceof Entity;
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

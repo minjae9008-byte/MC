@@ -11,6 +11,10 @@ import org.bukkit.entity.Player;
  * Deliberately the smallest currency that does the job - a single integer on
  * the scoreboard mirror, so it persists with the world, needs no economy
  * plugin, and an admin can read or set it with plain vanilla commands.
+ *
+ * A single integer is also the reason every credit saturates rather than
+ * wraps: the mirror cannot hold more than an int, and an overflow would turn
+ * a rich player's balance negative, which reads as a debt nobody can pay off.
  */
 public final class EconomyService {
 
@@ -35,7 +39,7 @@ public final class EconomyService {
             return;
         }
         PlayerData data = plugin.players().get(player);
-        data.gold(data.gold() + amount);
+        data.gold(credit(data.gold(), amount));
         plugin.players().flush(player, data);
         // Only earnings count towards the tally: moving gold between players
         // in a duel must not let two people farm a "total earned" achievement
@@ -63,8 +67,14 @@ public final class EconomyService {
             return;
         }
         PlayerData data = plugin.players().get(player);
-        data.gold(data.gold() + amount);
+        data.gold(credit(data.gold(), amount));
         plugin.players().flush(player, data);
+    }
+
+    /** Adds without wrapping: the mirror holds an int and nothing wider. */
+    private static int credit(int balance, int amount) {
+        long sum = (long) balance + amount;
+        return (int) Math.min(sum, Integer.MAX_VALUE);
     }
 
     public String format(int amount) {

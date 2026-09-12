@@ -95,6 +95,12 @@ public final class RpgCorePlugin extends JavaPlugin {
     private CollectionMenu collectionMenu;
     private DuelService duels;
     private ProgressListener progress;
+    /**
+     * The HUD task, kept so hud.interval-ticks can be re-read on reload: a
+     * repeating task's period is fixed when it is scheduled, so honouring a
+     * changed interval means replacing the task, not re-reading a field.
+     */
+    private HudTask hudTask;
 
     @Override
     public void onEnable() {
@@ -153,9 +159,9 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.progress = new ProgressListener(this);
         getServer().getPluginManager().registerEvents(progress, this);
         getServer().getPluginManager().registerEvents(new DuelListener(this), this);
-        if (rpgConfig.proximityEnabled()) {
-            getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
-        }
+        // Registered unconditionally; the listener itself honours the toggle,
+        // so features.proximity-chat responds to /rpgcore reload like the rest.
+        getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
 
         // Two light repeating tasks total: one tick pump for the weight/tree
         // queues, and the HUD on its own slower interval.
@@ -168,7 +174,7 @@ public final class RpgCorePlugin extends JavaPlugin {
                 duels.tick();
             }
         }.runTaskTimer(this, 1L, 1L);
-        new HudTask(this).runTaskTimer(this, 20L, rpgConfig.hudInterval());
+        scheduleHudTask();
 
         registerCommand("job", new JobCommand(this));
         registerCommand("leaderboard", new LeaderboardCommand(this));
@@ -183,6 +189,13 @@ public final class RpgCorePlugin extends JavaPlugin {
         registerCommand("pay", new PayCommand(this));
 
         new VoiceChatHook(this).check();
+
+        if (StatType.values().length > StatsMenu.shownStatCount()) {
+            getLogger().warning("The stats GUI has room for " + StatsMenu.shownStatCount()
+                    + " stats but StatType declares " + StatType.values().length
+                    + "; the extra ones are allocatable only through the scoreboard mirror."
+                    + " Give them their own slots in StatsMenu before shipping them.");
+        }
 
         // Players are already online after a /reload.
         for (Player player : getServer().getOnlinePlayers()) {
@@ -217,8 +230,25 @@ public final class RpgCorePlugin extends JavaPlugin {
                 if (nameplates != null) {
                     nameplates.clear(player);
                 }
+                // Attribute modifiers and the rewritten max_health base are
+                // saved with the player, not with the plugin, so anything left
+                // on here survives the plugin being removed with nothing left
+                // to undo it. Taking them off is part of shutting down.
+                if (stats != null) {
+                    stats.clearModifiers(player);
+                }
+                if (weight != null) {
+                    weight.clearModifiers(player);
+                }
+                if (gear != null) {
+                    gear.clearModifiers(player);
+                }
                 players.unload(player);
             }
+        }
+        if (hudTask != null) {
+            hudTask.cancel();
+            hudTask = null;
         }
         getLogger().info("RPGCore plugin disabled.");
     }
@@ -267,6 +297,9 @@ public final class RpgCorePlugin extends JavaPlugin {
                     loadProgress(player);
                 }
                 duels.endAll("설정을 다시 불러와 무승부입니다.");
+                // The HUD interval is baked into the running task, so a new
+                // value only takes effect if the task is replaced.
+                scheduleHudTask();
                 leaderboard.invalidate();
                 for (Player player : getServer().getOnlinePlayers()) {
                     stats.recalculate(player);
@@ -306,6 +339,13 @@ public final class RpgCorePlugin extends JavaPlugin {
                     sender.sendMessage(ChatColor.RED + "숫자를 입력하세요: " + args[2]);
                     return true;
                 }
+                // addXp refuses anything at or below zero, so reporting a
+                // grant for one would be a plain lie to the operator.
+                if (amount <= 0) {
+                    sender.sendMessage(ChatColor.RED + "XP 는 1 이상이어야 합니다. "
+                            + "(레벨과 XP 를 되돌리려면 /rpgcore reset <player>)");
+                    return true;
+                }
                 stats.addXp(target, amount);
                 sender.sendMessage(ChatColor.GREEN + "[RPGCore] " + target.getName() + " 에게 XP " + amount + " 지급.");
                 return true;
@@ -327,7 +367,12 @@ public final class RpgCorePlugin extends JavaPlugin {
                     sender.sendMessage(ChatColor.RED + "숫자를 입력하세요: " + args[2]);
                     return true;
                 }
-                if (amount >= 0) {
+                if (amount == 0) {
+                    sender.sendMessage(ChatColor.RED + "0 은 아무것도 하지 않습니다. (보유 "
+                            + economy.balance(target) + ")");
+                    return true;
+                }
+                if (amount > 0) {
                     economy.give(target, amount);
                 } else if (!economy.take(target, -amount)) {
                     sender.sendMessage(ChatColor.RED + "골드가 부족합니다. (보유 "
@@ -439,6 +484,15 @@ public final class RpgCorePlugin extends JavaPlugin {
     private void line(CommandSender sender, String label, boolean enabled, String detail) {
         sender.sendMessage((enabled ? ChatColor.GREEN + " O " : ChatColor.DARK_GRAY + " X ")
                 + ChatColor.WHITE + label + ChatColor.GRAY + " - " + (enabled ? detail : "꺼짐"));
+    }
+
+    /** (Re)schedules the HUD task on the interval currently configured. */
+    private void scheduleHudTask() {
+        if (hudTask != null) {
+            hudTask.cancel();
+        }
+        hudTask = new HudTask(this);
+        hudTask.runTaskTimer(this, 20L, rpgConfig.hudInterval());
     }
 
     /** Opens the stats GUI. Same screen for Java and Bedrock players. */

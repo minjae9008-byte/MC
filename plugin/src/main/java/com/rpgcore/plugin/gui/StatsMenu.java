@@ -22,13 +22,22 @@ import java.util.List;
  * icon is an ordinary block or item that renders the same in both clients, so
  * there is no second UI path to keep in sync.
  *
- * Slots: 0 job, 4 player card, 8 anvil recipes, 10-14 stats (from StatType
+ * Slots: 0 job, 4 player card, 8 anvil recipes, 10-15 stats (from StatType
  * order), 16 HP, 19 weight, 22 unspent points, 25 gear condition, and the last
  * slot of the inventory closes the menu.
+ *
+ * The stat row is a fixed reserved run, and {@link #statAt} answers only
+ * inside it. Letting the run grow with StatType would have the sixth stat
+ * added to the enum land on slot 16 - which HP then draws over, leaving a
+ * button that looks like the HP readout and spends a stat point when clicked.
+ * A stat beyond the run is left off the screen and reported at startup
+ * instead, which is a visible limit rather than a silent misfire.
  */
 public final class StatsMenu {
 
     private static final int FIRST_STAT_SLOT = 10;
+    /** Slots 10..15; 16 is the HP readout, so the run stops before it. */
+    private static final int STAT_SLOTS = 6;
     /** Opens the job picker. */
     public static final int JOB_SLOT = 0;
     /**
@@ -76,7 +85,15 @@ public final class StatsMenu {
     public static StatType statAt(int slot) {
         int index = slot - FIRST_STAT_SLOT;
         StatType[] values = StatType.values();
-        return index >= 0 && index < values.length ? values[index] : null;
+        // Bounded by the reserved run as well as by the enum: a slot past the
+        // run belongs to another item, and answering for it would make that
+        // item spend a stat point.
+        return index >= 0 && index < Math.min(values.length, STAT_SLOTS) ? values[index] : null;
+    }
+
+    /** How many stats this layout can show; the rest are reported, not drawn. */
+    public static int shownStatCount() {
+        return Math.min(StatType.values().length, STAT_SLOTS);
     }
 
     public void open(Player player) {
@@ -92,8 +109,9 @@ public final class StatsMenu {
         inv.setItem(JOB_SLOT, buildJobItem(player));
         inv.setItem(4, buildHeadItem(player, data));
 
-        for (StatType type : StatType.values()) {
-            inv.setItem(slotOf(type), buildStatItem(data, type));
+        StatType[] all = StatType.values();
+        for (int i = 0; i < shownStatCount(); i++) {
+            inv.setItem(slotOf(all[i]), buildStatItem(data, all[i]));
         }
 
         inv.setItem(16, buildInfoItem(Material.REDSTONE,

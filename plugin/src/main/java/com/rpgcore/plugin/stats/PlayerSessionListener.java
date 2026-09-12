@@ -39,6 +39,9 @@ public final class PlayerSessionListener implements Listener {
         plugin.collections().load(player);
         plugin.achievements().load(player);
         plugin.titles().load(player);
+        // A duel that ended while they were offline may still owe them the
+        // item they wagered; this is where it is handed back.
+        plugin.duels().handleJoin(player);
 
         if (firstJoin) {
             player.sendMessage(ChatColor.GOLD + "[RPGCore] " + ChatColor.YELLOW

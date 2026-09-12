@@ -4,8 +4,12 @@ import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.progress.CounterType;
 import com.rpgcore.plugin.stats.StatType;
 import com.rpgcore.plugin.util.RpgScoreboard;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
+import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -14,11 +18,19 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Owns the in-memory {@link PlayerData} cache and its write-through to the
  * vanilla scoreboard. Loads on join, flushes only when something changed.
+ *
+ * The mirror is keyed by player name, which is what lets an operator read and
+ * write RPG values with plain /scoreboard - but names move between accounts,
+ * so the name a player had last time is remembered on the player themselves
+ * (by UUID) and their entry is carried over when it changes. See
+ * {@link #migrateRename}.
  */
 public final class PlayerDataManager {
 
     private final RpgCorePlugin plugin;
     private final RpgScoreboard board;
+    /** Last name this player's mirror entry was written under, keyed by UUID. */
+    private final NamespacedKey nameKey;
     private final Map<UUID, PlayerData> cache = new ConcurrentHashMap<>();
     /** UUIDs whose data was created from scratch, consumed once by the join message. */
     private final Set<UUID> freshlyCreated = ConcurrentHashMap.newKeySet();
@@ -26,6 +38,7 @@ public final class PlayerDataManager {
     public PlayerDataManager(RpgCorePlugin plugin, RpgScoreboard board) {
         this.plugin = plugin;
         this.board = board;
+        this.nameKey = new NamespacedKey(plugin, "mirror_name");
     }
 
     /** Creates the mirrored objectives once, at plugin enable. */
@@ -65,6 +78,10 @@ public final class PlayerDataManager {
     private PlayerData load(Player player) {
         PlayerData data = new PlayerData();
 
+        // Before a single value is read: the entry this player's scores live
+        // under may be filed under the name they used to have.
+        migrateRename(player);
+
         data.jobId(plugin.jobs().readStored(player));
 
         if (board.read(player, RpgScoreboard.INITIALISED) != 1) {
@@ -89,6 +106,51 @@ public final class PlayerDataManager {
         }
         data.markInventoryDirty();
         return data;
+    }
+
+    /**
+     * Carries a player's mirror entry over when their name has changed, and
+     * records the name it now lives under.
+     *
+     * Everything on the scoreboard side - level, XP, gold, stats, counters -
+     * is keyed by name; everything on the persistent-data side - job,
+     * achievements, titles, the collection log - is keyed by UUID. Without
+     * this the two halves come apart on a rename: the player keeps their
+     * achievements but comes back at level 1 with no gold, and whoever
+     * registers their old name inherits what they left behind. The stored name
+     * is the UUID-keyed anchor that keeps the name-keyed half attached to the
+     * right account.
+     */
+    private void migrateRename(Player player) {
+        String current = player.getName();
+        String previous = player.getPersistentDataContainer().get(nameKey, PersistentDataType.STRING);
+        if (current.equals(previous)) {
+            return;
+        }
+        if (previous != null && board.hasScore(previous, RpgScoreboard.INITIALISED)) {
+            board.renameEntry(previous, current, mirroredObjectives());
+            plugin.getLogger().info("Moved RPGCore scores from '" + previous + "' to '"
+                    + current + "' (" + player.getUniqueId() + ") after a name change.");
+        }
+        player.getPersistentDataContainer().set(nameKey, PersistentDataType.STRING, current);
+    }
+
+    /** Every objective this plugin mirrors, in no particular order. */
+    private List<String> mirroredObjectives() {
+        List<String> names = new ArrayList<>(List.of(
+                RpgScoreboard.INITIALISED, RpgScoreboard.LEVEL, RpgScoreboard.XP,
+                RpgScoreboard.XP_NEED, RpgScoreboard.POINTS, RpgScoreboard.WEIGHT,
+                RpgScoreboard.WEIGHT_MAX, RpgScoreboard.WEIGHT_TIER, RpgScoreboard.HP_MAX,
+                RpgScoreboard.GOLD));
+        for (StatType type : StatType.values()) {
+            names.add(type.objective());
+        }
+        for (CounterType type : CounterType.values()) {
+            if (type.objective() != null) {
+                names.add(type.objective());
+            }
+        }
+        return names;
     }
 
     private void applyFirstJoinDefaults(PlayerData data) {
@@ -133,23 +195,6 @@ public final class PlayerDataManager {
         if (data.mirrorChanged(objective, value)) {
             board.write(player, objective, value);
         }
-    }
-
-    /**
-     * Adds gold to a player who is not online. The mirror is keyed by name and
-     * saved with the world, so this is simply a write - which is what lets a
-     * refund reach someone who logged off at the wrong moment.
-     */
-    public void grantOfflineGold(UUID uuid, int amount) {
-        if (amount <= 0) {
-            return;
-        }
-        String name = plugin.getServer().getOfflinePlayer(uuid).getName();
-        if (name == null) {
-            plugin.getLogger().warning("Could not return " + amount + " gold: no known name for " + uuid + ".");
-            return;
-        }
-        board.write(name, RpgScoreboard.GOLD, board.read(name, RpgScoreboard.GOLD) + amount);
     }
 
     /** True once, for a player whose data was created on this join. */

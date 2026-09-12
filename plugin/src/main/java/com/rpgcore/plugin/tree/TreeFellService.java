@@ -29,6 +29,14 @@ import java.util.concurrent.ThreadLocalRandom;
  * A BlockBreakEvent hands us the exact block and tool, and the flood fill is a
  * queue drained a few blocks per tick, so even a giant jungle tree never
  * spikes a tick.
+ *
+ * blocks-per-tick is a budget for the whole server, not for one tree. It used
+ * to be per job, which made the setting mean nothing under load: with
+ * respect-protection-plugins on, every chained block is a synthetic
+ * BlockBreakEvent that every protection plugin on the server has to answer, so
+ * N players felling at once cost N x the configured ceiling. The budget is
+ * shared here and the starting point rotates, so no job can starve behind the
+ * ones in front of it.
  */
 public final class TreeFellService {
 
@@ -38,6 +46,16 @@ public final class TreeFellService {
     private final List<Job> jobs = new ArrayList<>();
     /** Blocks this plugin is breaking itself, so our own events are ignored. */
     private final Set<Block> selfBroken = new HashSet<>();
+    /** Where the shared budget starts spending each tick, so jobs take turns. */
+    private int rotation;
+
+    /**
+     * Chains one player may have running at once. A fell drains in well under
+     * a second, so this never refuses a player felling one tree after another;
+     * it only stops a single player from queueing unbounded work by breaking
+     * logs as fast as the client can send them.
+     */
+    private static final int MAX_JOBS_PER_PLAYER = 3;
 
     public TreeFellService(RpgCorePlugin plugin) {
         this.plugin = plugin;
@@ -79,19 +97,32 @@ public final class TreeFellService {
         return selfBroken.contains(block);
     }
 
-    /** Starts a chain fell from the block the player just broke. */
+    /**
+     * Starts a chain fell from the block the player just broke, unless this
+     * player already has {@link #MAX_JOBS_PER_PLAYER} running - in which case
+     * the block they broke simply stays broken, with no chain behind it.
+     */
     public void start(Player player, Block origin, ItemStack tool) {
+        int mine = 0;
+        for (Job running : jobs) {
+            if (running.player.equals(player) && ++mine >= MAX_JOBS_PER_PLAYER) {
+                return;
+            }
+        }
         Job job = new Job(player, origin, tool, origin.getType());
         job.enqueueNeighbours(origin, plugin.rpgConfig().treeFellRadius());
         jobs.add(job);
     }
 
-    /** Drains a slice of every running job; called once per tick. */
+    /**
+     * Drains the tick's shared budget across the running jobs; called once per
+     * tick. Finished jobs are retired first so the budget is only ever spent
+     * on work that is actually left.
+     */
     public void tick() {
         if (jobs.isEmpty()) {
             return;
         }
-        int perTick = plugin.rpgConfig().treeFellPerTick();
         int maxBlocks = plugin.rpgConfig().treeFellMaxBlocks();
         int radius = plugin.rpgConfig().treeFellRadius();
 
@@ -105,20 +136,40 @@ public final class TreeFellService {
                     plugin.stats().awardXp(job.player, job.broken * plugin.rpgConfig().xpPerTreeLog());
                 }
                 it.remove();
-                continue;
-            }
-
-            for (int i = 0; i < perTick && !job.queue.isEmpty() && job.broken < maxBlocks; i++) {
-                Block block = job.queue.poll();
-                if (block == null || block.getType() != job.logType) {
-                    continue;
-                }
-                if (!breakBlock(job, block)) {
-                    break;
-                }
-                job.enqueueNeighbours(block, radius);
             }
         }
+        if (jobs.isEmpty()) {
+            return;
+        }
+
+        // One budget for the whole server. Spending always starts one job
+        // further along than last tick, so a job at the back of the list still
+        // makes progress when the budget runs out before reaching it.
+        int budget = plugin.rpgConfig().treeFellPerTick();
+        int count = jobs.size();
+        rotation = count == 0 ? 0 : (rotation + 1) % count;
+        for (int offset = 0; offset < count && budget > 0; offset++) {
+            Job job = jobs.get((rotation + offset) % count);
+            budget -= drain(job, budget, maxBlocks, radius);
+        }
+    }
+
+    /** Breaks up to {@code budget} blocks of one job; returns how many it spent. */
+    private int drain(Job job, int budget, int maxBlocks, int radius) {
+        int spent = 0;
+        while (spent < budget && !job.queue.isEmpty() && job.broken < maxBlocks && !job.toolBroke) {
+            Block block = job.queue.poll();
+            if (block == null || block.getType() != job.logType) {
+                // Not a block this fell will break, so it costs nothing.
+                continue;
+            }
+            spent++;
+            if (!breakBlock(job, block)) {
+                break;
+            }
+            job.enqueueNeighbours(block, radius);
+        }
+        return spent;
     }
 
     private boolean breakBlock(Job job, Block block) {

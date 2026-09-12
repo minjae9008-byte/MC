@@ -22,6 +22,8 @@ public final class StatsService {
 
     /** Vanilla's hard ceiling for the max_health attribute base value. */
     private static final int MAX_ATTRIBUTE_HEALTH = 1024;
+    /** What max_health is worth on a server without this plugin: ten hearts. */
+    private static final double VANILLA_BASE_HEALTH = 20.0D;
 
     private final RpgCorePlugin plugin;
 
@@ -222,6 +224,38 @@ public final class StatsService {
                     AttributeModifier.Operation.ADD_NUMBER);
             Attributes.setModifier(player, attribute, jobKey("mul", id), mul,
                     AttributeModifier.Operation.MULTIPLY_SCALAR_1);
+        }
+    }
+
+    /**
+     * Takes every modifier this plugin owns back off, and puts max_health back
+     * to the vanilla base.
+     *
+     * Attribute modifiers and base values are stored in the player's own data
+     * file, not in the plugin's, so they outlive the plugin: uninstall RPGCore
+     * with these still applied and every player keeps a permanent speed
+     * penalty and a rewritten health pool, with nothing left on the server that
+     * knows what they were or how to remove them. Called on disable for the
+     * same reason live trades and duel stakes are unwound there.
+     */
+    public void clearModifiers(Player player) {
+        Attributes.removeModifier(player, Attributes.attackDamage(), strDamageKey);
+        Attributes.removeModifier(player, Attributes.attackSpeed(), dexAttackSpeedKey);
+        Attributes.removeModifier(player, Attributes.movementSpeed(), agiSpeedKey);
+        Attributes.removeModifier(player, Attributes.jumpStrength(), agiJumpKey);
+        Attributes.removeModifier(player, Attributes.luck(), luckKey);
+        for (String id : plugin.jobs().managedAttributes()) {
+            Attribute attribute = Attributes.byId(id);
+            if (attribute != null) {
+                Attributes.removeModifier(player, attribute, jobKey("add", id));
+                Attributes.removeModifier(player, attribute, jobKey("mul", id));
+            }
+        }
+        // The health pool is a base value rather than a modifier, so removing
+        // modifiers does not undo it; it has to be written back explicitly.
+        Attributes.setBase(player, Attributes.maxHealth(), VANILLA_BASE_HEALTH);
+        if (player.getHealth() > VANILLA_BASE_HEALTH) {
+            player.setHealth(VANILLA_BASE_HEALTH);
         }
     }
 

@@ -21,16 +21,13 @@
 #    jump_strength  scale  step_height ...
 # ==========================================================================
 
-# 한 번 고른 직업을 바꿀 수 있는지.
+# 한 번 고른 직업을 바꿀 수 있는지. false 면 한 번 고르면 못 바꿉니다.
 allow-change: true
 # 직업을 바꿀 때 소모할 바닐라 경험치 레벨 (0 = 무료).
 change-cost-levels: 0
 # 직업 선택 창 제목.
 menu-title: "&8직업 선택"
 
-allow-change: true          # false 면 한 번 고르면 못 바꿈
-change-cost-levels: 0       # 변경 시 소모할 바닐라 경험치 레벨
-menu-title: "&8직업 선택"
 list:
   warrior:
     name: "&c전사"

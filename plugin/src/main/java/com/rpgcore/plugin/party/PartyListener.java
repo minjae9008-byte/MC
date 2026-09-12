@@ -11,8 +11,12 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.projectiles.ProjectileSource;
 
 /**
- * Party side effects: keeping members from hurting each other, and letting a
- * party fall away once everyone in it has logged off.
+ * Party side effects: keeping members from hurting each other, and telling a
+ * party when one of its members logs off.
+ *
+ * Quitting does not dissolve anything. Parties are persistent by design (see
+ * {@link PartyService}) so that a group survives a restart, which means the
+ * only ways out of one are /party leave, /party kick and /party disband.
  */
 public final class PartyListener implements Listener {
 

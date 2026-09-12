@@ -77,6 +77,42 @@ public final class RpgScoreboard {
         obj.getScore(entry).setScore(value);
     }
 
+    /** True when this entry has a score set for the given objective. */
+    public boolean hasScore(String entry, String objective) {
+        Objective obj = objective(objective);
+        return obj != null && obj.getScore(entry).isScoreSet();
+    }
+
+    /**
+     * Moves every RPGCore objective from one entry name to another, leaving
+     * nothing behind under the old one.
+     *
+     * The mirror is keyed by name because that is what makes it readable with
+     * plain /scoreboard, and names are not stable - a player can change theirs,
+     * and someone else can then take the old one. Without this, renaming would
+     * read as a wiped character and the name's next owner would inherit it.
+     */
+    public void renameEntry(String from, String to, Iterable<String> objectives) {
+        Scoreboard board = board();
+        if (board == null || from.equals(to)) {
+            return;
+        }
+        for (String name : objectives) {
+            Objective obj = board.getObjective(name);
+            if (obj == null) {
+                continue;
+            }
+            Score old = obj.getScore(from);
+            if (old.isScoreSet()) {
+                obj.getScore(to).setScore(old.getScore());
+            }
+        }
+        // resetScores clears the entry across every objective at once, which
+        // is exactly right: anything of ours left under the old name would be
+        // picked up by whoever registers that name next.
+        board.resetScores(from);
+    }
+
     private Objective objective(String name) {
         Scoreboard board = board();
         return board == null ? null : board.getObjective(name);

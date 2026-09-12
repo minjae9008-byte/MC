@@ -3,9 +3,11 @@ package com.rpgcore.plugin.duel;
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.collection.CollectionService;
 import com.rpgcore.plugin.progress.CounterType;
+import com.rpgcore.plugin.util.Attributes;
 import org.bukkit.ChatColor;
 import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -40,9 +42,20 @@ public final class DuelService {
     private final Map<UUID, DuelSession> sessions = new ConcurrentHashMap<>();
     /** invited player -> (challenger -> request). */
     private final Map<UUID, Map<UUID, Request>> requests = new ConcurrentHashMap<>();
+    /** Item stakes owed to players who were not online to receive them. */
+    private final PendingStakeStore pending;
+    /** Player -> when their last duel ended, for the post-duel cooldown. */
+    private final Map<UUID, Long> lastFinishedMs = new ConcurrentHashMap<>();
 
     public DuelService(RpgCorePlugin plugin) {
         this.plugin = plugin;
+        this.pending = new PendingStakeStore(plugin);
+        this.pending.load();
+    }
+
+    /** Returns anything a duel owed this player while they were away. */
+    public void handleJoin(Player player) {
+        pending.handOver(player);
     }
 
     public boolean enabled() {
@@ -81,6 +94,9 @@ public final class DuelService {
         }
         if (!inRange(from, to)) {
             from.sendMessage(ChatColor.RED + "[대결] 상대가 너무 멀리 있습니다.");
+            return;
+        }
+        if (onCooldown(from, to)) {
             return;
         }
 
@@ -175,6 +191,11 @@ public final class DuelService {
             player.sendMessage(ChatColor.RED + "[대결] 상대가 너무 멀리 있습니다.");
             return;
         }
+        // Re-checked here as well as at the challenge: the cooldown may have
+        // started in between, and the accept is the side that pays for it.
+        if (onCooldown(player, challenger)) {
+            return;
+        }
 
         // The accepting side is asked to match what was offered, so both put
         // up the same thing and the winner's take is never a surprise.
@@ -182,19 +203,24 @@ public final class DuelService {
         if (mine == null) {
             return;
         }
-        if (!escrow(challenger, request.stake())) {
+        DuelStake escrowedTheirs = escrow(challenger, request.stake());
+        if (escrowedTheirs == null) {
             player.sendMessage(ChatColor.RED + "[대결] 상대가 건 것을 더 이상 낼 수 없습니다.");
-            challenger.sendMessage(ChatColor.RED + "[대결] 걸었던 것을 낼 수 없어 대결이 취소되었습니다.");
+            challenger.sendMessage(ChatColor.RED + "[대결] 걸었던 것이 손에 없어 대결이 취소되었습니다. "
+                    + ChatColor.GRAY + "(" + request.stake().describe() + ChatColor.GRAY + ")");
             return;
         }
-        if (!escrow(player, mine)) {
+        DuelStake escrowedMine = escrow(player, mine);
+        if (escrowedMine == null) {
             // Give the challenger theirs back rather than leaving it held.
-            payOut(challenger, request.stake());
+            payOut(challenger, escrowedTheirs);
             player.sendMessage(ChatColor.RED + "[대결] 걸 것을 낼 수 없습니다.");
             return;
         }
 
-        start(challenger, player, request.stake(), mine);
+        // The escrowed stakes, never the advertised ones: what the session
+        // pays out has to be exactly what it collected.
+        start(challenger, player, escrowedTheirs, escrowedMine);
     }
 
     /** Builds the accepting side's matching stake, or null with a reason. */
@@ -210,9 +236,13 @@ public final class DuelService {
                         + "같은 아이템을 손에 들고 수락하세요.");
                 return null;
             }
-            if (held.getType() != offered.item().getType() || held.getAmount() < offered.item().getAmount()) {
-                player.sendMessage(ChatColor.RED + "[대결] 상대와 같은 아이템을 같은 개수만큼 들고 있어야 합니다. ("
-                        + CollectionService.nameOf(offered.item()) + " x" + offered.item().getAmount() + ")");
+            // isSimilar, not just the material: "the same thing" has to mean
+            // the same enchantments and the same wear, or matching a worn
+            // plain sword against an enchanted one would be a fair trade.
+            if (!held.isSimilar(offered.item()) || held.getAmount() < offered.item().getAmount()) {
+                player.sendMessage(ChatColor.RED + "[대결] 상대와 똑같은 아이템(인챈트·내구도까지)을 "
+                        + "같은 개수만큼 손에 들고 있어야 합니다.");
+                player.sendMessage(ChatColor.GRAY + "  상대가 건 것: " + offered.describe());
                 return null;
             }
             ItemStack matched = held.clone();
@@ -278,9 +308,11 @@ public final class DuelService {
             player.sendMessage(ChatColor.GRAY + "    포기하려면 " + ChatColor.YELLOW + "/duel forfeit");
             player.sendMessage("");
             // A duel decided by who happened to be at three hearts is not a
-            // duel, so both start whole when the server asks for it.
+            // duel, so both start whole when the server asks for it. This is
+            // the one deliberate heal in a duel, and it is opt-out; the one at
+            // the end only puts players back where this left them.
             if (plugin.rpgConfig().duelHealBeforeStart()) {
-                restore(player);
+                healToFull(player);
             }
         }
 
@@ -327,6 +359,10 @@ public final class DuelService {
         session.begin();
         for (Player player : List.of(a, b)) {
             Player other = player.equals(a) ? b : a;
+            // Taken here rather than at the accept: heal-before-start and the
+            // countdown both come first, so this is the health the duel is
+            // actually fought from and the health it should hand back.
+            session.rememberHealth(player.getUniqueId(), player.getHealth());
             player.sendActionBar(net.kyori.adventure.text.Component.text("⚔ " + other.getName()));
             player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.4F, 1.6F);
         }
@@ -340,13 +376,14 @@ public final class DuelService {
         session.finish();
         sessions.remove(session.first());
         sessions.remove(session.second());
+        markCooldown(session);
 
         // Both stakes go to the winner; the loser is put back on their feet so
         // the cancelled killing blow cannot leave them at half a heart.
         payOut(winner, session.stakeOf(winner.getUniqueId()));
         payOut(winner, session.stakeOf(loser.getUniqueId()));
-        restore(winner);
-        restore(loser);
+        restore(session, winner);
+        restore(session, loser);
 
         DuelStake pot = session.stakeOf(loser.getUniqueId());
         winner.sendMessage(ChatColor.GREEN + "[대결] 승리! " + ChatColor.WHITE + loser.getName()
@@ -380,12 +417,13 @@ public final class DuelService {
         session.finish();
         sessions.remove(session.first());
         sessions.remove(session.second());
+        markCooldown(session);
 
         for (UUID uuid : List.of(session.first(), session.second())) {
             Player player = plugin.getServer().getPlayer(uuid);
             if (player != null && player.isOnline()) {
                 payOut(player, session.stakeOf(uuid));
-                restore(player);
+                restore(session, player);
                 player.sendMessage(ChatColor.YELLOW + "[대결] " + reason + " 건 것은 그대로 돌려받았습니다.");
             } else {
                 // Offline: the stake is held until they are back, rather than
@@ -414,15 +452,19 @@ public final class DuelService {
     public void handleQuit(Player player) {
         requests.remove(player.getUniqueId());
         DuelSession session = sessionOf(player);
-        if (session == null) {
-            return;
+        if (session != null) {
+            Player opponent = plugin.getServer().getPlayer(session.opponentOf(player.getUniqueId()));
+            if (opponent != null && opponent.isOnline()) {
+                finish(session, opponent, player, ChatColor.GRAY + "(접속 종료)");
+            } else {
+                draw(session, "양쪽 모두 접속이 끊겼습니다.");
+            }
         }
-        Player opponent = plugin.getServer().getPlayer(session.opponentOf(player.getUniqueId()));
-        if (opponent != null && opponent.isOnline()) {
-            finish(session, opponent, player, ChatColor.GRAY + "(접속 종료)");
-        } else {
-            draw(session, "양쪽 모두 접속이 끊겼습니다.");
-        }
+        // After settling, not before: settling stamps a cooldown, and this
+        // player is leaving, so the entry would otherwise sit here for the
+        // rest of the server's uptime. Logging out is already a forfeit, so
+        // there is nothing for a cooldown to protect against here.
+        lastFinishedMs.remove(player.getUniqueId());
     }
 
     /** Called from the tick pump: ends duels nobody is finishing. */
@@ -449,21 +491,39 @@ public final class DuelService {
 
     // ----------------------------------------------------------------- stake
 
-    private boolean escrow(Player player, DuelStake stake) {
+    /**
+     * Takes a stake out of the player's hands and returns what was actually
+     * taken, or null when they can no longer pay it.
+     *
+     * The returned stake - not the one that was offered - is what the session
+     * holds, and this is the difference between a wager and an item printer.
+     * An item stake is captured when the challenge is written, but it is only
+     * collected when the other side accepts, and the hand can change in
+     * between. Matching on material alone would let a player advertise an
+     * enchanted sword, swap in a plain one before the accept, and be paid back
+     * the enchanted copy the session was still holding. So the held stack must
+     * still be {@link ItemStack#isSimilar similar} to what was offered -
+     * same enchantments, same wear, same name - and the stack that is handed
+     * back is built from the one that was really surrendered.
+     */
+    private DuelStake escrow(Player player, DuelStake stake) {
         if (stake.isEmpty()) {
-            return true;
+            return DuelStake.NONE;
         }
         if (stake.item() != null) {
             ItemStack held = player.getInventory().getItemInMainHand();
-            if (held == null || held.getType() != stake.item().getType()
-                    || held.getAmount() < stake.item().getAmount()) {
-                return false;
+            int need = stake.item().getAmount();
+            if (held == null || held.getType().isAir()
+                    || !held.isSimilar(stake.item()) || held.getAmount() < need) {
+                return null;
             }
-            held.setAmount(held.getAmount() - stake.item().getAmount());
+            ItemStack taken = held.clone();
+            taken.setAmount(need);
+            held.setAmount(held.getAmount() - need);
             player.getInventory().setItemInMainHand(held.getAmount() <= 0 ? null : held);
-            return true;
+            return new DuelStake(0, taken);
         }
-        return plugin.economy().take(player, stake.gold());
+        return plugin.economy().take(player, stake.gold()) ? stake : null;
     }
 
     private void payOut(Player player, DuelStake stake) {
@@ -481,33 +541,111 @@ public final class DuelService {
     }
 
     /**
-     * A stake belonging to someone who has already left. Gold goes straight
-     * onto the scoreboard mirror, which works for an offline player, so a
-     * refund is never lost to bad timing. An item has nowhere to go until they
-     * are back, so it is logged by name for an operator to hand over.
+     * A stake belonging to someone who has already left.
+     *
+     * Both halves wait in the same UUID-keyed file until its owner is back.
+     * Gold used to be written straight onto the scoreboard mirror, which works
+     * for an offline player - but the mirror is keyed by name, and an offline
+     * player is precisely the one who may return under a different one, so
+     * that credit could land in somebody else's account.
      */
     private void holdForOffline(UUID uuid, DuelStake stake) {
         if (stake.isEmpty()) {
             return;
         }
         if (stake.item() == null) {
-            plugin.players().grantOfflineGold(uuid, stake.gold());
+            pending.holdGold(uuid, stake.gold());
             return;
         }
-        plugin.getLogger().warning("A duel ended while " + uuid + " was offline; "
-                + ChatColor.stripColor(stake.describe()) + " could not be returned automatically.");
+        // An item needs an inventory to go back into, so it waits in
+        // pending-stakes.yml until its owner logs in again.
+        pending.hold(uuid, stake.item());
     }
 
-    /** Back on their feet: the cancelled killing blow must not leave a mark. */
-    private void restore(Player player) {
+    /**
+     * Back on their feet: the cancelled killing blow must not leave a mark.
+     *
+     * Deliberately *not* a heal to full. Putting both players on maximum
+     * health at the end would make a no-wager duel a renewable healing item -
+     * /duel accept, /duel forfeit, both whole - so what is handed back is the
+     * health each of them walked in with. Whether they walk in whole is
+     * duel.heal-before-start's decision to make, not this method's.
+     */
+    private void restore(DuelSession session, Player player) {
         // A duel that ended because they died to something else is already
         // past healing; setting health on a corpse only confuses the client.
         if (player.isDead()) {
             return;
         }
         player.setFireTicks(0);
-        player.setHealth(player.getAttribute(Attribute.MAX_HEALTH) == null
-                ? 20.0D : player.getAttribute(Attribute.MAX_HEALTH).getValue());
+        double max = maxHealthOf(player);
+        double target = session.healthAtStart(player.getUniqueId());
+        if (target <= 0.0D) {
+            // The duel never reached begin() - nothing was taken off them by
+            // it, so there is nothing to give back.
+            return;
+        }
+        player.setHealth(Math.clamp(target, 1.0D, max));
+    }
+
+    /** The pre-duel heal, so both sides fight from the same place. */
+    private void healToFull(Player player) {
+        if (player.isDead()) {
+            return;
+        }
+        player.setFireTicks(0);
+        player.setHealth(maxHealthOf(player));
+    }
+
+    private double maxHealthOf(Player player) {
+        // Attributes.maxHealth() looks the attribute up through the registry,
+        // which is what the rest of the plugin does and what survives Mojang's
+        // renames; a direct enum reference would not.
+        Attribute attribute = Attributes.maxHealth();
+        AttributeInstance instance = attribute == null ? null : player.getAttribute(attribute);
+        return instance == null ? 20.0D : instance.getValue();
+    }
+
+    /**
+     * Starts the post-duel cooldown for both sides.
+     *
+     * With heal-before-start on, back-to-back duels are a healing station:
+     * accept, forfeit, both full, repeat. The cooldown is what makes that cost
+     * something. Set duel.cooldown-seconds to 0 to allow it.
+     */
+    private void markCooldown(DuelSession session) {
+        long now = System.currentTimeMillis();
+        lastFinishedMs.put(session.first(), now);
+        lastFinishedMs.put(session.second(), now);
+    }
+
+    /** Seconds still to wait before this player may duel again; 0 when ready. */
+    private long cooldownLeft(Player player) {
+        int seconds = plugin.rpgConfig().duelCooldownSeconds();
+        if (seconds <= 0) {
+            return 0L;
+        }
+        Long last = lastFinishedMs.get(player.getUniqueId());
+        if (last == null) {
+            return 0L;
+        }
+        long left = seconds * 1000L - (System.currentTimeMillis() - last);
+        return left <= 0L ? 0L : (left + 999L) / 1000L;
+    }
+
+    /** True after telling whichever side is still cooling down. */
+    private boolean onCooldown(Player asker, Player other) {
+        long mine = cooldownLeft(asker);
+        if (mine > 0L) {
+            asker.sendMessage(ChatColor.RED + "[대결] 방금 대결이 끝났습니다. " + mine + "초 뒤에 다시 신청할 수 있습니다.");
+            return true;
+        }
+        long theirs = cooldownLeft(other);
+        if (theirs > 0L) {
+            asker.sendMessage(ChatColor.RED + "[대결] 상대가 방금 대결을 마쳤습니다. " + theirs + "초 뒤에 가능합니다.");
+            return true;
+        }
+        return false;
     }
 
     private boolean inRange(Player a, Player b) {

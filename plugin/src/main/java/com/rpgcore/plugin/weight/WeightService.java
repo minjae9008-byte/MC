@@ -152,17 +152,36 @@ public final class WeightService {
                 jump, AttributeModifier.Operation.MULTIPLY_SCALAR_1);
     }
 
-    /** Called every second by the HUD task, only while overloaded. */
+    /**
+     * Called from the HUD task, only while overloaded.
+     *
+     * The effect duration follows that task's interval instead of being a
+     * fixed 40 ticks. The penalty is gameplay, not display, and a server that
+     * raises hud.interval-ticks past 40 to send fewer packets should not
+     * silently get gaps in it - each application has to last until the next
+     * one, whatever the interval is.
+     */
     public void applyOverloadEffects(Player player, PlayerData data) {
+        int duration = Math.max(40, plugin.rpgConfig().hudInterval() + 20);
         switch (data.weightTier()) {
-            case 2 -> player.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 40, 0, true, false));
+            case 2 -> player.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, duration, 0, true, false));
             case 3 -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 40, 1, true, false));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.MINING_FATIGUE, 40, 0, true, false));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, duration, 1, true, false));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.MINING_FATIGUE, duration, 0, true, false));
             }
             default -> {
             }
         }
+    }
+
+    /**
+     * Takes this plugin's encumbrance modifiers back off. Attribute modifiers
+     * live in the player's own saved data, so one left behind by a plugin that
+     * has been removed is permanent - there is nothing left to clean it up.
+     */
+    public void clearModifiers(Player player) {
+        Attributes.removeModifier(player, Attributes.movementSpeed(), speedPenaltyKey);
+        Attributes.removeModifier(player, Attributes.jumpStrength(), jumpPenaltyKey);
     }
 
     private void notifyTierChange(Player player, int tier) {

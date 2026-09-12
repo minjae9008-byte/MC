@@ -29,7 +29,17 @@ import java.util.List;
  *     which are guarded by {@code finished} so they can run exactly once;
  *   - cancel() hands every stack back to whoever put it in;
  *   - complete() checks both players have room *before* it moves anything;
- *   - any change to either offer clears both confirmations.
+ *   - any change to either offer clears both confirmations, and it clears them
+ *     synchronously, inside the click that makes the change.
+ *
+ * That last word is load-bearing. Both "the trade is settled" and "the offer
+ * changed" have to run after vanilla has applied the click, so both are
+ * scheduled; but a client can send [confirm] and [take my stack back] in one
+ * packet batch, and scheduled tasks then run in the order they were queued -
+ * complete() first, looking at an offer half that vanilla has *already*
+ * emptied onto the cursor. Clearing the flags while still inside the click
+ * event is what makes complete()'s re-check see the withdrawal, so the only
+ * way to reach a settlement is for both offers to have stood still.
  */
 public final class TradeSession implements InventoryHolder {
 
@@ -75,8 +85,6 @@ public final class TradeSession implements InventoryHolder {
         return right;
     }
 
-
-
     void open() {
         left.openInventory(inventory);
         right.openInventory(inventory);
@@ -118,9 +126,33 @@ public final class TradeSession implements InventoryHolder {
             event.setCancelled(true);
             return;
         }
-        // A legal move into or out of the player's own offer: let vanilla
-        // apply it, then invalidate both confirmations once it has landed.
-        plugin.getServer().getScheduler().runTask(plugin, this::onOfferChanged);
+        // A legal move into or out of the player's own offer. Vanilla applies
+        // it after this handler returns, so the redraw has to wait a tick -
+        // but the confirmations are dropped right now, before the item moves,
+        // so nothing queued behind this click can settle on the old offer.
+        if (!isNoOpClick(event)) {
+            clearReady();
+            plugin.getServer().getScheduler().runTask(plugin, this::onOfferChanged);
+        }
+    }
+
+    /**
+     * A click that cannot change the offer: empty cursor onto an empty slot.
+     * Without this, idly clicking a blank offer slot would cancel a
+     * confirmation the other player is waiting on.
+     */
+    private boolean isNoOpClick(InventoryClickEvent event) {
+        ItemStack cursor = event.getCursor();
+        ItemStack current = event.getCurrentItem();
+        return (cursor == null || cursor.getType().isAir())
+                && (current == null || current.getType().isAir())
+                && event.getClick() != ClickType.NUMBER_KEY
+                && event.getClick() != ClickType.SWAP_OFFHAND;
+    }
+
+    private void clearReady() {
+        leftReady = false;
+        rightReady = false;
     }
 
     private void shiftIntoOwnOffer(InventoryClickEvent event, Player player) {
@@ -130,6 +162,8 @@ public final class TradeSession implements InventoryHolder {
         }
         ItemStack leftover = addToOffer(ownSlots(player), moving.clone());
         event.getClickedInventory().setItem(event.getSlot(), leftover);
+        // This one moves the items itself rather than letting vanilla do it,
+        // so the whole change - flags included - lands inside the click.
         onOfferChanged();
     }
 
@@ -162,12 +196,16 @@ public final class TradeSession implements InventoryHolder {
         return stack.getAmount() > 0 ? stack : null;
     }
 
+    /**
+     * The redraw half of an offer change; the flags themselves are already
+     * down (see {@link #handleClick}). Runs a tick late, once vanilla has
+     * actually moved the item, so the window both players see matches it.
+     */
     private void onOfferChanged() {
         if (finished) {
             return;
         }
-        leftReady = false;
-        rightReady = false;
+        clearReady();
         redrawButtons();
         refreshViewers();
     }
@@ -192,6 +230,14 @@ public final class TradeSession implements InventoryHolder {
         if (finished) {
             return;
         }
+        // Re-read the confirmations rather than trusting the ones that queued
+        // this call: a click processed after the confirm, in the same batch,
+        // may have taken an offered stack back out since.
+        if (!leftReady || !rightReady) {
+            redrawButtons();
+            refreshViewers();
+            return;
+        }
         if (!left.isOnline() || !right.isOnline()) {
             cancel("상대가 접속을 종료했습니다.");
             return;
@@ -200,8 +246,7 @@ public final class TradeSession implements InventoryHolder {
         List<ItemStack> fromLeft = itemsIn(LEFT_SLOTS);
         List<ItemStack> fromRight = itemsIn(RIGHT_SLOTS);
         if (!hasRoom(right, fromLeft) || !hasRoom(left, fromRight)) {
-            leftReady = false;
-            rightReady = false;
+            clearReady();
             redrawButtons();
             refreshViewers();
             left.sendMessage(ChatColor.RED + "[거래] 인벤토리 공간이 부족해 거래를 끝낼 수 없습니다.");

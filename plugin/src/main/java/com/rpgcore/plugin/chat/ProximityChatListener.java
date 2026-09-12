@@ -28,6 +28,14 @@ public final class ProximityChatListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onChat(AsyncChatEvent event) {
+        // Checked per message rather than at registration. Every other feature
+        // toggle in settings.yml is read at the point of use, which is what
+        // makes "edit it and /rpgcore reload" true for them; a listener that
+        // was only registered conditionally at enable would need a restart,
+        // and the file promises otherwise.
+        if (!plugin.rpgConfig().proximityEnabled()) {
+            return;
+        }
         Player sender = event.getPlayer();
         double range = plugin.rpgConfig().proximityRange();
         double rangeSquared = range * range;
