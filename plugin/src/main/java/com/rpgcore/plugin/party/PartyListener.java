@@ -31,6 +31,11 @@ public final class PartyListener implements Listener {
         if (attacker == null || attacker.equals(victim)) {
             return;
         }
+        // A duel is consented to by both sides, so it outranks the party's
+        // standing ceasefire - otherwise partied friends could never settle it.
+        if (plugin.duels().inDuel(attacker, victim)) {
+            return;
+        }
         if (plugin.parties().sameParty(attacker, victim)) {
             event.setCancelled(true);
         }

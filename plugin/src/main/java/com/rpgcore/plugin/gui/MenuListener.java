@@ -1,7 +1,9 @@
 package com.rpgcore.plugin.gui;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.collection.CollectionMenu;
 import com.rpgcore.plugin.job.JobMenu;
+import com.rpgcore.plugin.progress.TitleMenu;
 import com.rpgcore.plugin.job.RpgJob;
 import com.rpgcore.plugin.stats.StatType;
 import org.bukkit.entity.Player;
@@ -30,7 +32,9 @@ public final class MenuListener implements Listener {
     @EventHandler
     public void onClick(InventoryClickEvent event) {
         InventoryHolder holder = event.getInventory().getHolder();
-        if (!(holder instanceof StatsMenu.Holder) && !(holder instanceof JobMenu.Holder)) {
+        if (!plugin.isOwnMenu(holder) || holder instanceof com.rpgcore.plugin.trade.TradeSession) {
+            // The trade window is the one RPGCore screen players may put items
+            // into, so it has a listener of its own.
             return;
         }
         // Cancel every interaction with the menu, including shift-clicks from
@@ -49,6 +53,43 @@ public final class MenuListener implements Listener {
             if (job != null && plugin.jobs().choose(player, job)) {
                 later(player, player::closeInventory);
             }
+            return;
+        }
+
+        if (holder instanceof TitleMenu.Holder menu) {
+            String id = menu.titleAt(event.getRawSlot());
+            if (id == null) {
+                return;
+            }
+            if (id.isEmpty()) {
+                plugin.titles().wear(player, null);
+                player.sendMessage(org.bukkit.ChatColor.YELLOW + "[칭호] 칭호를 뗐습니다.");
+            } else if (!plugin.titles().hasEarned(player, id)) {
+                return;
+            } else {
+                plugin.titles().wear(player, id);
+                player.sendMessage(org.bukkit.ChatColor.GREEN + "[칭호] "
+                        + plugin.titles().byId(id).display()
+                        + org.bukkit.ChatColor.GREEN + " 을(를) 착용했습니다.");
+            }
+            later(player, () -> plugin.titleMenu().open(player));
+            return;
+        }
+
+        if (holder instanceof CollectionMenu.Holder menu) {
+            int slot = event.getRawSlot();
+            if (slot == menu.backSlot()) {
+                later(player, () -> plugin.collectionMenu().open(player));
+                return;
+            }
+            String category = menu.linkAt(slot);
+            if (category != null) {
+                later(player, () -> plugin.collectionMenu().openCategory(player, category));
+            }
+            return;
+        }
+
+        if (!(holder instanceof StatsMenu.Holder)) {
             return;
         }
 
@@ -76,7 +117,7 @@ public final class MenuListener implements Listener {
     @EventHandler
     public void onDrag(InventoryDragEvent event) {
         InventoryHolder holder = event.getInventory().getHolder();
-        if (holder instanceof StatsMenu.Holder || holder instanceof JobMenu.Holder) {
+        if (plugin.isOwnMenu(holder) && !(holder instanceof com.rpgcore.plugin.trade.TradeSession)) {
             event.setCancelled(true);
         }
     }

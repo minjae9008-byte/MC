@@ -1,0 +1,174 @@
+# ==========================================================================
+#  RPGCore - 업적과 칭호
+# ==========================================================================
+#  목표를 달성하면 골드/경험치 보상과 칭호를 줍니다.
+#  칭호는 /titles 에서 골라 이름 옆에 붙일 수 있습니다.
+#
+#  업적 하나는 이렇게 씁니다:
+#
+#    내-업적-id:                # 아무 키나 가능. 칭호 id 로도 쓰입니다.
+#      display: "&e사냥꾼"       # 달성했을 때 보여줄 이름
+#      description: "설명 한 줄"  # /achievements 목록과 안내에 표시
+#      icon: minecraft:iron_sword # /titles 메뉴 아이콘
+#      type: mob-kills           # 아래 '측정 기준' 중 하나
+#      goal: 100                 # 이 값에 닿으면 달성
+#      first-only: false         # true 면 서버에서 딱 한 명만 가져갑니다
+#      title: "&e[사냥꾼]"        # 주는 칭호. 비우면 보상만 주고 칭호는 없음
+#      reward-gold: 100
+#      reward-xp: 50
+#
+#  측정 기준(type):
+#    mob-kills      몬스터 처치 수
+#    blocks-mined   부순 블록 수
+#    ores-mined     캔 광석 수
+#    logs-chopped   벤 원목 수 (연쇄 벌목 포함)
+#    fish-caught    낚은 물고기 수
+#    duels-won      대결 승리 수
+#    gold-earned    누적으로 번 골드 (대결로 딴 골드는 제외)
+#    collected      도감에 등록한 종류 수
+#    level          RPG 레벨
+#
+#  first-only 는 '서버 최초' 기록입니다. 먼저 달성한 사람이 가져가면
+#  plugins/RPGCorePlugin/records.yml 에 이름이 남고 다시는 열리지 않습니다.
+#  (누가 가져갔는지는 /achievements 에서 볼 수 있습니다.)
+#
+#  창작 모드로 부순 블록과 낚은 물고기는 세지 않습니다.
+# ==========================================================================
+
+# 칭호가 걸린 업적과 '서버 최초' 업적은 서버 전체에 알립니다.
+announce-to-server: true
+
+achievements:
+
+  # ------------------------------------------------------------ 사냥
+  hunter-100:
+    display: "&e초보 사냥꾼"
+    description: "몬스터 100마리 처치"
+    icon: minecraft:wooden_sword
+    type: mob-kills
+    goal: 100
+    reward-gold: 100
+    reward-xp: 50
+
+  hunter-500:
+    display: "&6숙련 사냥꾼"
+    description: "몬스터 500마리 처치"
+    icon: minecraft:iron_sword
+    type: mob-kills
+    goal: 500
+    title: "&6[사냥꾼]"
+    reward-gold: 400
+    reward-xp: 200
+
+  slayer-1000:
+    display: "&c학살자"
+    description: "몬스터 1,000마리 처치"
+    icon: minecraft:diamond_sword
+    type: mob-kills
+    goal: 1000
+    title: "&c[전설]"
+    reward-gold: 1500
+    reward-xp: 800
+
+  # ------------------------------------------------------------ 채굴
+  miner-500:
+    display: "&7광부"
+    description: "광석 500개 채굴"
+    icon: minecraft:iron_pickaxe
+    type: ores-mined
+    goal: 500
+    title: "&b[광부]"
+    reward-gold: 500
+    reward-xp: 250
+
+  digger-10000:
+    display: "&8땅파기 장인"
+    description: "블록 10,000개 채굴"
+    icon: minecraft:netherite_shovel
+    type: blocks-mined
+    goal: 10000
+    title: "&8[대지의 주인]"
+    reward-gold: 1200
+    reward-xp: 600
+
+  # ------------------------------------------------------------ 벌목 / 낚시
+  lumberjack-1000:
+    display: "&2나무꾼"
+    description: "원목 1,000개 벌목"
+    icon: minecraft:iron_axe
+    type: logs-chopped
+    goal: 1000
+    title: "&2[나무꾼]"
+    reward-gold: 500
+    reward-xp: 250
+
+  angler-200:
+    display: "&b낚시왕"
+    description: "물고기 200마리 낚기"
+    icon: minecraft:fishing_rod
+    type: fish-caught
+    goal: 200
+    title: "&b[낚시왕]"
+    reward-gold: 600
+    reward-xp: 300
+
+  # ------------------------------------------------------------ 대결 / 재화
+  duelist-25:
+    display: "&c검투사"
+    description: "대결 25승"
+    icon: minecraft:shield
+    type: duels-won
+    goal: 25
+    title: "&c[검투사]"
+    reward-gold: 800
+    reward-xp: 400
+
+  rich-10000:
+    display: "&6대부호"
+    description: "누적 10,000 골드 획득"
+    icon: minecraft:gold_block
+    type: gold-earned
+    goal: 10000
+    title: "&6[대부호]"
+    reward-gold: 2000
+
+  # ------------------------------------------------------------ 성장 (서버 최초)
+  first-level-10:
+    display: "&a모험가"
+    description: "레벨 10 달성"
+    icon: minecraft:leather_chestplate
+    type: level
+    goal: 10
+    reward-gold: 200
+    reward-xp: 0
+
+  first-level-20:
+    display: "&6선구자"
+    description: "서버에서 가장 먼저 레벨 20 달성"
+    icon: minecraft:beacon
+    type: level
+    goal: 20
+    first-only: true
+    title: "&6[선구자]"
+    reward-gold: 3000
+
+  first-level-50:
+    display: "&d개척자"
+    description: "서버에서 가장 먼저 레벨 50 달성"
+    icon: minecraft:nether_star
+    type: level
+    goal: 50
+    first-only: true
+    title: "&d[개척자]"
+    reward-gold: 10000
+
+  # ------------------------------------------------------------ 도감
+  collector-50:
+    display: "&5수집가"
+    description: "도감 50종 등록"
+    icon: minecraft:bookshelf
+    type: collected
+    goal: 50
+    title: "&5[수집가]"
+    reward-gold: 800
+    reward-xp: 400

@@ -1,5 +1,6 @@
 package com.rpgcore.plugin.data;
 
+import com.rpgcore.plugin.progress.CounterType;
 import com.rpgcore.plugin.stats.StatType;
 
 import java.util.EnumMap;
@@ -20,6 +21,10 @@ public final class PlayerData {
     /** Job id, or null when the player has not picked one. */
     private String jobId;
     private final Map<StatType, Integer> stats = new EnumMap<>(StatType.class);
+    /** Spendable currency: achievement rewards in, duel wagers out. */
+    private int gold;
+    /** Lifetime tallies the achievements are written against. */
+    private final Map<CounterType, Integer> counters = new EnumMap<>(CounterType.class);
 
     private int weight;
     private int weightMax;
@@ -55,6 +60,9 @@ public final class PlayerData {
     public PlayerData() {
         for (StatType type : StatType.values()) {
             stats.put(type, 0);
+        }
+        for (CounterType type : CounterType.values()) {
+            counters.put(type, 0);
         }
     }
 
@@ -108,6 +116,31 @@ public final class PlayerData {
 
     public void stat(StatType type, int value) {
         stats.put(type, value);
+        this.dirty = true;
+    }
+
+    public int gold() {
+        return gold;
+    }
+
+    public void gold(int gold) {
+        this.gold = Math.max(0, gold);
+        this.dirty = true;
+    }
+
+    /**
+     * LEVEL is derived rather than counted, so an achievement written against
+     * it reads the same way as one written against a real tally.
+     */
+    public int counter(CounterType type) {
+        return type == CounterType.LEVEL ? level : counters.getOrDefault(type, 0);
+    }
+
+    public void counter(CounterType type, int value) {
+        if (type == CounterType.LEVEL) {
+            return;
+        }
+        counters.put(type, Math.max(0, value));
         this.dirty = true;
     }
 

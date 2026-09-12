@@ -5,9 +5,10 @@ api-version: '26.2'
 author: RPGCore
 description: >
   RPG stats, jobs, leaderboards, persistent parties, player trading,
-  encumbrance, gear wear, chain tree-felling, custom anvil upgrades and
-  proximity chat. Everything is server-side, so Java and Bedrock (Geyser)
-  players get identical behaviour. No dependencies.
+  achievements and titles, a collection log, wagered 1v1 duels, encumbrance,
+  gear wear, chain tree-felling, custom anvil upgrades and proximity chat.
+  Everything is server-side, so Java and Bedrock (Geyser) players get
+  identical behaviour. No dependencies.
 
 commands:
   stats:
@@ -28,10 +29,25 @@ commands:
   trade:
     description: Trade items with another player.
     aliases: [거래, tr]
+  titles:
+    description: Pick the title shown next to your name.
+    aliases: [칭호]
+  achievements:
+    description: Show your achievement progress.
+    aliases: [ach, 업적]
+  collection:
+    description: Open the collection log.
+    aliases: [dex, 도감]
+  duel:
+    description: Challenge another player to a wagered 1v1.
+    aliases: [대결]
+  gold:
+    description: Show a gold balance.
+    aliases: [money, 골드]
   rpgcore:
-    description: RPGCore admin commands (reload, check, recipes, givexp, reset).
+    description: RPGCore admin commands (reload, check, recipes, givexp, givegold, reset).
     permission: rpgcore.admin
-    usage: /rpgcore reload | check | recipes | givexp <player> <amount> | reset <player>
+    usage: /rpgcore reload | check | recipes | givexp <player> <amount> | givegold <player> <amount> | reset <player>
     default: op
 
 permissions:

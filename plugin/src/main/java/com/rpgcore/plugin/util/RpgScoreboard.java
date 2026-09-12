@@ -29,6 +29,7 @@ public final class RpgScoreboard {
     public static final String WEIGHT_MAX = "rpgcore.weight_max";
     public static final String WEIGHT_TIER = "rpgcore.weight_tier";
     public static final String HP_MAX = "rpgcore.hp_max";
+    public static final String GOLD = "rpgcore.gold";
     public static final String INITIALISED = "rpgcore.init";
 
     @SuppressWarnings("deprecation") // String-criteria overload is the version-portable one
@@ -64,11 +65,16 @@ public final class RpgScoreboard {
     }
 
     public void write(Player player, String objective, int value) {
+        write(player.getName(), objective, value);
+    }
+
+    /** By entry name, the write that pairs with the offline-capable read. */
+    public void write(String entry, String objective, int value) {
         Objective obj = objective(objective);
         if (obj == null) {
             return;
         }
-        obj.getScore(player.getName()).setScore(value);
+        obj.getScore(entry).setScore(value);
     }
 
     private Objective objective(String name) {

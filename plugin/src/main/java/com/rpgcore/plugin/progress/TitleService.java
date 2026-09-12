@@ -1,0 +1,185 @@
+package com.rpgcore.plugin.progress;
+
+import com.rpgcore.plugin.RpgCorePlugin;
+import org.bukkit.ChatColor;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Player;
+import org.bukkit.persistence.PersistentDataType;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * The tags players wear next to their name - [전설], [낚시왕] and the rest.
+ *
+ * A title is only ever stored as its id. The text and colour live in the
+ * config that defines it (an achievement, or a collection category), so
+ * renaming [전설] in config renames it for everyone who already earned it
+ * instead of leaving old text stamped on old players.
+ *
+ * Which titles a player has earned, and which one they are wearing, go in
+ * their own persistent data container - the same place their job lives, so
+ * still no extra data file.
+ */
+public final class TitleService {
+
+    /** One title as declared by whatever grants it. */
+    public record Title(String id, String display, Material icon, String requirement) {
+    }
+
+    private final RpgCorePlugin plugin;
+    private final NamespacedKey earnedKey;
+    private final NamespacedKey wornKey;
+    /** Declared titles in declaration order, so the menu reads the same way twice. */
+    private final Map<String, Title> titles = new LinkedHashMap<>();
+
+    public TitleService(RpgCorePlugin plugin) {
+        this.plugin = plugin;
+        this.earnedKey = new NamespacedKey(plugin, "titles");
+        this.wornKey = new NamespacedKey(plugin, "title");
+    }
+
+    /** Dropped and rebuilt on every reload, since the definitions can change. */
+    public void clear() {
+        titles.clear();
+    }
+
+    public void register(String id, String display, Material icon, String requirement) {
+        if (id == null || display == null || display.isBlank()) {
+            return;
+        }
+        String key = id.toLowerCase(Locale.ROOT);
+        titles.put(key, new Title(key,
+                ChatColor.translateAlternateColorCodes('&', display), icon, requirement));
+    }
+
+    public Title byId(String id) {
+        return id == null ? null : titles.get(id.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * By id, or by the text a player can actually see. Someone wearing
+     * [강태공] will type that, not the config key it happens to live under.
+     */
+    public Title resolve(String needle) {
+        Title byId = byId(needle);
+        if (byId != null || needle == null) {
+            return byId;
+        }
+        String plain = strip(needle);
+        for (Title title : titles.values()) {
+            if (strip(title.display()).equalsIgnoreCase(plain)) {
+                return title;
+            }
+        }
+        return null;
+    }
+
+    /** Colour codes and brackets off, so "[강태공]" and "강태공" both match. */
+    private static String strip(String text) {
+        return ChatColor.stripColor(ChatColor.translateAlternateColorCodes('&', text))
+                .replace("[", "").replace("]", "").trim();
+    }
+
+    public List<Title> all() {
+        return List.copyOf(titles.values());
+    }
+
+    public int count() {
+        return titles.size();
+    }
+
+    public Set<String> earned(Player player) {
+        return split(player.getPersistentDataContainer().get(earnedKey, PersistentDataType.STRING));
+    }
+
+    public boolean hasEarned(Player player, String id) {
+        return id != null && earned(player).contains(id.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Records a title as earned. Returns false when the player already had it,
+     * so callers can stay quiet rather than re-announcing.
+     */
+    public boolean award(Player player, String id) {
+        Title title = byId(id);
+        if (title == null) {
+            return false;
+        }
+        Set<String> owned = earned(player);
+        if (!owned.add(title.id())) {
+            return false;
+        }
+        player.getPersistentDataContainer().set(earnedKey, PersistentDataType.STRING,
+                String.join(",", owned));
+        // First title earned is worn straight away: a player who never opens
+        // the menu should still see the reward above their head.
+        if (worn(player) == null) {
+            wear(player, title.id());
+        }
+        return true;
+    }
+
+    /** The title a player is wearing, or null - including when it was revoked. */
+    public Title worn(Player player) {
+        String id = player.getPersistentDataContainer().get(wornKey, PersistentDataType.STRING);
+        Title title = byId(id);
+        return title != null && hasEarned(player, title.id()) ? title : null;
+    }
+
+    /** Passing null takes the title off. */
+    public void wear(Player player, String id) {
+        if (id == null) {
+            player.getPersistentDataContainer().remove(wornKey);
+            return;
+        }
+        Title title = byId(id);
+        if (title == null || !hasEarned(player, title.id())) {
+            return;
+        }
+        player.getPersistentDataContainer().set(wornKey, PersistentDataType.STRING, title.id());
+    }
+
+    /** Clears everything a player earned, for /rpgcore reset. */
+    public void reset(Player player) {
+        player.getPersistentDataContainer().remove(earnedKey);
+        player.getPersistentDataContainer().remove(wornKey);
+    }
+
+    private Set<String> split(String raw) {
+        Set<String> out = new LinkedHashSet<>();
+        if (raw == null || raw.isBlank()) {
+            return out;
+        }
+        for (String part : raw.split(",")) {
+            String id = part.trim().toLowerCase(Locale.ROOT);
+            if (!id.isEmpty()) {
+                out.add(id);
+            }
+        }
+        return out;
+    }
+
+    /** Earned titles first, then the ones still to win. */
+    public List<Title> ordered(Player player) {
+        Set<String> owned = earned(player);
+        List<Title> out = new ArrayList<>();
+        for (Title title : titles.values()) {
+            if (owned.contains(title.id())) {
+                out.add(title);
+            }
+        }
+        for (Title title : titles.values()) {
+            if (!owned.contains(title.id())) {
+                out.add(title);
+            }
+        }
+        return out;
+    }
+}

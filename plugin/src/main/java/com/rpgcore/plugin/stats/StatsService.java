@@ -105,6 +105,8 @@ public final class StatsService {
         if (levelled) {
             recalculate(player, data);
             announceLevelUp(player, data);
+            plugin.economy().give(player, plugin.rpgConfig().goldPerLevel());
+            plugin.achievements().checkLevel(player, data);
         }
         plugin.players().flush(player, data);
     }

@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.data;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.progress.CounterType;
 import com.rpgcore.plugin.stats.StatType;
 import com.rpgcore.plugin.util.RpgScoreboard;
 import org.bukkit.entity.Player;
@@ -38,8 +39,14 @@ public final class PlayerDataManager {
         board.ensureObjective(RpgScoreboard.WEIGHT_TIER, "Weight tier");
         board.ensureObjective(RpgScoreboard.HP_MAX, "Max HP");
         board.ensureObjective(RpgScoreboard.INITIALISED, "RPGCore initialised");
+        board.ensureObjective(RpgScoreboard.GOLD, "Gold");
         for (StatType type : StatType.values()) {
             board.ensureObjective(type.objective(), type.label());
+        }
+        for (CounterType type : CounterType.values()) {
+            if (type.objective() != null) {
+                board.ensureObjective(type.objective(), type.label());
+            }
         }
     }
 
@@ -71,8 +78,14 @@ public final class PlayerDataManager {
         data.xp(board.read(player, RpgScoreboard.XP));
         data.xpNeed(board.read(player, RpgScoreboard.XP_NEED));
         data.points(board.read(player, RpgScoreboard.POINTS));
+        data.gold(board.read(player, RpgScoreboard.GOLD));
         for (StatType type : StatType.values()) {
             data.stat(type, board.read(player, type.objective()));
+        }
+        for (CounterType type : CounterType.values()) {
+            if (type.objective() != null) {
+                data.counter(type, board.read(player, type.objective()));
+            }
         }
         data.markInventoryDirty();
         return data;
@@ -83,6 +96,7 @@ public final class PlayerDataManager {
         data.xp(0);
         data.xpNeed(plugin.rpgConfig().xpBase());
         data.points(plugin.rpgConfig().startingPoints());
+        data.gold(plugin.rpgConfig().startingGold());
         for (StatType type : StatType.values()) {
             data.stat(type, 0);
         }
@@ -102,10 +116,33 @@ public final class PlayerDataManager {
         board.write(player, RpgScoreboard.WEIGHT_MAX, data.weightMax());
         board.write(player, RpgScoreboard.WEIGHT_TIER, data.weightTier());
         board.write(player, RpgScoreboard.HP_MAX, data.maxHealth());
+        board.write(player, RpgScoreboard.GOLD, data.gold());
         for (StatType type : StatType.values()) {
             board.write(player, type.objective(), data.stat(type));
         }
+        for (CounterType type : CounterType.values()) {
+            if (type.objective() != null) {
+                board.write(player, type.objective(), data.counter(type));
+            }
+        }
         data.clearDirty();
+    }
+
+    /**
+     * Adds gold to a player who is not online. The mirror is keyed by name and
+     * saved with the world, so this is simply a write - which is what lets a
+     * refund reach someone who logged off at the wrong moment.
+     */
+    public void grantOfflineGold(UUID uuid, int amount) {
+        if (amount <= 0) {
+            return;
+        }
+        String name = plugin.getServer().getOfflinePlayer(uuid).getName();
+        if (name == null) {
+            plugin.getLogger().warning("Could not return " + amount + " gold: no known name for " + uuid + ".");
+            return;
+        }
+        board.write(name, RpgScoreboard.GOLD, board.read(name, RpgScoreboard.GOLD) + amount);
     }
 
     /** True once, for a player whose data was created on this join. */

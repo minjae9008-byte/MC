@@ -1,0 +1,97 @@
+# ==========================================================================
+#  RPGCore - 도감 (수집 요소)
+# ==========================================================================
+#  분류마다 한 장씩, 아이템을 하나 손에 넣을 때마다 그 칸이 채워집니다.
+#  인벤토리에 들어오기만 하면 등록되므로 캐든, 만들든, 낚든, 상자에서
+#  꺼내든 모두 인정됩니다. /collection (또는 /도감) 으로 확인하세요.
+#
+#  한 장은 이렇게 씁니다:
+#
+#    분류-id:                     # 아무 키나 가능. 칭호 id 로도 쓰입니다.
+#      display: "&6원목 도감"
+#      icon: minecraft:oak_log     # 목록 화면 아이콘
+#      items:                      # ID 와 태그를 섞어 쓸 수 있습니다
+#        - '#minecraft:logs'
+#        - minecraft:bamboo_block
+#      title: "&2[벌목왕]"          # 전부 모았을 때 주는 칭호 (없어도 됨)
+#      reward-gold: 300
+#      reward-xp: 150
+#
+#  주의할 점 두 가지:
+#    - 한 아이템은 한 분류에만 들어갑니다. 두 곳에 적으면 먼저 나온 쪽만
+#      인정되고 로그에 경고가 남습니다.
+#    - 한 장에 45종까지만 화면에 들어갑니다. 태그를 쓸 때는 /rpgcore check
+#      로 실제로 몇 종이 잡혔는지 확인하세요.
+#
+#  아이템 목록 문법은 config.yml 과 같습니다(#태그 / 낱개 ID).
+#  이 서버 버전에 없는 항목은 경고만 남기고 건너뜁니다.
+# ==========================================================================
+
+categories:
+
+  wood:
+    display: "&6원목"
+    icon: minecraft:oak_log
+    items:
+      - minecraft:oak_log
+      - minecraft:spruce_log
+      - minecraft:birch_log
+      - minecraft:jungle_log
+      - minecraft:acacia_log
+      - minecraft:dark_oak_log
+      - minecraft:mangrove_log
+      - minecraft:cherry_log
+      - minecraft:pale_oak_log
+      - minecraft:crimson_stem
+      - minecraft:warped_stem
+      - minecraft:bamboo_block
+    title: "&2[벌목왕]"
+    reward-gold: 400
+    reward-xp: 200
+
+  ore:
+    display: "&b광물"
+    icon: minecraft:raw_iron
+    items:
+      - minecraft:coal
+      - minecraft:raw_copper
+      - minecraft:raw_iron
+      - minecraft:raw_gold
+      - minecraft:redstone
+      - minecraft:lapis_lazuli
+      - minecraft:diamond
+      - minecraft:emerald
+      - minecraft:quartz
+      - minecraft:ancient_debris
+      - minecraft:amethyst_shard
+    title: "&b[대장장이]"
+    reward-gold: 800
+    reward-xp: 400
+
+  wool:
+    display: "&d양털"
+    icon: minecraft:white_wool
+    items: ['#minecraft:wool']
+    title: "&d[염색공]"
+    reward-gold: 300
+    reward-xp: 150
+
+  fish:
+    display: "&3물고기"
+    icon: minecraft:cod
+    items:
+      - minecraft:cod
+      - minecraft:salmon
+      - minecraft:tropical_fish
+      - minecraft:pufferfish
+    title: "&3[강태공]"
+    reward-gold: 500
+    reward-xp: 250
+
+  flower:
+    display: "&a꽃"
+    icon: minecraft:poppy
+    items: ['#minecraft:small_flowers']
+    title: "&a[정원사]"
+    reward-gold: 300
+    reward-xp: 150

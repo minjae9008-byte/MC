@@ -4,6 +4,8 @@ import com.rpgcore.plugin.anvil.AnvilListener;
 import com.rpgcore.plugin.anvil.AnvilRecipe;
 import com.rpgcore.plugin.anvil.AnvilService;
 import com.rpgcore.plugin.chat.ProximityChatListener;
+import com.rpgcore.plugin.collection.CollectionMenu;
+import com.rpgcore.plugin.collection.CollectionService;
 import com.rpgcore.plugin.config.RpgConfig;
 import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.data.PlayerDataManager;
@@ -11,11 +13,18 @@ import com.rpgcore.plugin.display.NameplateService;
 import com.rpgcore.plugin.gear.GearListener;
 import com.rpgcore.plugin.gear.GearService;
 import com.rpgcore.plugin.gear.RangedListener;
+import com.rpgcore.plugin.command.AchievementCommand;
+import com.rpgcore.plugin.command.CollectionCommand;
+import com.rpgcore.plugin.command.DuelCommand;
+import com.rpgcore.plugin.command.GoldCommand;
 import com.rpgcore.plugin.command.JobCommand;
 import com.rpgcore.plugin.command.LeaderboardCommand;
 import com.rpgcore.plugin.command.PartyChatCommand;
 import com.rpgcore.plugin.command.PartyCommand;
+import com.rpgcore.plugin.command.TitleCommand;
 import com.rpgcore.plugin.command.TradeCommand;
+import com.rpgcore.plugin.duel.DuelListener;
+import com.rpgcore.plugin.duel.DuelService;
 import com.rpgcore.plugin.gui.MenuListener;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.job.JobMenu;
@@ -23,6 +32,11 @@ import com.rpgcore.plugin.job.JobService;
 import com.rpgcore.plugin.leaderboard.LeaderboardService;
 import com.rpgcore.plugin.party.PartyListener;
 import com.rpgcore.plugin.party.PartyService;
+import com.rpgcore.plugin.progress.AchievementService;
+import com.rpgcore.plugin.progress.EconomyService;
+import com.rpgcore.plugin.progress.ProgressListener;
+import com.rpgcore.plugin.progress.TitleMenu;
+import com.rpgcore.plugin.progress.TitleService;
 import com.rpgcore.plugin.trade.TradeListener;
 import com.rpgcore.plugin.trade.TradeService;
 import com.rpgcore.plugin.hud.HudTask;
@@ -72,6 +86,13 @@ public final class RpgCorePlugin extends JavaPlugin {
     private PartyService parties;
     private TradeService trades;
     private NameplateService nameplates;
+    private EconomyService economy;
+    private TitleService titles;
+    private TitleMenu titleMenu;
+    private AchievementService achievements;
+    private CollectionService collections;
+    private CollectionMenu collectionMenu;
+    private DuelService duels;
 
     @Override
     public void onEnable() {
@@ -101,10 +122,22 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.trades = new TradeService(this);
         this.leaderboard = new LeaderboardService(this, scoreboard);
 
+        // Titles are a registry the other two fill in, so it comes first and
+        // both of them declare into it as they load.
+        this.economy = new EconomyService(this);
+        this.titles = new TitleService(this);
+        this.achievements = new AchievementService(this);
+        this.achievements.load();
+        this.collections = new CollectionService(this);
+        this.collections.load();
+        this.duels = new DuelService(this);
+
         this.nameplates = new NameplateService(this);
 
         this.statsMenu = new StatsMenu(this);
         this.jobMenu = new JobMenu(this);
+        this.titleMenu = new TitleMenu(this);
+        this.collectionMenu = new CollectionMenu(this);
 
         getServer().getPluginManager().registerEvents(new PlayerSessionListener(this), this);
         getServer().getPluginManager().registerEvents(new MenuListener(this), this);
@@ -115,6 +148,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new AnvilListener(this, anvil), this);
         getServer().getPluginManager().registerEvents(new PartyListener(this), this);
         getServer().getPluginManager().registerEvents(new TradeListener(this), this);
+        getServer().getPluginManager().registerEvents(new ProgressListener(this), this);
+        getServer().getPluginManager().registerEvents(new DuelListener(this), this);
         if (rpgConfig.proximityEnabled()) {
             getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
         }
@@ -127,6 +162,7 @@ public final class RpgCorePlugin extends JavaPlugin {
                 weight.tick();
                 gear.tick();
                 treeFell.tick();
+                duels.tick();
             }
         }.runTaskTimer(this, 1L, 1L);
         new HudTask(this).runTaskTimer(this, 20L, rpgConfig.hudInterval());
@@ -136,12 +172,18 @@ public final class RpgCorePlugin extends JavaPlugin {
         registerCommand("party", new PartyCommand(this));
         registerCommand("p", new PartyChatCommand(this));
         registerCommand("trade", new TradeCommand(this));
+        registerCommand("titles", new TitleCommand(this));
+        registerCommand("achievements", new AchievementCommand(this));
+        registerCommand("collection", new CollectionCommand(this));
+        registerCommand("duel", new DuelCommand(this));
+        registerCommand("gold", new GoldCommand(this));
 
         new VoiceChatHook(this).check();
 
         // Players are already online after a /reload.
         for (Player player : getServer().getOnlinePlayers()) {
             stats.recalculate(player);
+            collections.load(player);
         }
 
         getLogger().info("RPGCore plugin enabled.");
@@ -149,15 +191,30 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Items sitting in an open trade window belong to their owners, not to
-        // the void, so every live trade is unwound before anything else.
-        for (Player player : getServer().getOnlinePlayers()) {
-            trades.endIfTrading(player, "서버가 종료됩니다.");
+        // A failed enable still calls this, so every field here may be null;
+        // shutting down half-built must not bury the error that caused it.
+        if (trades != null) {
+            // Items sitting in an open trade window belong to their owners,
+            // not to the void, so live trades are unwound before anything else.
+            for (Player player : getServer().getOnlinePlayers()) {
+                trades.endIfTrading(player, "서버가 종료됩니다.");
+            }
         }
-        parties.save();
-        for (Player player : getServer().getOnlinePlayers()) {
-            nameplates.clear(player);
-            players.unload(player);
+        // Same reasoning for duels: a stake in escrow belongs to whoever put
+        // it up, not to the void.
+        if (duels != null) {
+            duels.endAll("서버가 종료되어 무승부입니다.");
+        }
+        if (parties != null) {
+            parties.save();
+        }
+        if (players != null) {
+            for (Player player : getServer().getOnlinePlayers()) {
+                if (nameplates != null) {
+                    nameplates.clear(player);
+                }
+                players.unload(player);
+            }
         }
         getLogger().info("RPGCore plugin disabled.");
     }
@@ -184,7 +241,7 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     private boolean adminCommand(CommandSender sender, String[] args) {
         if (args.length == 0) {
-            sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | check | recipes | givexp <player> <amount> | reset <player>");
+            sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | check | recipes | givexp <player> <amount> | givegold <player> <amount> | reset <player>");
             return true;
         }
 
@@ -195,6 +252,15 @@ public final class RpgCorePlugin extends JavaPlugin {
                 treeFell.load();
                 anvil.load();
                 jobs.load();
+                // Both declare their titles, so the registry is rebuilt from
+                // scratch rather than accumulating renamed duplicates.
+                titles.clear();
+                achievements.load();
+                collections.load();
+                for (Player player : getServer().getOnlinePlayers()) {
+                    collections.load(player);
+                }
+                duels.endAll("설정을 다시 불러와 무승부입니다.");
                 leaderboard.invalidate();
                 for (Player player : getServer().getOnlinePlayers()) {
                     stats.recalculate(player);
@@ -238,6 +304,34 @@ public final class RpgCorePlugin extends JavaPlugin {
                 sender.sendMessage(ChatColor.GREEN + "[RPGCore] " + target.getName() + " 에게 XP " + amount + " 지급.");
                 return true;
             }
+            case "givegold" -> {
+                if (args.length < 3) {
+                    sender.sendMessage(ChatColor.RED + "/rpgcore givegold <player> <amount>");
+                    return true;
+                }
+                Player target = getServer().getPlayerExact(args[1]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "온라인이 아닌 플레이어입니다: " + args[1]);
+                    return true;
+                }
+                int amount;
+                try {
+                    amount = Integer.parseInt(args[2]);
+                } catch (NumberFormatException e) {
+                    sender.sendMessage(ChatColor.RED + "숫자를 입력하세요: " + args[2]);
+                    return true;
+                }
+                if (amount >= 0) {
+                    economy.give(target, amount);
+                } else if (!economy.take(target, -amount)) {
+                    sender.sendMessage(ChatColor.RED + "골드가 부족합니다. (보유 "
+                            + economy.balance(target) + ")");
+                    return true;
+                }
+                sender.sendMessage(ChatColor.GREEN + "[RPGCore] " + target.getName() + " 골드 "
+                        + (amount >= 0 ? "+" : "") + amount + " → " + economy.balance(target) + ".");
+                return true;
+            }
             case "reset" -> {
                 if (args.length < 2) {
                     sender.sendMessage(ChatColor.RED + "/rpgcore reset <player>");
@@ -257,13 +351,20 @@ public final class RpgCorePlugin extends JavaPlugin {
                     data.stat(type, 0);
                 }
                 jobs.clear(target, data);
+                achievements.reset(target, data);
+                collections.reset(target);
+                titles.reset(target);
                 stats.recalculate(target, data);
                 players.flush(target, data);
-                sender.sendMessage(ChatColor.GREEN + "[RPGCore] " + target.getName() + " 의 스탯을 초기화했습니다.");
+                // Gold is deliberately left alone: an admin resetting someone's
+                // build should not also confiscate what they earned.
+                sender.sendMessage(ChatColor.GREEN + "[RPGCore] " + target.getName()
+                        + " 의 스탯/업적/칭호/도감을 초기화했습니다. (골드 "
+                        + economy.balance(target) + " 은(는) 그대로)");
                 return true;
             }
             default -> {
-                sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | check | recipes | givexp <player> <amount> | reset <player>");
+                sender.sendMessage(ChatColor.YELLOW + "/rpgcore reload | check | recipes | givexp <player> <amount> | givegold <player> <amount> | reset <player>");
                 return true;
             }
         }
@@ -309,6 +410,12 @@ public final class RpgCorePlugin extends JavaPlugin {
         line(sender, "머리 위 이름표", rpgConfig.nameplateEnabled(), rpgConfig.displaySummary(NameplateService.NAMEPLATE));
         line(sender, "플레이어 목록", rpgConfig.tablistEnabled(), rpgConfig.displaySummary(NameplateService.TABLIST));
         line(sender, "무게 툴팁", rpgConfig.weightLoreEnabled(), rpgConfig.weightLoreFormat().replace("%weight%", "n"));
+        line(sender, "업적", rpgConfig.achievementsEnabled(),
+                achievements.count() + "종, 칭호 " + titles.count() + "종");
+        line(sender, "도감", rpgConfig.collectionEnabled(),
+                collections.categories().size() + "개 분류 / " + collections.entryCount() + "종");
+        line(sender, "대결", rpgConfig.duelEnabled(), "최대 " + rpgConfig.duelMaxGold()
+                + "골드, 제한 " + rpgConfig.duelMaxSeconds() + "초, 진행 중 " + duels.count() + "건");
 
         sender.sendMessage(ChatColor.GRAY + "레벨: 최대 "
                 + (rpgConfig.maxLevel() > 0 ? String.valueOf(rpgConfig.maxLevel()) : "무제한")
@@ -336,11 +443,41 @@ public final class RpgCorePlugin extends JavaPlugin {
     public boolean isOwnMenu(org.bukkit.inventory.InventoryHolder holder) {
         return holder instanceof StatsMenu.Holder
                 || holder instanceof JobMenu.Holder
+                || holder instanceof TitleMenu.Holder
+                || holder instanceof CollectionMenu.Holder
                 || holder instanceof com.rpgcore.plugin.trade.TradeSession;
     }
 
     public NameplateService nameplates() {
         return nameplates;
+    }
+
+    public EconomyService economy() {
+        return economy;
+    }
+
+    public TitleService titles() {
+        return titles;
+    }
+
+    public TitleMenu titleMenu() {
+        return titleMenu;
+    }
+
+    public AchievementService achievements() {
+        return achievements;
+    }
+
+    public CollectionService collections() {
+        return collections;
+    }
+
+    public CollectionMenu collectionMenu() {
+        return collectionMenu;
+    }
+
+    public DuelService duels() {
+        return duels;
     }
 
     public JobService jobs() {

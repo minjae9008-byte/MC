@@ -30,7 +30,9 @@ public final class ConfigFiles {
     /** Writes the jar's copy if the file is absent, then loads it with defaults. */
     public static FileConfiguration load(Plugin plugin, String name) {
         File file = new File(plugin.getDataFolder(), name);
-        if (!file.isFile()) {
+        // No jar copy means this is a file the plugin writes rather than ships
+        // (records.yml), so an absent one is simply an empty config, not an error.
+        if (!file.isFile() && plugin.getResource(name) != null) {
             plugin.saveResource(name, false);
         }
         YamlConfiguration loaded = YamlConfiguration.loadConfiguration(file);

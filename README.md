@@ -1,7 +1,8 @@
 # RPGCore
 
-Paper 서버용 RPG 플러그인. 스탯/레벨, 직업, 순위표, 파티, 플레이어 간 거래, 소지 무게,
-장비 내구도 페널티, 연쇄 벌목, 모루 커스텀 강화, 근접 채팅을 한 덩어리로 제공합니다.
+Paper 서버용 RPG 플러그인. 스탯/레벨, 직업, 순위표, 파티, 플레이어 간 거래,
+업적과 칭호, 수집 도감, 1:1 대결, 소지 무게, 장비 내구도 페널티, 연쇄 벌목,
+모루 커스텀 강화, 근접 채팅을 한 덩어리로 제공합니다.
 이름표와 플레이어 목록, 아이템 툴팁에도 RPG 정보가 함께 표시됩니다.
 
 - **jar 하나가 전부입니다.** 데이터팩도, 다른 플러그인도, 외부 라이브러리도 필요 없습니다.
@@ -113,6 +114,57 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 - 창을 닫거나, 접속을 종료하거나, 죽거나, `/trade cancel` 하거나, 서버가 꺼지면
   **올려둔 물건은 전부 주인에게 돌아갑니다.**
 
+### 업적과 칭호
+목표를 달성하면 골드/경험치 보상과 **칭호**가 들어옵니다. 칭호는 `/titles` 에서 골라
+이름 옆에 붙입니다 — 머리 위 이름표와 Tab 목록 양쪽에 나옵니다.
+
+| 측정 기준 | 예시 목표 | 주는 칭호 |
+|---|---|---|
+| 몬스터 처치 | 1,000마리 | `[전설]` |
+| 광석 채굴 | 500개 | `[광부]` |
+| 블록 채굴 | 10,000개 | `[대지의 주인]` |
+| 원목 벌목 | 1,000개 | `[나무꾼]` |
+| 물고기 낚기 | 200마리 | `[낚시왕]` |
+| 대결 승리 | 25승 | `[검투사]` |
+| 누적 골드 | 10,000G | `[대부호]` |
+| 레벨 | **서버 최초** 20 / 50 | `[선구자]` `[개척자]` |
+| 도감 등록 | 50종 | `[수집가]` |
+
+- `first-only: true` 를 붙이면 **서버에서 딱 한 명**만 가져가는 기록이 됩니다.
+  먼저 달성한 사람의 이름이 `records.yml` 에 남고 `/achievements` 에 표시됩니다.
+  (동시에 달성해도 기록을 먼저 쓴 쪽만 인정되므로 두 명이 같은 최초를 가져갈 수 없습니다.)
+- 칭호가 걸린 업적과 서버 최초 업적은 서버 전체에 알립니다.
+- 창작 모드로 부순 블록과 낚은 물고기는 세지 않습니다.
+- `/achievements` 로 항목별 진행도를, `/titles` 로 칭호 목록(못 얻은 것은 회색)을 봅니다.
+
+### 골드
+업적 보상과 몬스터 처치·레벨업으로 들어오고, 대결에 걸 수 있는 재화입니다.
+스코어보드(`rpgcore.gold`)에 저장되므로 **경제 플러그인이 필요 없고** `/scoreboard` 로도
+읽고 쓸 수 있습니다. `/gold` 로 확인, `/rpgcore givegold` 로 지급·회수합니다.
+
+### 수집 도감
+나무·광물·양털·물고기·꽃을 모으는 도감입니다. `/collection` 으로 엽니다.
+
+- **인벤토리에 들어오기만 하면 등록**됩니다. 캐든, 만들든, 낚든, 상자에서 꺼내든 모두 인정.
+- 한 장을 다 모으면 칭호와 보상이 들어오고 서버 전체에 알립니다.
+- 모은 칸은 아이템 그대로, 못 모은 칸은 회색 유리로 보여 한눈에 진행도가 읽힙니다.
+- 기존 서버에 처음 설치하면 **이미 들고 있던 물건은 조용히 등록**됩니다. 접속하자마자
+  수십 줄이 쏟아지거나, 몇 달 전에 채운 칸으로 보상이 한꺼번에 나가지 않습니다.
+
+### 1:1 대결
+`/duel <플레이어> [건 것]` — 양쪽이 동의하고 같은 것을 걸어야 시작됩니다.
+
+- 건 것을 비우면 그냥 대결, 숫자면 **골드**, `hand` 면 **손에 든 아이템**입니다.
+  수락하는 쪽은 같은 것(아이템이면 같은 종류·같은 개수)을 내야 합니다.
+- 시작할 때 양쪽에서 **미리 빼둡니다.** 걸어 둔 것은 대결 중에 쓰거나 버리거나
+  거래로 넘길 수 없고, 서버가 갑자기 내려가도 그대로 돌려받습니다.
+- **죽지 않습니다.** 치명타가 들어오는 순간 피해를 취소하고 승패로 처리하므로
+  진 쪽도 아이템을 떨어뜨리지 않습니다. 끝나면 양쪽 다 체력이 회복됩니다.
+- 도중에 접속을 끊으면 기권패입니다. 제한 시간(기본 5분)이 지나면 무승부로 끝나고
+  건 것은 그대로 돌아갑니다.
+- 파티원끼리도 대결할 수 있습니다(아군 공격 차단보다 대결이 우선).
+- 월드의 PvP 가 꺼져 있으면 **신청 단계에서** 막힙니다.
+
 ### 소지 무게
 인벤토리 + 방어구 + 보조손 41칸을 `개수 × 등급 무게` 로 계산합니다.
 부하율에 따라 4단계이며, 단계가 바뀔 때만 어트리뷰트를 건드립니다.
@@ -172,14 +224,14 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 그대로 텍스트로 나가므로 채팅을 꾸미거나 위장할 수 없습니다.
 
 ### 이름표 · 플레이어 목록
-머리 위 이름표와 Tab 플레이어 목록에 파티·레벨·직업이 함께 나옵니다.
+머리 위 이름표와 Tab 플레이어 목록에 파티·칭호·레벨·직업이 함께 나옵니다.
 
 ```
-머리 위   [푸른사슴] Alpha Lv.6 전사
-Tab 목록  [푸른사슴] Alpha Lv.6
+머리 위   [푸른사슴] [강태공] Alpha Lv.6 전사
+Tab 목록  [푸른사슴] [강태공] Alpha Lv.6
 ```
 
-- 파티가 없거나 직업이 없으면 **그 조각만 통째로 빠집니다** — 빈 괄호가 남지 않습니다.
+- 파티가 없거나 칭호·직업이 없으면 **그 조각만 통째로 빠집니다** — 빈 괄호가 남지 않습니다.
 - 무엇을 보여줄지는 두 곳에서 따로 정합니다(기본값: 목록에는 직업 미표시).
 - 스코어보드 팀 기능으로 붙이므로 **베드락(Geyser)에서도 똑같이 보이고**, 별도 패킷을
   매 틱 쏘지 않습니다. 레벨·파티·직업이 실제로 바뀔 때만 갱신됩니다.
@@ -209,11 +261,17 @@ Tab 목록  [푸른사슴] Alpha Lv.6
 | `/party <하위명령>` | 모두 | 파티 생성·이름변경·초대·수락·추방·해체·목록 |
 | `/p <메시지>` | 모두 | 파티 채팅 |
 | `/trade <플레이어>` | 모두 | 거래 요청 (`accept`/`deny`/`cancel`) |
+| `/titles [칭호]` | 모두 | 칭호 선택 창 / 바로 착용 (별칭 `/칭호`, `off` 로 해제) |
+| `/achievements` | 모두 | 업적 진행도 (별칭 `/ach`, `/업적`) |
+| `/collection` | 모두 | 수집 도감 (별칭 `/dex`, `/도감`) |
+| `/duel <플레이어> [건 것]` | 모두 | 대결 신청 (`accept`/`deny`/`forfeit`, 별칭 `/대결`) |
+| `/gold [플레이어]` | 모두 | 골드 잔액 (별칭 `/money`, `/골드`) |
 | `/rpgcore reload` | `rpgcore.admin` | 설정 파일 다시 읽기 |
 | `/rpgcore check` | `rpgcore.admin` | 각 기능이 실제로 뭘 읽었는지 점검 |
 | `/rpgcore recipes` | `rpgcore.admin` | 모루 조합법 목록 |
 | `/rpgcore givexp <player> <amount>` | `rpgcore.admin` | XP 지급 |
-| `/rpgcore reset <player>` | `rpgcore.admin` | 스탯 초기화 |
+| `/rpgcore givegold <player> <amount>` | `rpgcore.admin` | 골드 지급 (음수면 회수) |
+| `/rpgcore reset <player>` | `rpgcore.admin` | 스탯·업적·칭호·도감 초기화 (골드는 유지) |
 
 ## 설정
 
@@ -224,7 +282,12 @@ Tab 목록  [푸른사슴] Alpha Lv.6
 |---|---|---|
 | **`settings.yml`** | 최대 레벨, 경험치 곡선, 인챈트 한계, 기능 on/off | **대부분 여기만 보면 됩니다** |
 | **`jobs.yml`** | 직업 정의 | 직업을 만들거나 고칠 때 |
-| `config.yml` | 아이템 무게 분류, 모루 조합법, 벌목 대상, GUI, 채팅 | 세부 조정이 필요할 때 |
+| **`achievements.yml`** | 업적과 그 보상·칭호 | 목표를 만들거나 고칠 때 |
+| **`collection.yml`** | 도감 분류와 수집 대상 | 도감에 항목을 넣을 때 |
+| `config.yml` | 아이템 무게 분류, 모루 조합법, 벌목 대상, 골드, 대결, GUI, 채팅 | 세부 조정이 필요할 때 |
+
+> `records.yml` 은 플러그인이 직접 씁니다. '서버 최초' 업적을 누가 가져갔는지 담겨
+> 있으니 손으로 고치지 마세요. 지우면 그 기록이 다시 열립니다.
 
 고친 뒤 **`/rpgcore reload`** 하면 재시작 없이 반영됩니다.
 지금 설정이 실제로 어떻게 읽혔는지는 **`/rpgcore check`** 로 확인하세요.
@@ -238,6 +301,9 @@ Tab 목록  [푸른사슴] Alpha Lv.6
  O 머리 위 이름표 - 파티 + 레벨 + 직업
  O 플레이어 목록 - 파티 + 레벨
  O 무게 툴팁 - &8무게 n
+ O 업적 - 13종, 칭호 16종
+ O 도감 - 5개 분류 / 60종
+ O 대결 - 최대 1000골드, 제한 300초, 진행 중 0건
  ...
 레벨: 최대 무제한, 곡선 x1.0 (Lv2 100 / Lv10 500 / Lv20 1000 XP)
 인챈트 한계: 최대 255
@@ -280,6 +346,9 @@ features:               # 끄면 관련 명령어도 막힙니다
   nameplate: true         # 머리 위 이름표
   tablist: true           # 플레이어 목록(Tab)
   item-weight-lore: true  # 아이템 설명의 무게 한 줄
+  achievements: true      # 업적과 칭호
+  collection: true        # 수집 도감
+  duels: true             # 1:1 대결
 ```
 
 **최대 레벨** — `level.max` 에 닿으면 더 이상 XP 가 쌓이지 않습니다. 남은 XP 를 쌓아두지 않으므로,
@@ -394,27 +463,95 @@ weight:
   lore-format: "&8무게 %weight%"   # 아이템 툴팁 한 줄. ""(빈 값)이면 표시 안 함
 
 display:
-  # 조각별 서식. %party% %level% %job% 이 바뀝니다.
+  # 조각별 서식. %party% %title% %level% %job% 이 바뀝니다.
   party-format: "&8[&d%party%&8]"
+  title-format: "%title%"          # 칭호 문구는 achievements/collection.yml 에서 정합니다
   level-format: "&7Lv.&e%level%"
   job-format: "&b%job%"
 
   nameplate:        # 머리 위
     show-party: true
+    show-title: true
     show-level: true
     show-job: true
   tablist:          # Tab 목록
     show-party: true
+    show-title: true
     show-level: true
     show-job: false
 ```
 
-- 파티 조각은 **이름 앞**, 레벨과 직업은 **이름 뒤**에 붙습니다. 사이 공백은 자동이라
+- 파티와 칭호는 **이름 앞**, 레벨과 직업은 **이름 뒤**에 붙습니다. 사이 공백은 자동이라
   서식에 넣지 않아도 됩니다.
 - 해당 정보가 없으면(파티 없음·직업 없음) 그 조각은 아예 빠집니다.
 - 서식을 `""` 로 비우면 양쪽 모두에서 그 조각이 사라집니다.
 - 이름표 자체를 끄려면 `settings.yml` 의 `features.nameplate`, 목록은 `features.tablist`,
   무게 툴팁은 `features.item-weight-lore` 를 `false` 로 두세요.
+
+#### 업적 만들기 (achievements.yml)
+
+```yaml
+announce-to-server: true      # 칭호가 걸린 업적/서버 최초 업적을 전체 공지
+
+achievements:
+  my-goal:                    # 아무 키나 가능. 칭호 id 로도 쓰입니다
+    display: "&e초보 사냥꾼"    # 달성 시 보여줄 이름
+    description: "몬스터 100마리 처치"
+    icon: minecraft:wooden_sword
+    type: mob-kills           # 아래 측정 기준 중 하나
+    goal: 100
+    first-only: false         # true 면 서버에서 딱 한 명만
+    title: "&e[사냥꾼]"        # 비우면 보상만 주고 칭호는 없음
+    reward-gold: 100
+    reward-xp: 50
+```
+
+측정 기준(`type`)은 `mob-kills`, `blocks-mined`, `ores-mined`, `logs-chopped`,
+`fish-caught`, `duels-won`, `gold-earned`, `collected`, `level` 입니다.
+없는 기준을 적으면 그 업적만 건너뛰고 **쓸 수 있는 목록을 로그에 적어 줍니다.**
+
+기준값은 전부 스코어보드(`rpgcore.kills` 등)에 저장되므로 `/scoreboard players get`
+으로 직접 확인할 수 있고, 오프라인 플레이어의 값도 남아 있습니다.
+
+#### 도감 항목 추가하기 (collection.yml)
+
+```yaml
+categories:
+  my-page:
+    display: "&6원목"
+    icon: minecraft:oak_log
+    items:                      # config.yml 과 같은 문법(#태그 / 낱개 ID)
+      - '#minecraft:logs'
+      - minecraft:bamboo_block
+    title: "&2[벌목왕]"          # 다 모았을 때 주는 칭호 (없어도 됨)
+    reward-gold: 400
+    reward-xp: 200
+```
+
+- **한 아이템은 한 분류에만** 들어갑니다. 두 곳에 적으면 먼저 나온 쪽만 인정되고
+  로그에 경고가 남습니다.
+- 한 장에 45종까지 화면에 들어갑니다. 태그를 썼다면 `/rpgcore check` 로 실제 종 수를
+  확인하세요.
+
+#### 골드와 대결 (config.yml)
+
+```yaml
+economy:
+  starting-gold: 0
+  gold-per-mob-kill: 2
+  gold-per-level-up: 50
+  symbol: "G"
+
+duel:
+  request-timeout-seconds: 60
+  max-distance: 32          # 신청·수락 시 최대 거리. 0 이면 같은 월드면 됨
+  max-gold-wager: 1000      # 0 이면 제한 없음
+  max-duration-seconds: 300 # 지나면 무승부, 건 것은 그대로 반환
+  announce-result: true
+```
+
+대결은 월드의 PvP 가 켜져 있어야 합니다(`server.properties` 의 `pvp=true`).
+꺼져 있으면 신청 단계에서 이유와 함께 막힙니다.
 
 #### 벌목 범위 조정
 
@@ -462,6 +599,10 @@ UI도 일반 상자 GUI 하나만 쓰므로 Geyser가 알아서 베드락 화면
 /data get entity <player> data
 ```
 
+**업적·칭호·도감**도 문자열이라 같은 곳(PersistentDataContainer)에 들어갑니다.
+진행도 카운터(`rpgcore.kills`, `rpgcore.ores` …)와 **골드**(`rpgcore.gold`)는 정수라
+스코어보드에 그대로 미러링됩니다. '서버 최초' 업적의 주인만 `records.yml` 에 남습니다.
+
 **파티**는 이름·구성원을 가진 그룹이라 스코어보드에도 개인 데이터에도 맞지 않아,
 `plugins/RPGCorePlugin/parties.yml` 에 저장됩니다. 파티가 바뀔 때마다 즉시 기록되므로
 서버가 갑자기 내려가도 남습니다. 진행 중인 거래는 저장되지 않고, 서버 종료 시 물건을
@@ -496,6 +637,17 @@ Paper 26.2 (빌드 121, Java 25) 실서버에 봇 3명을 접속시켜 위 기�
 - 무게 툴팁: 아이템·도구 모두에 기울임 없는 회색 한 줄, 바닥에 떨어진 아이템도 표기됨.
   표기된 5개 + 표기 안 된 7개를 주워 **한 칸 12개로 합쳐짐**, 상자에서 꺼낸 9개도 합쳐져 14개.
   기능을 끄면 줄과 표식이 모두 제거됨
+- 업적: 레벨/골드/채굴 업적 달성과 보상 지급, 칭호가 이름표·목록에 즉시 반영.
+  **서버 최초 업적을 먼저 가져간 뒤 두 번째 플레이어는 받지 못하고** `/achievements` 에
+  "최초: Alpha" 로 표시됨. 철광석 4칸 채굴 → `rpgcore.mined`/`rpgcore.ores` 둘 다 +4
+- 도감: 양털 2종 등록 후 진행도 2/16, 물고기 4종을 채우자 완성 보상과 `[강태공]` 칭호가
+  들어오고 서버 전체에 공지. `/collection` 목록 → 분류 → 뒤로 가기 클릭 동작
+- 대결: 골드 100을 걸고 시작하자 양쪽 잔액에서 빠지고, 치명타가 들어온 순간
+  **피해가 취소되어 패자가 144hp로 살아남은 채** 승패가 갈리고 상금이 승자에게 이동.
+  다이아 3개씩 건 대결에서는 패자 0개 / 승자 6개로 총량 유지(복제 없음).
+  기권·접속 종료 모두 기권패, 같은 아이템을 들지 않은 수락은 거부,
+  상한을 넘는 금액·숫자가 아닌 입력도 거부. 파티원끼리도 대결 성립(평소 아군 공격은 차단)
+- `/rpgcore reset` 후 업적 0/13, 칭호 미착용, 카운터 0 으로 초기화 (골드는 유지)
 
 Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어 실행 검증하지 못했습니다.
 
@@ -504,7 +656,8 @@ Geyser/Floodgate 및 Simple Voice Chat 연동은 해당 서버가 없어 실행 
 ```
 plugin/
   pom.xml                    의존성 1개 (paper-api, provided)
-  src/main/resources/        plugin.yml, settings.yml, jobs.yml, config.yml
+  src/main/resources/        plugin.yml, settings.yml, jobs.yml,
+                             achievements.yml, collection.yml, config.yml
   src/main/java/com/rpgcore/plugin/
     RpgCorePlugin.java       진입점, 커맨드, 반복 태스크 2개
     config/                  settings/jobs/config.yml 타입 뷰 + 기본값 병합
@@ -517,8 +670,12 @@ plugin/
     job/                     직업 정의·선택·어트리뷰트 적용, 선택 GUI
     leaderboard/             스코어보드 미러 기반 순위 집계 (캐시 포함)
     party/                   파티 상태·이름·초대·XP 분배, parties.yml 저장
+    progress/                업적·칭호·골드와 진행도 카운터
+    collection/              수집 도감 정의·기록·화면
+    duel/                    1:1 대결, 건 것의 보관과 정산
     trade/                   공유 상자 UI 기반 1:1 거래
-    command/                 /job, /leaderboard, /party, /p, /trade
+    command/                 /job, /leaderboard, /party, /p, /trade,
+                             /titles, /achievements, /collection, /duel, /gold
     display/                 이름표(스코어보드 팀) + 플레이어 목록
     hud/ gui/ chat/          액션바, 상자 GUI, 근접 채팅
     voice/                   Simple Voice Chat 거리 확인 (의존성 없음)

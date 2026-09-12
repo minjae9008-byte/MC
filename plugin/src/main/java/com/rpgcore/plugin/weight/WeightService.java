@@ -87,10 +87,12 @@ public final class WeightService {
             }
             total += table.weightOf(stack.getType()) * stack.getAmount();
             // The scan already has every carried stack in hand, so the weight
-            // tooltip rides along on it instead of costing a pass of its own.
+            // tooltip and the collection log both ride along on it instead of
+            // costing a pass each.
             if (lore.apply(stack)) {
                 player.getInventory().setItem(slot, stack);
             }
+            plugin.collections().record(player, stack.getType());
         }
 
         data.weight(total);

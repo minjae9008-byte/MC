@@ -25,10 +25,10 @@ public final class RpgConfig {
     public static final String SETTINGS_FILE = "settings.yml";
     public static final String JOBS_FILE = "jobs.yml";
 
-    private static final List<String> DISPLAY_SEGMENTS = List.of("party", "level", "job");
+    private static final List<String> DISPLAY_SEGMENTS = List.of("party", "title", "level", "job");
     private static final List<String> DISPLAY_SURFACES = List.of("nameplate", "tablist");
     private static final Map<String, String> DISPLAY_LABELS =
-            Map.of("party", "파티", "level", "레벨", "job", "직업");
+            Map.of("party", "파티", "title", "칭호", "level", "레벨", "job", "직업");
 
     private final RpgCorePlugin plugin;
     private FileConfiguration settings;
@@ -56,6 +56,9 @@ public final class RpgConfig {
     private boolean nameplateEnabled;
     private boolean tablistEnabled;
     private boolean weightLoreEnabled;
+    private boolean achievementsEnabled;
+    private boolean collectionEnabled;
+    private boolean duelEnabled;
 
     // --- config.yml ---
     private int baseHp;
@@ -111,6 +114,20 @@ public final class RpgConfig {
     private int tradeRequestSeconds;
     private double tradeMaxDistance;
 
+    private int startingGold;
+    private int goldPerMobKill;
+    private int goldPerLevel;
+    private String goldSymbol;
+
+    private String collectionTitle;
+    private String titleMenuTitle;
+
+    private int duelRequestSeconds;
+    private double duelMaxDistance;
+    private int duelMaxGold;
+    private int duelMaxSeconds;
+    private boolean duelAnnounce;
+
     public RpgConfig(RpgCorePlugin plugin) {
         this.plugin = plugin;
         reload();
@@ -153,6 +170,9 @@ public final class RpgConfig {
         nameplateEnabled = settings.getBoolean("features.nameplate", true);
         tablistEnabled = settings.getBoolean("features.tablist", true);
         weightLoreEnabled = settings.getBoolean("features.item-weight-lore", true);
+        achievementsEnabled = settings.getBoolean("features.achievements", true);
+        collectionEnabled = settings.getBoolean("features.collection", true);
+        duelEnabled = settings.getBoolean("features.duels", true);
 
         baseHp = c.getInt("stats.base-hp", 20);
         hpPerLevel = c.getInt("stats.hp-per-level", 2);
@@ -218,6 +238,20 @@ public final class RpgConfig {
 
         tradeRequestSeconds = Math.max(5, c.getInt("trade.request-timeout-seconds", 60));
         tradeMaxDistance = Math.max(0, c.getDouble("trade.max-distance", 0));
+
+        startingGold = Math.max(0, c.getInt("economy.starting-gold", 0));
+        goldPerMobKill = Math.max(0, c.getInt("economy.gold-per-mob-kill", 2));
+        goldPerLevel = Math.max(0, c.getInt("economy.gold-per-level-up", 50));
+        goldSymbol = c.getString("economy.symbol", "G");
+
+        collectionTitle = c.getString("collection.title", "&8도감");
+        titleMenuTitle = c.getString("titles.menu-title", "&8칭호");
+
+        duelRequestSeconds = Math.max(5, c.getInt("duel.request-timeout-seconds", 60));
+        duelMaxDistance = Math.max(0, c.getDouble("duel.max-distance", 32));
+        duelMaxGold = Math.max(0, c.getInt("duel.max-gold-wager", 1000));
+        duelMaxSeconds = Math.max(0, c.getInt("duel.max-duration-seconds", 300));
+        duelAnnounce = c.getBoolean("duel.announce-result", true);
     }
 
     /**
@@ -353,6 +387,62 @@ public final class RpgConfig {
 
     public boolean weightLoreEnabled() {
         return weightLoreEnabled;
+    }
+
+    public boolean achievementsEnabled() {
+        return achievementsEnabled;
+    }
+
+    public boolean collectionEnabled() {
+        return collectionEnabled;
+    }
+
+    public boolean duelEnabled() {
+        return duelEnabled;
+    }
+
+    public int startingGold() {
+        return startingGold;
+    }
+
+    public int goldPerMobKill() {
+        return goldPerMobKill;
+    }
+
+    public int goldPerLevel() {
+        return goldPerLevel;
+    }
+
+    public String goldSymbol() {
+        return goldSymbol;
+    }
+
+    public String collectionTitle() {
+        return collectionTitle;
+    }
+
+    public String titleMenuTitle() {
+        return titleMenuTitle;
+    }
+
+    public int duelRequestSeconds() {
+        return duelRequestSeconds;
+    }
+
+    public double duelMaxDistance() {
+        return duelMaxDistance;
+    }
+
+    public int duelMaxGold() {
+        return duelMaxGold;
+    }
+
+    public int duelMaxSeconds() {
+        return duelMaxSeconds;
+    }
+
+    public boolean duelAnnounce() {
+        return duelAnnounce;
     }
 
     public String weightLoreFormat() {

@@ -4,6 +4,8 @@
 #  자주 바꾸는 값만 모아둔 파일입니다. 고친 뒤 /rpgcore reload 하면 바로 반영됩니다.
 #
 #   - 직업을 만들거나 고치려면      -> jobs.yml
+#   - 업적과 칭호를 만들려면        -> achievements.yml
+#   - 도감에 수집 분류를 넣으려면    -> collection.yml
 #   - 아이템 무게, 모루 조합법 등    -> config.yml
 #   - 지금 설정이 어떻게 읽혔는지     -> /rpgcore check
 # ==========================================================================
@@ -55,3 +57,6 @@ features:
   nameplate: true           # 머리 위 이름표에 파티/레벨/직업 표시
   tablist: true             # 플레이어 목록(Tab)에 파티/레벨 표시
   item-weight-lore: true    # 아이템 설명에 무게 한 줄 표시
+  achievements: true        # 업적과 칭호 (/achievements, /titles)
+  collection: true          # 수집 도감 (/collection)
+  duels: true               # 1:1 대결 (/duel)

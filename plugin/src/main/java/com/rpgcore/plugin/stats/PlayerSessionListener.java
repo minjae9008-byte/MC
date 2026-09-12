@@ -2,6 +2,7 @@ package com.rpgcore.plugin.stats;
 
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.data.PlayerData;
+import com.rpgcore.plugin.progress.CounterType;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
@@ -35,6 +36,7 @@ public final class PlayerSessionListener implements Listener {
         plugin.players().flush(player, data);
 
         plugin.parties().handleJoin(player);
+        plugin.collections().load(player);
 
         if (firstJoin) {
             player.sendMessage(ChatColor.GOLD + "[RPGCore] " + ChatColor.YELLOW
@@ -51,6 +53,7 @@ public final class PlayerSessionListener implements Listener {
         // is saved with the world, so leaving it behind would accumulate one
         // dead team per player who ever logged in.
         plugin.nameplates().clear(event.getPlayer());
+        plugin.collections().unload(event.getPlayer());
         plugin.players().unload(event.getPlayer());
     }
 
@@ -73,5 +76,7 @@ public final class PlayerSessionListener implements Listener {
             return;
         }
         plugin.stats().awardXp(killer, plugin.rpgConfig().xpPerMobKill());
+        plugin.economy().give(killer, plugin.rpgConfig().goldPerMobKill());
+        plugin.achievements().bump(killer, CounterType.MOB_KILLS, 1);
     }
 }
