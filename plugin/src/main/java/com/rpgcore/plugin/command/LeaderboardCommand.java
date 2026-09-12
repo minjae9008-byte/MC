@@ -60,6 +60,12 @@ public final class LeaderboardCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(format(mine, category, true));
             }
         }
+        if (args.length == 0) {
+            // Only when they did not name one: the list is long now that every
+            // tally is rankable, and it would be noise on a repeat call.
+            sender.sendMessage(ChatColor.DARK_GRAY + "다른 항목: "
+                    + String.join(", ", plugin.leaderboard().categories()));
+        }
         return true;
     }
 
@@ -74,7 +80,7 @@ public final class LeaderboardCommand implements CommandExecutor, TabCompleter {
     }
 
     private String label(String category) {
-        return "level".equals(category) ? "레벨" : category.toUpperCase(Locale.ROOT);
+        return plugin.leaderboard().label(category);
     }
 
     @Override

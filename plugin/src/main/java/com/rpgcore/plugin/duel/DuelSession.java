@@ -12,16 +12,23 @@ public final class DuelSession {
     private final UUID second;
     private final DuelStake firstStake;
     private final DuelStake secondStake;
-    private final long startedAtMs;
+    private long startedAtMs;
     /** Set the moment a result is decided, so a second hit cannot settle it twice. */
     private boolean finished;
+    /**
+     * True until the countdown runs out. Blows between the two are refused
+     * while it holds, so accepting cannot hand the challenger a free hit on
+     * someone still reading the message.
+     */
+    private boolean pending;
 
-    DuelSession(UUID first, UUID second, DuelStake firstStake, DuelStake secondStake) {
+    DuelSession(UUID first, UUID second, DuelStake firstStake, DuelStake secondStake, boolean pending) {
         this.first = first;
         this.second = second;
         this.firstStake = firstStake;
         this.secondStake = secondStake;
         this.startedAtMs = System.currentTimeMillis();
+        this.pending = pending;
     }
 
     public UUID first() {
@@ -50,6 +57,17 @@ public final class DuelSession {
 
     public boolean finished() {
         return finished;
+    }
+
+    /** True while the countdown is still running. */
+    public boolean pending() {
+        return pending;
+    }
+
+    /** The countdown is over: the clock starts here, not at the accept. */
+    void begin() {
+        this.pending = false;
+        this.startedAtMs = System.currentTimeMillis();
     }
 
     void finish() {

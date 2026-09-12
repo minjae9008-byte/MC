@@ -1,11 +1,13 @@
 package com.rpgcore.plugin.leaderboard;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.progress.CounterType;
 import com.rpgcore.plugin.stats.StatType;
 import com.rpgcore.plugin.util.RpgScoreboard;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -17,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * That mirror is written for every player who has ever joined and is saved
  * with the world, so it already holds offline players - no extra storage, and
  * the leaderboard is right even for someone who has not logged in for months.
+ * Anything mirrored can therefore be ranked for free, which is why gold and
+ * every progression tally are categories alongside the stats.
  *
  * Sorting the whole server per command would be wasteful for something players
  * spam, so each category is cached for a few seconds.
@@ -27,30 +31,49 @@ public final class LeaderboardService {
     public record Row(int rank, String name, int value, int level, int xp) {
     }
 
+    /** What a category ranks on: an objective, and how to name it. */
+    private record Category(String id, String objective, String label) {
+    }
+
     private record Cached(List<Row> rows, long expiresAt) {
     }
 
     private final RpgCorePlugin plugin;
     private final RpgScoreboard board;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
+    /** Fixed at construction, so listing or validating one costs no allocation. */
+    private final Map<String, Category> categories = new LinkedHashMap<>();
 
     public LeaderboardService(RpgCorePlugin plugin, RpgScoreboard board) {
         this.plugin = plugin;
         this.board = board;
+
+        categories.put("level", new Category("level", RpgScoreboard.LEVEL, "레벨"));
+        categories.put("gold", new Category("gold", RpgScoreboard.GOLD, "골드"));
+        for (StatType type : StatType.values()) {
+            String id = type.name().toLowerCase(Locale.ROOT);
+            categories.put(id, new Category(id, type.objective(), type.label()));
+        }
+        for (CounterType type : CounterType.values()) {
+            // LEVEL has no objective of its own and is already listed above.
+            if (type.objective() != null) {
+                categories.put(type.id(), new Category(type.id(), type.objective(), type.label()));
+            }
+        }
     }
 
-    /** Category ids accepted by /leaderboard: "level" plus every stat. */
     public List<String> categories() {
-        List<String> out = new ArrayList<>();
-        out.add("level");
-        for (StatType type : StatType.values()) {
-            out.add(type.name().toLowerCase(Locale.ROOT));
-        }
-        return out;
+        return List.copyOf(categories.keySet());
     }
 
     public boolean isCategory(String category) {
-        return categories().contains(category.toLowerCase(Locale.ROOT));
+        return category != null && categories.containsKey(category.toLowerCase(Locale.ROOT));
+    }
+
+    /** The Korean name of a category, for the header and each row. */
+    public String label(String category) {
+        Category found = categories.get(category == null ? "" : category.toLowerCase(Locale.ROOT));
+        return found == null ? category : found.label();
     }
 
     public void invalidate() {
@@ -66,7 +89,8 @@ public final class LeaderboardService {
             return cached.rows();
         }
 
-        StatType stat = StatType.byName(key);
+        Category ranked = categories.get(key);
+        String objective = ranked == null ? RpgScoreboard.LEVEL : ranked.objective();
         List<Row> rows = new ArrayList<>();
         for (String entry : board.entries()) {
             // The init marker is what tells RPGCore's own entries apart from
@@ -76,8 +100,7 @@ public final class LeaderboardService {
             }
             int level = board.read(entry, RpgScoreboard.LEVEL);
             int xp = board.read(entry, RpgScoreboard.XP);
-            int value = stat == null ? level : board.read(entry, stat.objective());
-            rows.add(new Row(0, entry, value, level, xp));
+            rows.add(new Row(0, entry, board.read(entry, objective), level, xp));
         }
 
         rows.sort(Comparator.comparingInt(Row::value).reversed()
@@ -85,13 +108,13 @@ public final class LeaderboardService {
                 .thenComparing(Comparator.comparingInt(Row::xp).reversed())
                 .thenComparing(Row::name));
 
-        List<Row> ranked = new ArrayList<>(rows.size());
+        List<Row> numbered = new ArrayList<>(rows.size());
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
-            ranked.add(new Row(i + 1, row.name(), row.value(), row.level(), row.xp()));
+            numbered.add(new Row(i + 1, row.name(), row.value(), row.level(), row.xp()));
         }
 
-        List<Row> result = List.copyOf(ranked);
+        List<Row> result = List.copyOf(numbered);
         cache.put(key, new Cached(result, now + plugin.rpgConfig().leaderboardCacheSeconds() * 1000L));
         return result;
     }

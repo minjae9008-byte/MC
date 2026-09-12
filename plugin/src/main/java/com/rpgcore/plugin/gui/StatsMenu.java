@@ -82,9 +82,8 @@ public final class StatsMenu {
     public void open(Player player) {
         PlayerData data = plugin.players().get(player);
 
-        String title = ChatColor.translateAlternateColorCodes('&',
-                plugin.getConfig().getString("gui.title", "&8캐릭터 정보"));
-        int size = clampSize(plugin.getConfig().getInt("gui.size", MIN_SIZE));
+        String title = ChatColor.translateAlternateColorCodes('&', plugin.rpgConfig().guiTitle());
+        int size = clampSize(plugin.rpgConfig().guiSize());
         Holder holder = new Holder();
         Inventory inv = plugin.getServer().createInventory(holder, size, title);
         holder.setInventory(inv);

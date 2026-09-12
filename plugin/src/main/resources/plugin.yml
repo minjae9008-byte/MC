@@ -44,6 +44,9 @@ commands:
   gold:
     description: Show a gold balance.
     aliases: [money, 골드]
+  pay:
+    description: Send gold to another player.
+    aliases: [송금]
   rpgcore:
     description: RPGCore admin commands (reload, check, recipes, givexp, givegold, reset).
     permission: rpgcore.admin

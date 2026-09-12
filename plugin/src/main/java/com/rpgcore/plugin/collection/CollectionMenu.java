@@ -18,6 +18,10 @@ import java.util.Map;
  * The collection log, as two plain chest screens: the category list, and one
  * page per category. A found entry shows the item itself; a missing one shows
  * grey glass, so a page reads as a progress bar at a glance.
+ *
+ * A category longer than one screen pages rather than truncating - a list
+ * written as a tag can easily be sixty entries, and silently hiding the tail
+ * would make a page impossible to finish and impossible to notice.
  */
 public final class CollectionMenu {
 
@@ -26,7 +30,11 @@ public final class CollectionMenu {
         private Inventory inventory;
         /** Slot -> category to open; empty on a category page. */
         private final Map<Integer, String> links = new HashMap<>();
+        private String category;
+        private int page;
         private int backSlot = -1;
+        private int previousSlot = -1;
+        private int nextSlot = -1;
 
         @Override
         public Inventory getInventory() {
@@ -41,11 +49,28 @@ public final class CollectionMenu {
             return links.get(slot);
         }
 
+        public String category() {
+            return category;
+        }
+
+        public int page() {
+            return page;
+        }
+
         public int backSlot() {
             return backSlot;
         }
+
+        public int previousSlot() {
+            return previousSlot;
+        }
+
+        public int nextSlot() {
+            return nextSlot;
+        }
     }
 
+    /** Five rows of entries, leaving the bottom row for the navigation. */
     private static final int PAGE_SIZE = 45;
 
     private final RpgCorePlugin plugin;
@@ -75,29 +100,44 @@ public final class CollectionMenu {
         player.openInventory(inv);
     }
 
-    public void openCategory(Player player, String id) {
+    public void openCategory(Player player, String id, int page) {
         CollectionCategory category = plugin.collections().byId(id);
         if (category == null) {
             open(player);
             return;
         }
+        List<Material> entries = category.entries();
+        int pages = Math.max(1, (entries.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+        int current = Math.clamp(page, 0, pages - 1);
 
         Holder holder = new Holder();
-        // One screen per page keeps this a single chest on Bedrock too; a
-        // category longer than 45 entries is simply cut, and the load warning
-        // in the log is the place that says so.
+        holder.category = category.id();
+        holder.page = current;
+        int have = plugin.collections().countIn(player, category);
         Inventory inv = plugin.getServer().createInventory(holder, 54,
-                ChatColor.stripColor(category.display()));
+                ChatColor.stripColor(category.display())
+                        + (pages > 1 ? " (" + (current + 1) + "/" + pages + ")" : ""));
         holder.setInventory(inv);
 
-        List<Material> entries = category.entries();
-        for (int i = 0; i < entries.size() && i < PAGE_SIZE; i++) {
-            inv.setItem(i, entryIcon(player, entries.get(i)));
+        int from = current * PAGE_SIZE;
+        for (int i = from; i < entries.size() && i - from < PAGE_SIZE; i++) {
+            inv.setItem(i - from, entryIcon(player, entries.get(i)));
         }
+
         holder.backSlot = 49;
         inv.setItem(49, button(Material.ARROW, ChatColor.YELLOW + "← 도감 목록",
-                List.of(ChatColor.GRAY + "수집 " + plugin.collections().countIn(player, category)
-                        + "/" + category.size())));
+                List.of(ChatColor.GRAY + "수집 " + have + "/" + category.size(),
+                        bar(have, category.size()))));
+        if (current > 0) {
+            holder.previousSlot = 45;
+            inv.setItem(45, button(Material.PAPER, ChatColor.YELLOW + "◀ 이전 쪽",
+                    List.of(ChatColor.GRAY + "" + current + "/" + pages)));
+        }
+        if (current < pages - 1) {
+            holder.nextSlot = 53;
+            inv.setItem(53, button(Material.PAPER, ChatColor.YELLOW + "다음 쪽 ▶",
+                    List.of(ChatColor.GRAY + "" + (current + 2) + "/" + pages)));
+        }
         player.openInventory(inv);
     }
 
@@ -107,7 +147,7 @@ public final class CollectionMenu {
         List<String> lore = new ArrayList<>();
         lore.add((done ? ChatColor.GREEN : ChatColor.GRAY) + "수집 " + have + "/" + category.size());
         lore.add(bar(have, category.size()));
-        if (category.grantsTitle()) {
+        if (category.grantsTitle() || category.rewardGold() > 0 || category.rewardXp() > 0) {
             lore.add("");
             lore.add(ChatColor.GRAY + "완성 보상: " + reward(category));
         }

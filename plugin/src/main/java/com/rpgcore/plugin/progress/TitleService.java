@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The tags players wear next to their name - [전설], [낚시왕] and the rest.
@@ -38,6 +40,15 @@ public final class TitleService {
     private final NamespacedKey wornKey;
     /** Declared titles in declaration order, so the menu reads the same way twice. */
     private final Map<String, Title> titles = new LinkedHashMap<>();
+    /**
+     * What each online player has earned, and what they are wearing.
+     *
+     * The nameplate asks for the worn title once a second per player, which is
+     * no place to be re-reading and re-splitting a stored string; both are read
+     * on join and written through on change.
+     */
+    private final Map<UUID, Set<String>> earnedCache = new ConcurrentHashMap<>();
+    private final Map<UUID, String> wornCache = new ConcurrentHashMap<>();
 
     public TitleService(RpgCorePlugin plugin) {
         this.plugin = plugin;
@@ -87,16 +98,34 @@ public final class TitleService {
                 .replace("[", "").replace("]", "").trim();
     }
 
-    public List<Title> all() {
-        return List.copyOf(titles.values());
-    }
-
     public int count() {
         return titles.size();
     }
 
+    /** Reads a player's titles into memory on join. */
+    public void load(Player player) {
+        earnedCache.put(player.getUniqueId(),
+                split(player.getPersistentDataContainer().get(earnedKey, PersistentDataType.STRING)));
+        wornCache.put(player.getUniqueId(), readWorn(player));
+    }
+
+    /**
+     * "" means "wearing nothing", which is a different thing from "not loaded"
+     * - the map having no entry at all is what triggers a read.
+     */
+    private String readWorn(Player player) {
+        String worn = player.getPersistentDataContainer().get(wornKey, PersistentDataType.STRING);
+        return worn == null ? "" : worn.toLowerCase(Locale.ROOT);
+    }
+
+    public void unload(Player player) {
+        earnedCache.remove(player.getUniqueId());
+        wornCache.remove(player.getUniqueId());
+    }
+
     public Set<String> earned(Player player) {
-        return split(player.getPersistentDataContainer().get(earnedKey, PersistentDataType.STRING));
+        return earnedCache.computeIfAbsent(player.getUniqueId(), uuid ->
+                split(player.getPersistentDataContainer().get(earnedKey, PersistentDataType.STRING)));
     }
 
     public boolean hasEarned(Player player, String id) {
@@ -128,8 +157,7 @@ public final class TitleService {
 
     /** The title a player is wearing, or null - including when it was revoked. */
     public Title worn(Player player) {
-        String id = player.getPersistentDataContainer().get(wornKey, PersistentDataType.STRING);
-        Title title = byId(id);
+        Title title = byId(wornCache.computeIfAbsent(player.getUniqueId(), uuid -> readWorn(player)));
         return title != null && hasEarned(player, title.id()) ? title : null;
     }
 
@@ -137,6 +165,7 @@ public final class TitleService {
     public void wear(Player player, String id) {
         if (id == null) {
             player.getPersistentDataContainer().remove(wornKey);
+            wornCache.put(player.getUniqueId(), "");
             return;
         }
         Title title = byId(id);
@@ -144,12 +173,15 @@ public final class TitleService {
             return;
         }
         player.getPersistentDataContainer().set(wornKey, PersistentDataType.STRING, title.id());
+        wornCache.put(player.getUniqueId(), title.id());
     }
 
     /** Clears everything a player earned, for /rpgcore reset. */
     public void reset(Player player) {
         player.getPersistentDataContainer().remove(earnedKey);
         player.getPersistentDataContainer().remove(wornKey);
+        earnedCache.put(player.getUniqueId(), new LinkedHashSet<>());
+        wornCache.put(player.getUniqueId(), "");
     }
 
     private Set<String> split(String raw) {

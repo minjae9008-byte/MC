@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Goals and their rewards.
@@ -43,6 +45,15 @@ public final class AchievementService {
     private final NamespacedKey earnedKey;
     private final Map<String, Achievement> byId = new LinkedHashMap<>();
     private final Map<CounterType, List<Achievement>> byCounter = new EnumMap<>(CounterType.class);
+    /**
+     * What each online player has already earned.
+     *
+     * bump() runs on every mob killed and every block mined, so the set it
+     * tests against has to be in memory: re-reading and re-splitting the
+     * player's stored string on each swing was the one genuinely hot piece of
+     * string work in the plugin.
+     */
+    private final Map<UUID, Set<String>> earnedCache = new ConcurrentHashMap<>();
     /** Who claimed each first-only goal; persisted so a restart cannot reopen it. */
     private FileConfiguration records;
     private boolean announce;
@@ -155,12 +166,18 @@ public final class AchievementService {
             return;
         }
         int value = data.counter(type);
+        Set<String> earned = earned(player);
         for (Achievement achievement : candidates) {
             if (value < achievement.goal()) {
                 // Sorted by goal, so nothing further along can be met either.
                 return;
             }
-            grant(player, achievement);
+            // The common case by far: a goal passed long ago. Testing the set
+            // here keeps the whole path allocation-free once a player is
+            // established, which is what a per-block-break hook needs.
+            if (!earned.contains(achievement.id())) {
+                grant(player, achievement);
+            }
         }
     }
 
@@ -249,7 +266,21 @@ public final class AchievementService {
         }
     }
 
+    /** The live set for an online player; loaded once and kept in memory. */
     public Set<String> earned(Player player) {
+        return earnedCache.computeIfAbsent(player.getUniqueId(), uuid -> read(player));
+    }
+
+    /** Reads the stored set on join, so the first bump does not have to. */
+    public void load(Player player) {
+        earnedCache.put(player.getUniqueId(), read(player));
+    }
+
+    public void unload(Player player) {
+        earnedCache.remove(player.getUniqueId());
+    }
+
+    private Set<String> read(Player player) {
         Set<String> out = new LinkedHashSet<>();
         String raw = player.getPersistentDataContainer().get(earnedKey, PersistentDataType.STRING);
         if (raw == null || raw.isBlank()) {
@@ -267,6 +298,7 @@ public final class AchievementService {
     /** Clears a player's progress, for /rpgcore reset. */
     public void reset(Player player, PlayerData data) {
         player.getPersistentDataContainer().remove(earnedKey);
+        earnedCache.put(player.getUniqueId(), new LinkedHashSet<>());
         for (CounterType type : CounterType.values()) {
             data.counter(type, 0);
         }

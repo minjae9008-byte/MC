@@ -37,6 +37,8 @@ public final class PlayerSessionListener implements Listener {
 
         plugin.parties().handleJoin(player);
         plugin.collections().load(player);
+        plugin.achievements().load(player);
+        plugin.titles().load(player);
 
         if (firstJoin) {
             player.sendMessage(ChatColor.GOLD + "[RPGCore] " + ChatColor.YELLOW
@@ -54,6 +56,8 @@ public final class PlayerSessionListener implements Listener {
         // dead team per player who ever logged in.
         plugin.nameplates().clear(event.getPlayer());
         plugin.collections().unload(event.getPlayer());
+        plugin.achievements().unload(event.getPlayer());
+        plugin.titles().unload(event.getPlayer());
         plugin.players().unload(event.getPlayer());
     }
 

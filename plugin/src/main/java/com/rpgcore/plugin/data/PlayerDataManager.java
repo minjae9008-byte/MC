@@ -107,25 +107,32 @@ public final class PlayerDataManager {
         if (!data.dirty()) {
             return;
         }
-        board.write(player, RpgScoreboard.INITIALISED, 1);
-        board.write(player, RpgScoreboard.LEVEL, data.level());
-        board.write(player, RpgScoreboard.XP, data.xp());
-        board.write(player, RpgScoreboard.XP_NEED, data.xpNeed());
-        board.write(player, RpgScoreboard.POINTS, data.points());
-        board.write(player, RpgScoreboard.WEIGHT, data.weight());
-        board.write(player, RpgScoreboard.WEIGHT_MAX, data.weightMax());
-        board.write(player, RpgScoreboard.WEIGHT_TIER, data.weightTier());
-        board.write(player, RpgScoreboard.HP_MAX, data.maxHealth());
-        board.write(player, RpgScoreboard.GOLD, data.gold());
+        write(player, data, RpgScoreboard.INITIALISED, 1);
+        write(player, data, RpgScoreboard.LEVEL, data.level());
+        write(player, data, RpgScoreboard.XP, data.xp());
+        write(player, data, RpgScoreboard.XP_NEED, data.xpNeed());
+        write(player, data, RpgScoreboard.POINTS, data.points());
+        write(player, data, RpgScoreboard.WEIGHT, data.weight());
+        write(player, data, RpgScoreboard.WEIGHT_MAX, data.weightMax());
+        write(player, data, RpgScoreboard.WEIGHT_TIER, data.weightTier());
+        write(player, data, RpgScoreboard.HP_MAX, data.maxHealth());
+        write(player, data, RpgScoreboard.GOLD, data.gold());
         for (StatType type : StatType.values()) {
-            board.write(player, type.objective(), data.stat(type));
+            write(player, data, type.objective(), data.stat(type));
         }
         for (CounterType type : CounterType.values()) {
             if (type.objective() != null) {
-                board.write(player, type.objective(), data.counter(type));
+                write(player, data, type.objective(), data.counter(type));
             }
         }
         data.clearDirty();
+    }
+
+    /** One objective, written only when its value actually moved. */
+    private void write(Player player, PlayerData data, String objective, int value) {
+        if (data.mirrorChanged(objective, value)) {
+            board.write(player, objective, value);
+        }
     }
 
     /**
@@ -153,6 +160,10 @@ public final class PlayerDataManager {
     public void unload(Player player) {
         PlayerData data = cache.remove(player.getUniqueId());
         if (data != null) {
+            // A full write on the way out: during the session a flush skips
+            // values that have not moved, so this is what puts the mirror back
+            // in step if something else wrote to the scoreboard meanwhile.
+            data.forgetMirror();
             data.markDirty();
             flush(player, data);
         }

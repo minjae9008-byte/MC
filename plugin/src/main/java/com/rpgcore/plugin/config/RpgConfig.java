@@ -118,14 +118,20 @@ public final class RpgConfig {
     private int goldPerMobKill;
     private int goldPerLevel;
     private String goldSymbol;
+    private boolean goldTransferAllowed;
 
     private String collectionTitle;
     private String titleMenuTitle;
+    private String guiTitle;
+    private int guiSize;
+    private String tradeTitle;
 
     private int duelRequestSeconds;
     private double duelMaxDistance;
     private int duelMaxGold;
     private int duelMaxSeconds;
+    private int duelCountdownSeconds;
+    private boolean duelHealBeforeStart;
     private boolean duelAnnounce;
 
     public RpgConfig(RpgCorePlugin plugin) {
@@ -243,14 +249,20 @@ public final class RpgConfig {
         goldPerMobKill = Math.max(0, c.getInt("economy.gold-per-mob-kill", 2));
         goldPerLevel = Math.max(0, c.getInt("economy.gold-per-level-up", 50));
         goldSymbol = c.getString("economy.symbol", "G");
+        goldTransferAllowed = c.getBoolean("economy.allow-player-transfer", true);
 
         collectionTitle = c.getString("collection.title", "&8도감");
         titleMenuTitle = c.getString("titles.menu-title", "&8칭호");
+        guiTitle = c.getString("gui.title", "&8캐릭터 정보");
+        guiSize = c.getInt("gui.size", 27);
+        tradeTitle = c.getString("trade.title", "&8거래");
 
         duelRequestSeconds = Math.max(5, c.getInt("duel.request-timeout-seconds", 60));
         duelMaxDistance = Math.max(0, c.getDouble("duel.max-distance", 32));
         duelMaxGold = Math.max(0, c.getInt("duel.max-gold-wager", 1000));
         duelMaxSeconds = Math.max(0, c.getInt("duel.max-duration-seconds", 300));
+        duelCountdownSeconds = Math.clamp(c.getInt("duel.countdown-seconds", 3), 0, 10);
+        duelHealBeforeStart = c.getBoolean("duel.heal-before-start", true);
         duelAnnounce = c.getBoolean("duel.announce-result", true);
     }
 
@@ -417,12 +429,29 @@ public final class RpgConfig {
         return goldSymbol;
     }
 
+    public boolean goldTransferAllowed() {
+        return goldTransferAllowed;
+    }
+
     public String collectionTitle() {
         return collectionTitle;
     }
 
     public String titleMenuTitle() {
         return titleMenuTitle;
+    }
+
+    public String guiTitle() {
+        return guiTitle;
+    }
+
+    /** Raw value; StatsMenu clamps it to a legal chest size. */
+    public int guiSize() {
+        return guiSize;
+    }
+
+    public String tradeTitle() {
+        return tradeTitle;
     }
 
     public int duelRequestSeconds() {
@@ -439,6 +468,14 @@ public final class RpgConfig {
 
     public int duelMaxSeconds() {
         return duelMaxSeconds;
+    }
+
+    public int duelCountdownSeconds() {
+        return duelCountdownSeconds;
+    }
+
+    public boolean duelHealBeforeStart() {
+        return duelHealBeforeStart;
     }
 
     public boolean duelAnnounce() {

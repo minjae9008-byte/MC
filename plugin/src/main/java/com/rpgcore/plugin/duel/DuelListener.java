@@ -40,6 +40,12 @@ public final class DuelListener implements Listener {
         if (session == null || session.finished()) {
             return;
         }
+        if (session.pending()) {
+            // Still counting in. Refusing the blow outright is the only honest
+            // reading of "3... 2... 1...".
+            event.setCancelled(true);
+            return;
+        }
         // getHealth() is still the pre-hit value here, and getFinalDamage() is
         // what the hit would really take off after armour and effects.
         if (event.getFinalDamage() < victim.getHealth()) {

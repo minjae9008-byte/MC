@@ -70,7 +70,14 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 처럼 분리해서 보여줍니다. 직업을 바꾸면 이전 직업의 보너스는 전부 해제됩니다.
 
 ### 순위표 (리더보드)
-`/leaderboard` 로 레벨 순위를, `/leaderboard vit` 처럼 스탯별 순위를 봅니다.
+`/leaderboard [항목]` — 스코어보드에 기록되는 값은 전부 순위로 볼 수 있습니다.
+
+| 묶음 | 항목 |
+|---|---|
+| 성장 | `level`, `gold` |
+| 스탯 | `str` `dex` `vit` `agi` `luck` |
+| 진행도 | `mob-kills` `blocks-mined` `ores-mined` `logs-chopped` `fish-caught` `duels-won` `gold-earned` `collected` |
+
 자기 순위가 표시 범위 밖이면 맨 아래에 따로 붙여줍니다.
 
 데이터는 이미 쓰고 있는 **스코어보드 미러**에서 읽습니다. 별도 저장소가 없고,
@@ -140,7 +147,12 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 ### 골드
 업적 보상과 몬스터 처치·레벨업으로 들어오고, 대결에 걸 수 있는 재화입니다.
 스코어보드(`rpgcore.gold`)에 저장되므로 **경제 플러그인이 필요 없고** `/scoreboard` 로도
-읽고 쓸 수 있습니다. `/gold` 로 확인, `/rpgcore givegold` 로 지급·회수합니다.
+읽고 쓸 수 있습니다. `/gold` 로 확인, `/pay <플레이어> <금액>` 으로 주고받고,
+`/rpgcore givegold` 로 지급·회수합니다.
+
+주고받은 골드는 **'누적 획득'에 들어가지 않습니다.** 둘이서 같은 돈을 주거니 받거니 해서
+`gold-earned` 업적을 파밍할 수 없습니다. `/pay` 자체를 막으려면
+`economy.allow-player-transfer: false`.
 
 ### 수집 도감
 나무·광물·양털·물고기·꽃을 모으는 도감입니다. `/collection` 으로 엽니다.
@@ -148,6 +160,8 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
 - **인벤토리에 들어오기만 하면 등록**됩니다. 캐든, 만들든, 낚든, 상자에서 꺼내든 모두 인정.
 - 한 장을 다 모으면 칭호와 보상이 들어오고 서버 전체에 알립니다.
 - 모은 칸은 아이템 그대로, 못 모은 칸은 회색 유리로 보여 한눈에 진행도가 읽힙니다.
+- 한 분류가 한 화면(45칸)을 넘으면 자동으로 쪽이 나뉩니다. `#minecraft:logs` 같은
+  태그를 통째로 넣어도 뒤쪽이 잘리지 않습니다.
 - 기존 서버에 처음 설치하면 **이미 들고 있던 물건은 조용히 등록**됩니다. 접속하자마자
   수십 줄이 쏟아지거나, 몇 달 전에 채운 칸으로 보상이 한꺼번에 나가지 않습니다.
 
@@ -160,6 +174,10 @@ XP는 몹 처치, 벌목한 원목 수, `/rpgcore givexp` 로 들어옵니다.
   거래로 넘길 수 없고, 서버가 갑자기 내려가도 그대로 돌려받습니다.
 - **죽지 않습니다.** 치명타가 들어오는 순간 피해를 취소하고 승패로 처리하므로
   진 쪽도 아이템을 떨어뜨리지 않습니다. 끝나면 양쪽 다 체력이 회복됩니다.
+- 시작 전 **3초 카운트다운**이 있고 그동안은 서로 때릴 수 없습니다. 수락하자마자
+  한 대 맞고 시작하는 일이 없습니다.
+- 시작할 때 양쪽 **체력을 채웁니다.** 한쪽이 반 칸이라 지는 대결은 대결이 아니니까요.
+  (`duel.countdown-seconds`, `duel.heal-before-start` 로 끕니다)
 - 도중에 접속을 끊으면 기권패입니다. 제한 시간(기본 5분)이 지나면 무승부로 끝나고
   건 것은 그대로 돌아갑니다.
 - 파티원끼리도 대결할 수 있습니다(아군 공격 차단보다 대결이 우선).
@@ -266,6 +284,7 @@ Tab 목록  [푸른사슴] [강태공] Alpha Lv.6
 | `/collection` | 모두 | 수집 도감 (별칭 `/dex`, `/도감`) |
 | `/duel <플레이어> [건 것]` | 모두 | 대결 신청 (`accept`/`deny`/`forfeit`, 별칭 `/대결`) |
 | `/gold [플레이어]` | 모두 | 골드 잔액 (별칭 `/money`, `/골드`) |
+| `/pay <플레이어> <금액>` | 모두 | 골드 보내기 (별칭 `/송금`) |
 | `/rpgcore reload` | `rpgcore.admin` | 설정 파일 다시 읽기 |
 | `/rpgcore check` | `rpgcore.admin` | 각 기능이 실제로 뭘 읽었는지 점검 |
 | `/rpgcore recipes` | `rpgcore.admin` | 모루 조합법 목록 |
@@ -510,6 +529,15 @@ achievements:
 `fish-caught`, `duels-won`, `gold-earned`, `collected`, `level` 입니다.
 없는 기준을 적으면 그 업적만 건너뛰고 **쓸 수 있는 목록을 로그에 적어 줍니다.**
 
+무엇을 '광석'과 '원목'으로 셀지는 `config.yml` 에서 바꿀 수 있습니다. 비워 두면
+바닐라 기본값(광석 19종 / 원목 44종)이고, 모드나 데이터팩 블록을 세고 싶을 때만 채웁니다.
+
+```yaml
+progress:
+  ore-blocks: []    # 예: ['#minecraft:iron_ores', 'mypack:mithril_ore']
+  log-blocks: []
+```
+
 기준값은 전부 스코어보드(`rpgcore.kills` 등)에 저장되므로 `/scoreboard players get`
 으로 직접 확인할 수 있고, 오프라인 플레이어의 값도 남아 있습니다.
 
@@ -541,12 +569,15 @@ economy:
   gold-per-mob-kill: 2
   gold-per-level-up: 50
   symbol: "G"
+  allow-player-transfer: true   # /pay 로 주고받기
 
 duel:
   request-timeout-seconds: 60
   max-distance: 32          # 신청·수락 시 최대 거리. 0 이면 같은 월드면 됨
   max-gold-wager: 1000      # 0 이면 제한 없음
   max-duration-seconds: 300 # 지나면 무승부, 건 것은 그대로 반환
+  countdown-seconds: 3      # 그동안은 서로 때릴 수 없음. 0 이면 즉시 시작
+  heal-before-start: true   # 시작 시 양쪽 체력을 채워 공정하게
   announce-result: true
 ```
 
@@ -589,8 +620,10 @@ UI도 일반 상자 GUI 하나만 쓰므로 Geyser가 알아서 베드락 화면
 /scoreboard players get <player> rpgcore.level
 ```
 
-접속 중인 플레이어의 값을 손으로 고치는 것은 소용이 없습니다 (메모리 캐시가 덮어씁니다).
-오프라인일 때 고치거나, `/rpgcore givexp` · `/rpgcore reset` 을 쓰세요.
+접속 중인 플레이어의 값을 손으로 고치는 것은 소용이 없습니다. 플러그인은 값이 실제로
+바뀔 때만 기록하므로 잠시 남아 있는 것처럼 보여도, 그 값이 다음에 바뀌는 순간과 접속을
+종료할 때 덮어써집니다. 오프라인일 때 고치거나 `/rpgcore givexp` · `/rpgcore givegold` ·
+`/rpgcore reset` 을 쓰세요.
 
 **직업**만은 문자열이라 스코어보드에 담을 수 없어, 플레이어의 바닐라 playerdata 안에
 저장됩니다(PersistentDataContainer). 역시 별도 파일이 생기지 않습니다.

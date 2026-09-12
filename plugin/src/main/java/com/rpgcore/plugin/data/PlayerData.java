@@ -4,6 +4,7 @@ import com.rpgcore.plugin.progress.CounterType;
 import com.rpgcore.plugin.stats.StatType;
 
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -33,6 +34,15 @@ public final class PlayerData {
 
     /** Set when something changed and needs writing back to the scoreboard. */
     private boolean dirty;
+    /**
+     * The last value written to each mirrored objective.
+     *
+     * Counters move on every mob killed and every block mined, and a score
+     * write is a packet to everyone tracking the objective - so a flush that
+     * rewrote all twenty-odd objectives each time would turn one swung pickaxe
+     * into twenty broadcasts. With this, a flush writes only what moved.
+     */
+    private final Map<String, Integer> mirrored = new HashMap<>();
     /** Set when the inventory changed and the weight must be recomputed. */
     private boolean weightDirty = true;
     /**
@@ -178,6 +188,20 @@ public final class PlayerData {
     public void maxHealth(int maxHealth) {
         this.maxHealth = maxHealth;
         this.dirty = true;
+    }
+
+    /**
+     * True when this value differs from the one last written to that
+     * objective, and records it as written.
+     */
+    public boolean mirrorChanged(String objective, int value) {
+        Integer previous = mirrored.put(objective, value);
+        return previous == null || previous != value;
+    }
+
+    /** Forgets what was written, so the next flush rewrites everything. */
+    public void forgetMirror() {
+        mirrored.clear();
     }
 
     public boolean dirty() {

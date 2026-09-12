@@ -5,13 +5,16 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Writes an item's carry weight into its own tooltip.
@@ -32,11 +35,22 @@ public final class WeightLore {
     private final ItemWeightTable table;
     /** Holds the exact line this plugin wrote, so it can find it again. */
     private final NamespacedKey markerKey;
+    /**
+     * The rendered line per material. It depends on nothing else, so building
+     * it once beats rebuilding the same string for all 41 carried slots on
+     * every inventory change.
+     */
+    private final Map<Material, String> lines = new EnumMap<>(Material.class);
 
     public WeightLore(RpgCorePlugin plugin, ItemWeightTable table) {
         this.plugin = plugin;
         this.table = table;
         this.markerKey = new NamespacedKey(plugin, "weight_lore");
+    }
+
+    /** Drops the rendered lines, for when the format or the table changed. */
+    public void reload() {
+        lines.clear();
     }
 
     /**
@@ -50,17 +64,12 @@ public final class WeightLore {
             return false;
         }
         boolean enabled = plugin.rpgConfig().weightLoreEnabled();
-        // The overwhelmingly common case, and the one that has to stay cheap:
-        // a plain item while the feature is off never needs its meta read.
-        if (!enabled && !stack.hasItemMeta()) {
-            return false;
-        }
-
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null) {
-            return false;
-        }
-        String previous = meta.getPersistentDataContainer().get(markerKey, PersistentDataType.STRING);
+        // Reading the marker off the stack's own data view costs nothing;
+        // getItemMeta() copies the whole meta, and this runs for all 41 carried
+        // slots every time an inventory changes. So the question "is this line
+        // already correct?" is answered before any copy is made, and the copy
+        // only happens on the rare stack that actually needs rewriting.
+        String previous = stack.getPersistentDataContainer().get(markerKey, PersistentDataType.STRING);
         String line = enabled ? render(stack) : null;
         if (previous == null && line == null) {
             return false;
@@ -69,6 +78,10 @@ public final class WeightLore {
             return false;
         }
 
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) {
+            return false;
+        }
         List<Component> lore = meta.hasLore() ? new ArrayList<>(meta.lore()) : new ArrayList<>();
         if (previous != null) {
             // Matched on the text rather than on the line's old position: a
@@ -91,7 +104,8 @@ public final class WeightLore {
     }
 
     private String render(ItemStack stack) {
-        return plugin.rpgConfig().weightLoreFormat()
-                .replace("%weight%", String.valueOf(table.weightOf(stack.getType())));
+        return lines.computeIfAbsent(stack.getType(), material ->
+                plugin.rpgConfig().weightLoreFormat()
+                        .replace("%weight%", String.valueOf(table.weightOf(material))));
     }
 }

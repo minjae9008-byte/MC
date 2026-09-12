@@ -57,7 +57,7 @@ public final class TradeSession implements InventoryHolder {
         this.left = left;
         this.right = right;
         String title = ChatColor.translateAlternateColorCodes('&',
-                plugin.getConfig().getString("trade.title", "&8거래"));
+                plugin.rpgConfig().tradeTitle());
         this.inventory = Bukkit.createInventory(this, SIZE, title);
         decorate();
     }

@@ -27,7 +27,7 @@ public final class CollectionCommand implements CommandExecutor {
             return true;
         }
         if (args.length > 0) {
-            plugin.collectionMenu().openCategory(player, args[0]);
+            plugin.collectionMenu().openCategory(player, args[0], 0);
             return true;
         }
         plugin.collectionMenu().open(player);

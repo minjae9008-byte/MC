@@ -21,6 +21,7 @@ import com.rpgcore.plugin.command.JobCommand;
 import com.rpgcore.plugin.command.LeaderboardCommand;
 import com.rpgcore.plugin.command.PartyChatCommand;
 import com.rpgcore.plugin.command.PartyCommand;
+import com.rpgcore.plugin.command.PayCommand;
 import com.rpgcore.plugin.command.TitleCommand;
 import com.rpgcore.plugin.command.TradeCommand;
 import com.rpgcore.plugin.duel.DuelListener;
@@ -93,6 +94,7 @@ public final class RpgCorePlugin extends JavaPlugin {
     private CollectionService collections;
     private CollectionMenu collectionMenu;
     private DuelService duels;
+    private ProgressListener progress;
 
     @Override
     public void onEnable() {
@@ -148,7 +150,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new AnvilListener(this, anvil), this);
         getServer().getPluginManager().registerEvents(new PartyListener(this), this);
         getServer().getPluginManager().registerEvents(new TradeListener(this), this);
-        getServer().getPluginManager().registerEvents(new ProgressListener(this), this);
+        this.progress = new ProgressListener(this);
+        getServer().getPluginManager().registerEvents(progress, this);
         getServer().getPluginManager().registerEvents(new DuelListener(this), this);
         if (rpgConfig.proximityEnabled()) {
             getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
@@ -177,13 +180,14 @@ public final class RpgCorePlugin extends JavaPlugin {
         registerCommand("collection", new CollectionCommand(this));
         registerCommand("duel", new DuelCommand(this));
         registerCommand("gold", new GoldCommand(this));
+        registerCommand("pay", new PayCommand(this));
 
         new VoiceChatHook(this).check();
 
         // Players are already online after a /reload.
         for (Player player : getServer().getOnlinePlayers()) {
             stats.recalculate(player);
-            collections.load(player);
+            loadProgress(player);
         }
 
         getLogger().info("RPGCore plugin enabled.");
@@ -249,6 +253,8 @@ public final class RpgCorePlugin extends JavaPlugin {
             case "reload" -> {
                 rpgConfig.reload();
                 weightTable.load();
+                weight.lore().reload();
+                progress.load();
                 treeFell.load();
                 anvil.load();
                 jobs.load();
@@ -258,7 +264,7 @@ public final class RpgCorePlugin extends JavaPlugin {
                 achievements.load();
                 collections.load();
                 for (Player player : getServer().getOnlinePlayers()) {
-                    collections.load(player);
+                    loadProgress(player);
                 }
                 duels.endAll("설정을 다시 불러와 무승부입니다.");
                 leaderboard.invalidate();
@@ -411,11 +417,15 @@ public final class RpgCorePlugin extends JavaPlugin {
         line(sender, "플레이어 목록", rpgConfig.tablistEnabled(), rpgConfig.displaySummary(NameplateService.TABLIST));
         line(sender, "무게 툴팁", rpgConfig.weightLoreEnabled(), rpgConfig.weightLoreFormat().replace("%weight%", "n"));
         line(sender, "업적", rpgConfig.achievementsEnabled(),
-                achievements.count() + "종, 칭호 " + titles.count() + "종");
+                achievements.count() + "종, 칭호 " + titles.count() + "종, 집계 대상 광석 "
+                        + progress.oreCount() + "종 / 원목 " + progress.logCount() + "종");
         line(sender, "도감", rpgConfig.collectionEnabled(),
                 collections.categories().size() + "개 분류 / " + collections.entryCount() + "종");
         line(sender, "대결", rpgConfig.duelEnabled(), "최대 " + rpgConfig.duelMaxGold()
-                + "골드, 제한 " + rpgConfig.duelMaxSeconds() + "초, 진행 중 " + duels.count() + "건");
+                + "골드, " + rpgConfig.duelCountdownSeconds() + "초 카운트다운, 제한 "
+                + rpgConfig.duelMaxSeconds() + "초, 진행 중 " + duels.count() + "건");
+        line(sender, "골드", true, "처치 +" + rpgConfig.goldPerMobKill() + " / 레벨업 +"
+                + rpgConfig.goldPerLevel() + (rpgConfig.goldTransferAllowed() ? ", /pay 허용" : ", /pay 금지"));
 
         sender.sendMessage(ChatColor.GRAY + "레벨: 최대 "
                 + (rpgConfig.maxLevel() > 0 ? String.valueOf(rpgConfig.maxLevel()) : "무제한")
@@ -434,6 +444,13 @@ public final class RpgCorePlugin extends JavaPlugin {
     /** Opens the stats GUI. Same screen for Java and Bedrock players. */
     public void openStatsMenu(Player player) {
         statsMenu.open(player);
+    }
+
+    /** The three per-player sets that are kept in memory rather than re-read. */
+    private void loadProgress(Player player) {
+        collections.load(player);
+        achievements.load(player);
+        titles.load(player);
     }
 
     /**

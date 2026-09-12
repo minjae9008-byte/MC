@@ -263,12 +263,12 @@ public final class DuelService {
     // ----------------------------------------------------------------- fight
 
     private void start(Player a, Player b, DuelStake stakeA, DuelStake stakeB) {
-        DuelSession session = new DuelSession(a.getUniqueId(), b.getUniqueId(), stakeA, stakeB);
+        int countdown = plugin.rpgConfig().duelCountdownSeconds();
+        DuelSession session = new DuelSession(a.getUniqueId(), b.getUniqueId(), stakeA, stakeB, countdown > 0);
         sessions.put(a.getUniqueId(), session);
         sessions.put(b.getUniqueId(), session);
 
         for (Player player : List.of(a, b)) {
-            Player other = player.equals(a) ? b : a;
             player.sendMessage("");
             player.sendMessage(ChatColor.RED + "  ⚔ " + ChatColor.WHITE + a.getName()
                     + ChatColor.GRAY + " vs " + ChatColor.WHITE + b.getName());
@@ -277,8 +277,58 @@ public final class DuelService {
             player.sendMessage(ChatColor.GRAY + "    쓰러뜨리면 승리합니다. 죽지는 않으니 아이템은 떨어지지 않습니다.");
             player.sendMessage(ChatColor.GRAY + "    포기하려면 " + ChatColor.YELLOW + "/duel forfeit");
             player.sendMessage("");
-            player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.4F, 1.6F);
+            // A duel decided by who happened to be at three hearts is not a
+            // duel, so both start whole when the server asks for it.
+            if (plugin.rpgConfig().duelHealBeforeStart()) {
+                restore(player);
+            }
+        }
+
+        if (countdown <= 0) {
+            begin(session, a, b);
+            return;
+        }
+        countdown(session, countdown);
+    }
+
+    /**
+     * Counts both players in. The task holds no player references - it looks
+     * them up each tick - so a duel whose players log off mid-countdown is
+     * settled by the quit handler rather than by a stale reference here.
+     */
+    private void countdown(DuelSession session, int seconds) {
+        new org.bukkit.scheduler.BukkitRunnable() {
+            private int left = seconds;
+
+            @Override
+            public void run() {
+                Player first = plugin.getServer().getPlayer(session.first());
+                Player second = plugin.getServer().getPlayer(session.second());
+                if (session.finished() || first == null || second == null) {
+                    cancel();
+                    return;
+                }
+                if (left <= 0) {
+                    cancel();
+                    begin(session, first, second);
+                    return;
+                }
+                for (Player player : List.of(first, second)) {
+                    player.sendActionBar(net.kyori.adventure.text.Component
+                            .text("⚔ " + left + "..."));
+                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1.0F, 1.0F);
+                }
+                left--;
+            }
+        }.runTaskTimer(plugin, 0L, 20L);
+    }
+
+    private void begin(DuelSession session, Player a, Player b) {
+        session.begin();
+        for (Player player : List.of(a, b)) {
+            Player other = player.equals(a) ? b : a;
             player.sendActionBar(net.kyori.adventure.text.Component.text("⚔ " + other.getName()));
+            player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.4F, 1.6F);
         }
     }
 
@@ -382,7 +432,7 @@ public final class DuelService {
             return;
         }
         for (DuelSession session : new ArrayList<>(sessions.values())) {
-            if (!session.finished() && session.ageSeconds() >= limit) {
+            if (!session.finished() && !session.pending() && session.ageSeconds() >= limit) {
                 draw(session, "제한 시간이 지나 무승부입니다.");
             }
         }

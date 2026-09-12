@@ -80,11 +80,17 @@ public final class MenuListener implements Listener {
             int slot = event.getRawSlot();
             if (slot == menu.backSlot()) {
                 later(player, () -> plugin.collectionMenu().open(player));
-                return;
-            }
-            String category = menu.linkAt(slot);
-            if (category != null) {
-                later(player, () -> plugin.collectionMenu().openCategory(player, category));
+            } else if (slot == menu.previousSlot()) {
+                later(player, () -> plugin.collectionMenu()
+                        .openCategory(player, menu.category(), menu.page() - 1));
+            } else if (slot == menu.nextSlot()) {
+                later(player, () -> plugin.collectionMenu()
+                        .openCategory(player, menu.category(), menu.page() + 1));
+            } else {
+                String category = menu.linkAt(slot);
+                if (category != null) {
+                    later(player, () -> plugin.collectionMenu().openCategory(player, category, 0));
+                }
             }
             return;
         }
