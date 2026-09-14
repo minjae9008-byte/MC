@@ -1,6 +1,8 @@
 package com.rpgcore.plugin;
 
 import com.rpgcore.plugin.anvil.AnvilListener;
+import com.rpgcore.plugin.auction.AuctionMenu;
+import com.rpgcore.plugin.auction.AuctionService;
 import com.rpgcore.plugin.anvil.AnvilRecipe;
 import com.rpgcore.plugin.anvil.AnvilService;
 import com.rpgcore.plugin.chat.ProximityChatListener;
@@ -14,11 +16,13 @@ import com.rpgcore.plugin.gear.GearListener;
 import com.rpgcore.plugin.gear.GearService;
 import com.rpgcore.plugin.gear.RangedListener;
 import com.rpgcore.plugin.command.AchievementCommand;
+import com.rpgcore.plugin.command.AuctionCommand;
 import com.rpgcore.plugin.command.CollectionCommand;
 import com.rpgcore.plugin.command.DuelCommand;
 import com.rpgcore.plugin.command.GoldCommand;
 import com.rpgcore.plugin.command.JobCommand;
 import com.rpgcore.plugin.command.LeaderboardCommand;
+import com.rpgcore.plugin.command.MenuCommand;
 import com.rpgcore.plugin.command.PartyChatCommand;
 import com.rpgcore.plugin.command.PartyCommand;
 import com.rpgcore.plugin.command.PayCommand;
@@ -31,6 +35,8 @@ import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.job.JobMenu;
 import com.rpgcore.plugin.job.JobService;
 import com.rpgcore.plugin.leaderboard.LeaderboardService;
+import com.rpgcore.plugin.mail.MailboxService;
+import com.rpgcore.plugin.menu.MainMenu;
 import com.rpgcore.plugin.party.PartyListener;
 import com.rpgcore.plugin.party.PartyService;
 import com.rpgcore.plugin.progress.AchievementService;
@@ -94,6 +100,10 @@ public final class RpgCorePlugin extends JavaPlugin {
     private CollectionService collections;
     private CollectionMenu collectionMenu;
     private DuelService duels;
+    private MailboxService mailbox;
+    private AuctionService auctions;
+    private AuctionMenu auctionMenu;
+    private MainMenu mainMenu;
     private ProgressListener progress;
     /**
      * The HUD task, kept so hud.interval-ticks can be re-read on reload: a
@@ -138,7 +148,13 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.achievements.load();
         this.collections = new CollectionService(this);
         this.collections.load();
+        // The mailbox comes before anything that can owe a player something,
+        // because those all hand their loose ends to it.
+        this.mailbox = new MailboxService(this);
+        this.mailbox.load();
         this.duels = new DuelService(this);
+        this.auctions = new AuctionService(this);
+        this.auctions.load();
 
         this.nameplates = new NameplateService(this);
 
@@ -146,6 +162,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.jobMenu = new JobMenu(this);
         this.titleMenu = new TitleMenu(this);
         this.collectionMenu = new CollectionMenu(this);
+        this.auctionMenu = new AuctionMenu(this);
+        this.mainMenu = new MainMenu(this);
 
         getServer().getPluginManager().registerEvents(new PlayerSessionListener(this), this);
         getServer().getPluginManager().registerEvents(new MenuListener(this), this);
@@ -172,10 +190,13 @@ public final class RpgCorePlugin extends JavaPlugin {
                 gear.tick();
                 treeFell.tick();
                 duels.tick();
+                auctions.tick();
             }
         }.runTaskTimer(this, 1L, 1L);
         scheduleHudTask();
 
+        registerCommand("menu", new MenuCommand(this));
+        registerCommand("auction", new AuctionCommand(this));
         registerCommand("job", new JobCommand(this));
         registerCommand("leaderboard", new LeaderboardCommand(this));
         registerCommand("party", new PartyCommand(this));
@@ -224,6 +245,12 @@ public final class RpgCorePlugin extends JavaPlugin {
         }
         if (parties != null) {
             parties.save();
+        }
+        // Lots are not settled on the way down - they are meant to outlive a
+        // restart - but the file has to be current in case this is the last
+        // write the process gets.
+        if (auctions != null) {
+            auctions.save();
         }
         if (players != null) {
             for (Player player : getServer().getOnlinePlayers()) {
@@ -281,7 +308,17 @@ public final class RpgCorePlugin extends JavaPlugin {
 
         switch (args[0].toLowerCase()) {
             case "reload" -> {
+                boolean auctionWasOn = rpgConfig.auctionEnabled();
                 rpgConfig.reload();
+                // Switching the auction house off leaves every live lot
+                // holding a seller's item and a bidder's gold with no screen
+                // left to reach them through, so they come home now rather
+                // than sitting escrowed until the clock runs out.
+                if (auctionWasOn && !rpgConfig.auctionEnabled()) {
+                    auctions.refundAll("경매장이 꺼져 반환");
+                    sender.sendMessage(ChatColor.YELLOW
+                            + "[RPGCore] 경매장을 끄면서 진행 중이던 물건과 입찰을 모두 돌려주었습니다.");
+                }
                 weightTable.load();
                 weight.lore().reload();
                 progress.load();
@@ -469,6 +506,10 @@ public final class RpgCorePlugin extends JavaPlugin {
         line(sender, "대결", rpgConfig.duelEnabled(), "최대 " + rpgConfig.duelMaxGold()
                 + "골드, " + rpgConfig.duelCountdownSeconds() + "초 카운트다운, 제한 "
                 + rpgConfig.duelMaxSeconds() + "초, 진행 중 " + duels.count() + "건");
+        line(sender, "경매장", rpgConfig.auctionEnabled(), auctions.count() + "건 진행 중, "
+                + (rpgConfig.auctionDurationMinutes() / 60) + "시간, 등록 수수료 "
+                + rpgConfig.auctionListingFeePercent() + "% / 판매 수수료 "
+                + rpgConfig.auctionTaxPercent() + "%, 1인 " + rpgConfig.auctionMaxListings() + "개");
         line(sender, "골드", true, "처치 +" + rpgConfig.goldPerMobKill() + " / 레벨업 +"
                 + rpgConfig.goldPerLevel() + (rpgConfig.goldTransferAllowed() ? ", /pay 허용" : ", /pay 금지"));
 
@@ -516,6 +557,8 @@ public final class RpgCorePlugin extends JavaPlugin {
                 || holder instanceof JobMenu.Holder
                 || holder instanceof TitleMenu.Holder
                 || holder instanceof CollectionMenu.Holder
+                || holder instanceof MainMenu.Holder
+                || holder instanceof AuctionMenu.Holder
                 || holder instanceof com.rpgcore.plugin.trade.TradeSession;
     }
 
@@ -549,6 +592,22 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public DuelService duels() {
         return duels;
+    }
+
+    public MailboxService mailbox() {
+        return mailbox;
+    }
+
+    public AuctionService auctions() {
+        return auctions;
+    }
+
+    public AuctionMenu auctionMenu() {
+        return auctionMenu;
+    }
+
+    public MainMenu mainMenu() {
+        return mainMenu;
     }
 
     public JobService jobs() {

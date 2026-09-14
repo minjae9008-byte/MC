@@ -59,6 +59,7 @@ public final class RpgConfig {
     private boolean achievementsEnabled;
     private boolean collectionEnabled;
     private boolean duelEnabled;
+    private boolean auctionEnabled;
 
     // --- config.yml ---
     private int baseHp;
@@ -125,6 +126,17 @@ public final class RpgConfig {
     private String guiTitle;
     private int guiSize;
     private String tradeTitle;
+    private String menuTitle;
+    private String auctionTitle;
+    private int auctionDurationMinutes;
+    private int auctionMaxListings;
+    private int auctionMinPrice;
+    private int auctionMaxPrice;
+    private int auctionListingFeePercent;
+    private int auctionTaxPercent;
+    private int auctionBidIncrementPercent;
+    private int auctionAntiSnipeSeconds;
+    private boolean auctionAnnounce;
 
     private int duelRequestSeconds;
     private double duelMaxDistance;
@@ -180,6 +192,7 @@ public final class RpgConfig {
         achievementsEnabled = settings.getBoolean("features.achievements", true);
         collectionEnabled = settings.getBoolean("features.collection", true);
         duelEnabled = settings.getBoolean("features.duels", true);
+        auctionEnabled = settings.getBoolean("features.auction", true);
 
         baseHp = c.getInt("stats.base-hp", 20);
         hpPerLevel = c.getInt("stats.hp-per-level", 2);
@@ -257,6 +270,21 @@ public final class RpgConfig {
         guiTitle = c.getString("gui.title", "&8캐릭터 정보");
         guiSize = c.getInt("gui.size", 27);
         tradeTitle = c.getString("trade.title", "&8거래");
+        menuTitle = c.getString("menu.title", "&8RPG 메뉴");
+
+        auctionTitle = c.getString("auction.title", "&8경매장");
+        // Clamped rather than trusted: a zero duration would close every lot
+        // on the tick after it opened, and a zero increment would let a bidder
+        // hold the top spot forever for one extra gold.
+        auctionDurationMinutes = Math.clamp(c.getInt("auction.duration-minutes", 1440), 1, 20160);
+        auctionMaxListings = Math.clamp(c.getInt("auction.max-listings-per-player", 5), 1, 45);
+        auctionMinPrice = Math.max(1, c.getInt("auction.min-price", 1));
+        auctionMaxPrice = Math.max(auctionMinPrice, c.getInt("auction.max-price", 1_000_000));
+        auctionListingFeePercent = Math.clamp(c.getInt("auction.listing-fee-percent", 5), 0, 100);
+        auctionTaxPercent = Math.clamp(c.getInt("auction.tax-percent", 5), 0, 100);
+        auctionBidIncrementPercent = Math.clamp(c.getInt("auction.bid-increment-percent", 5), 1, 100);
+        auctionAntiSnipeSeconds = Math.clamp(c.getInt("auction.anti-snipe-seconds", 60), 0, 3600);
+        auctionAnnounce = c.getBoolean("auction.announce-new-lots", true);
 
         duelRequestSeconds = Math.max(5, c.getInt("duel.request-timeout-seconds", 60));
         duelMaxDistance = Math.max(0, c.getDouble("duel.max-distance", 32));
@@ -454,6 +482,54 @@ public final class RpgConfig {
 
     public String tradeTitle() {
         return tradeTitle;
+    }
+
+    public String menuTitle() {
+        return menuTitle;
+    }
+
+    public boolean auctionEnabled() {
+        return auctionEnabled;
+    }
+
+    public String auctionTitle() {
+        return auctionTitle;
+    }
+
+    public int auctionDurationMinutes() {
+        return auctionDurationMinutes;
+    }
+
+    public int auctionMaxListings() {
+        return auctionMaxListings;
+    }
+
+    public int auctionMinPrice() {
+        return auctionMinPrice;
+    }
+
+    public int auctionMaxPrice() {
+        return auctionMaxPrice;
+    }
+
+    public int auctionListingFeePercent() {
+        return auctionListingFeePercent;
+    }
+
+    public int auctionTaxPercent() {
+        return auctionTaxPercent;
+    }
+
+    public int auctionBidIncrementPercent() {
+        return auctionBidIncrementPercent;
+    }
+
+    public int auctionAntiSnipeSeconds() {
+        return auctionAntiSnipeSeconds;
+    }
+
+    public boolean auctionAnnounce() {
+        return auctionAnnounce;
     }
 
     public int duelRequestSeconds() {

@@ -42,20 +42,11 @@ public final class DuelService {
     private final Map<UUID, DuelSession> sessions = new ConcurrentHashMap<>();
     /** invited player -> (challenger -> request). */
     private final Map<UUID, Map<UUID, Request>> requests = new ConcurrentHashMap<>();
-    /** Item stakes owed to players who were not online to receive them. */
-    private final PendingStakeStore pending;
     /** Player -> when their last duel ended, for the post-duel cooldown. */
     private final Map<UUID, Long> lastFinishedMs = new ConcurrentHashMap<>();
 
     public DuelService(RpgCorePlugin plugin) {
         this.plugin = plugin;
-        this.pending = new PendingStakeStore(plugin);
-        this.pending.load();
-    }
-
-    /** Returns anything a duel owed this player while they were away. */
-    public void handleJoin(Player player) {
-        pending.handOver(player);
     }
 
     public boolean enabled() {
@@ -543,23 +534,22 @@ public final class DuelService {
     /**
      * A stake belonging to someone who has already left.
      *
-     * Both halves wait in the same UUID-keyed file until its owner is back.
-     * Gold used to be written straight onto the scoreboard mirror, which works
-     * for an offline player - but the mirror is keyed by name, and an offline
-     * player is precisely the one who may return under a different one, so
-     * that credit could land in somebody else's account.
+     * Handed to the mailbox, which is UUID-keyed and shared with everything
+     * else that can owe an absent player something. Gold used to be written
+     * straight onto the scoreboard mirror, which works for an offline player -
+     * but the mirror is keyed by name, and an offline player is precisely the
+     * one who may return under a different one, so that credit could land in
+     * somebody else's account.
      */
     private void holdForOffline(UUID uuid, DuelStake stake) {
         if (stake.isEmpty()) {
             return;
         }
         if (stake.item() == null) {
-            pending.holdGold(uuid, stake.gold());
+            plugin.mailbox().holdGold(uuid, stake.gold(), "대결 무승부 반환");
             return;
         }
-        // An item needs an inventory to go back into, so it waits in
-        // pending-stakes.yml until its owner logs in again.
-        pending.hold(uuid, stake.item());
+        plugin.mailbox().hold(uuid, stake.item(), "대결 무승부 반환");
     }
 
     /**

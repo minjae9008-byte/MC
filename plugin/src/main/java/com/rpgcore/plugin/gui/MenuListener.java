@@ -1,7 +1,9 @@
 package com.rpgcore.plugin.gui;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.auction.AuctionMenu;
 import com.rpgcore.plugin.collection.CollectionMenu;
+import com.rpgcore.plugin.menu.MainMenu;
 import com.rpgcore.plugin.job.JobMenu;
 import com.rpgcore.plugin.progress.TitleMenu;
 import com.rpgcore.plugin.job.RpgJob;
@@ -76,6 +78,19 @@ public final class MenuListener implements Listener {
             return;
         }
 
+        if (holder instanceof MainMenu.Holder menu) {
+            MainMenu.Action action = menu.actionAt(event.getRawSlot());
+            if (action != null) {
+                run(player, action);
+            }
+            return;
+        }
+
+        if (holder instanceof AuctionMenu.Holder menu) {
+            auctionClick(player, menu, event);
+            return;
+        }
+
         if (holder instanceof CollectionMenu.Holder menu) {
             int slot = event.getRawSlot();
             if (slot == menu.backSlot()) {
@@ -118,6 +133,111 @@ public final class MenuListener implements Listener {
         if (plugin.stats().allocate(player, type)) {
             later(player, () -> plugin.openStatsMenu(player));
         }
+    }
+
+    /**
+     * The hub's buttons. Screens open next tick like every other menu here;
+     * the ones that answer in chat close first, so the player is not left
+     * reading text through a window.
+     */
+    private void run(Player player, MainMenu.Action action) {
+        switch (action) {
+            case STATS -> later(player, () -> plugin.openStatsMenu(player));
+            case JOBS -> later(player, () -> plugin.jobMenu().open(player));
+            case TITLES -> later(player, () -> plugin.titleMenu().open(player));
+            case COLLECTION -> later(player, () -> plugin.collectionMenu().open(player));
+            case AUCTION -> later(player, () -> plugin.auctionMenu().open(player));
+            case MAILBOX -> {
+                if (plugin.mailbox().pending(player.getUniqueId()) == 0) {
+                    player.sendMessage(org.bukkit.ChatColor.GRAY + "[우편] 받을 것이 없습니다.");
+                    return;
+                }
+                // Collecting puts items in the inventory the player is looking
+                // at, so the window has to go first or they will not see them.
+                later(player, () -> {
+                    player.closeInventory();
+                    plugin.mailbox().collect(player);
+                });
+            }
+            case ACHIEVEMENTS -> chat(player, "achievements");
+            case LEADERBOARD -> chat(player, "leaderboard");
+            case PARTY -> chat(player, "party");
+            case TRADE_HELP -> chat(player, "trade");
+            case DUEL_HELP -> chat(player, "duel");
+            case CLOSE -> later(player, player::closeInventory);
+        }
+    }
+
+    private void chat(Player player, String command) {
+        later(player, () -> {
+            player.closeInventory();
+            player.performCommand(command);
+        });
+    }
+
+    /**
+     * A click on a lot. Left bids, right buys or withdraws - and which of
+     * those a right click means depends on whose lot it is, so it is decided
+     * here rather than trusted from the screen that drew it.
+     */
+    private void auctionClick(Player player, AuctionMenu.Holder menu, InventoryClickEvent event) {
+        int slot = event.getRawSlot();
+        if (slot == menu.backSlot()) {
+            later(player, () -> plugin.mainMenu().open(player));
+            return;
+        }
+        if (slot == menu.previousSlot()) {
+            later(player, () -> plugin.auctionMenu().open(player, menu.view(), menu.page() - 1));
+            return;
+        }
+        if (slot == menu.nextSlot()) {
+            later(player, () -> plugin.auctionMenu().open(player, menu.view(), menu.page() + 1));
+            return;
+        }
+        if (slot == menu.switchSlot()) {
+            AuctionMenu.View next = menu.view() == AuctionMenu.View.MINE
+                    ? AuctionMenu.View.BROWSE : AuctionMenu.View.MINE;
+            later(player, () -> plugin.auctionMenu().open(player, next, 0));
+            return;
+        }
+        if (slot == menu.mailSlot()) {
+            if (plugin.mailbox().pending(player.getUniqueId()) == 0) {
+                return;
+            }
+            later(player, () -> {
+                player.closeInventory();
+                plugin.mailbox().collect(player);
+            });
+            return;
+        }
+
+        java.util.UUID lotId = menu.lotAt(slot);
+        if (lotId == null) {
+            return;
+        }
+        com.rpgcore.plugin.auction.AuctionListing lot = plugin.auctions().byId(lotId);
+        if (lot == null) {
+            player.sendMessage(org.bukkit.ChatColor.RED + "[경매] 이미 끝난 경매입니다.");
+            later(player, () -> plugin.auctionMenu().open(player, menu.view(), menu.page()));
+            return;
+        }
+
+        boolean mine = lot.seller().equals(player.getUniqueId());
+        // Acted on straight away - the click is the confirmation, and a lot
+        // can be taken by somebody else in the tick a redraw would cost.
+        if (mine) {
+            if (event.isRightClick()) {
+                plugin.auctions().cancel(player, lotId);
+            } else {
+                player.sendMessage(org.bukkit.ChatColor.GRAY + "[경매] 자기 물건입니다. 우클릭으로 내릴 수 있습니다.");
+                return;
+            }
+        } else if (event.isRightClick()) {
+            plugin.auctions().buyNow(player, lotId);
+        } else {
+            plugin.auctions().bid(player, lotId);
+        }
+        later(player, () -> plugin.auctionMenu().open(player, menu.view(), menu.page()));
     }
 
     @EventHandler

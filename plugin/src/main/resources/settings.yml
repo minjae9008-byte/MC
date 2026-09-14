@@ -60,3 +60,4 @@ features:
   achievements: true        # 업적과 칭호 (/achievements, /titles)
   collection: true          # 수집 도감 (/collection)
   duels: true               # 1:1 대결 (/duel)
+  auction: true             # 경매장 (/auction) - 골드로 사고팔기
