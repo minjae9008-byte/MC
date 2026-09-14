@@ -60,6 +60,7 @@ public final class RpgConfig {
     private boolean collectionEnabled;
     private boolean duelEnabled;
     private boolean auctionEnabled;
+    private boolean guildEnabled;
 
     // --- config.yml ---
     private int baseHp;
@@ -137,6 +138,24 @@ public final class RpgConfig {
     private int auctionBidIncrementPercent;
     private int auctionAntiSnipeSeconds;
     private boolean auctionAnnounce;
+    private int guildNameMaxLength;
+    private int guildMaxMembers;
+    private int guildCreateCost;
+    private int guildInviteSeconds;
+    private int guildVaultRows;
+    private String guildVaultTitle;
+    private String guildChatPrefix;
+    private int guildClaimRadius;
+    private int guildMaxClaims;
+    private int guildClaimGap;
+    private int guildBannerCost;
+    private boolean guildProtectPlace;
+    private boolean guildProtectBuckets;
+    private boolean guildProtectExplosions;
+    private int guildBuffSpeed;
+    private int guildBuffHaste;
+    private int guildBuffJump;
+    private int guildGrowthBonusStages;
 
     private int duelRequestSeconds;
     private double duelMaxDistance;
@@ -193,6 +212,7 @@ public final class RpgConfig {
         collectionEnabled = settings.getBoolean("features.collection", true);
         duelEnabled = settings.getBoolean("features.duels", true);
         auctionEnabled = settings.getBoolean("features.auction", true);
+        guildEnabled = settings.getBoolean("features.guilds", true);
 
         baseHp = c.getInt("stats.base-hp", 20);
         hpPerLevel = c.getInt("stats.hp-per-level", 2);
@@ -285,6 +305,30 @@ public final class RpgConfig {
         auctionBidIncrementPercent = Math.clamp(c.getInt("auction.bid-increment-percent", 5), 1, 100);
         auctionAntiSnipeSeconds = Math.clamp(c.getInt("auction.anti-snipe-seconds", 60), 0, 3600);
         auctionAnnounce = c.getBoolean("auction.announce-new-lots", true);
+
+        guildNameMaxLength = Math.clamp(c.getInt("guild.name-max-length", 16), 1, 32);
+        guildMaxMembers = Math.clamp(c.getInt("guild.max-members", 20), 1, 200);
+        guildCreateCost = Math.max(0, c.getInt("guild.create-cost", 1000));
+        guildInviteSeconds = Math.max(5, c.getInt("guild.invite-timeout-seconds", 60));
+        // Rows, not slots: a value that is not a legal chest height would
+        // throw on createInventory, which is a crash rather than a setting.
+        guildVaultRows = Math.clamp(c.getInt("guild.vault-rows", 6), 1, 6);
+        guildVaultTitle = c.getString("guild.vault-title", "&8%guild% 보관함");
+        guildChatPrefix = c.getString("guild.chat-prefix", "&2[%guild%] ");
+
+        guildClaimRadius = Math.clamp(c.getInt("guild.claim.radius", 32), 4, 256);
+        guildMaxClaims = Math.clamp(c.getInt("guild.claim.max-per-guild", 2), 1, 20);
+        guildClaimGap = Math.max(0, c.getInt("guild.claim.gap-between-claims", 16));
+        guildBannerCost = Math.max(0, c.getInt("guild.claim.banner-cost", 2000));
+        guildProtectPlace = c.getBoolean("guild.claim.protect.block-place", true);
+        guildProtectBuckets = c.getBoolean("guild.claim.protect.buckets", true);
+        guildProtectExplosions = c.getBoolean("guild.claim.protect.explosions", true);
+
+        // Levels, not amplifiers: "speed 1" in config is Speed I in game.
+        guildBuffSpeed = Math.clamp(c.getInt("guild.claim.buffs.speed", 1), 0, 5);
+        guildBuffHaste = Math.clamp(c.getInt("guild.claim.buffs.haste", 1), 0, 5);
+        guildBuffJump = Math.clamp(c.getInt("guild.claim.buffs.jump", 1), 0, 5);
+        guildGrowthBonusStages = Math.clamp(c.getInt("guild.claim.crop-growth-bonus-stages", 1), 0, 7);
 
         duelRequestSeconds = Math.max(5, c.getInt("duel.request-timeout-seconds", 60));
         duelMaxDistance = Math.max(0, c.getDouble("duel.max-distance", 32));
@@ -530,6 +574,82 @@ public final class RpgConfig {
 
     public boolean auctionAnnounce() {
         return auctionAnnounce;
+    }
+
+    public boolean guildEnabled() {
+        return guildEnabled;
+    }
+
+    public int guildNameMaxLength() {
+        return guildNameMaxLength;
+    }
+
+    public int guildMaxMembers() {
+        return guildMaxMembers;
+    }
+
+    public int guildCreateCost() {
+        return guildCreateCost;
+    }
+
+    public int guildInviteSeconds() {
+        return guildInviteSeconds;
+    }
+
+    public int guildVaultRows() {
+        return guildVaultRows;
+    }
+
+    public String guildVaultTitle() {
+        return guildVaultTitle;
+    }
+
+    public String guildChatPrefix() {
+        return guildChatPrefix;
+    }
+
+    public int guildClaimRadius() {
+        return guildClaimRadius;
+    }
+
+    public int guildMaxClaims() {
+        return guildMaxClaims;
+    }
+
+    public int guildClaimGap() {
+        return guildClaimGap;
+    }
+
+    public int guildBannerCost() {
+        return guildBannerCost;
+    }
+
+    public boolean guildProtectPlace() {
+        return guildProtectPlace;
+    }
+
+    public boolean guildProtectBuckets() {
+        return guildProtectBuckets;
+    }
+
+    public boolean guildProtectExplosions() {
+        return guildProtectExplosions;
+    }
+
+    public int guildBuffSpeed() {
+        return guildBuffSpeed;
+    }
+
+    public int guildBuffHaste() {
+        return guildBuffHaste;
+    }
+
+    public int guildBuffJump() {
+        return guildBuffJump;
+    }
+
+    public int guildGrowthBonusStages() {
+        return guildGrowthBonusStages;
     }
 
     public int duelRequestSeconds() {

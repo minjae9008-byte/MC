@@ -1,13 +1,14 @@
 name: RPGCorePlugin
-version: '2.2.0'
+version: '2.3.0'
 main: com.rpgcore.plugin.RpgCorePlugin
 api-version: '26.2'
 author: RPGCore
 description: >
   RPG stats, jobs, leaderboards, persistent parties, player trading,
   achievements and titles, a collection log, wagered 1v1 duels, a gold auction
-  house, encumbrance, gear wear, chain tree-felling, custom anvil upgrades and
-  proximity chat. One /menu screen reaches all of it.
+  house, guilds with a shared vault and claimed territory, encumbrance, gear
+  wear, chain tree-felling, custom anvil upgrades and proximity chat.
+  One /menu screen reaches all of it.
   Everything is server-side, so Java and Bedrock (Geyser) players get
   identical behaviour. No dependencies.
 
@@ -18,6 +19,9 @@ commands:
   auction:
     description: Browse, sell on, and collect from the auction house.
     aliases: [ah, 경매, 경매장]
+  guild:
+    description: Create and run a guild - shared vault and claimed territory.
+    aliases: [g, 길드]
   stats:
     description: Open your RPGCore stats menu.
     aliases: [rpg, rpgstats]

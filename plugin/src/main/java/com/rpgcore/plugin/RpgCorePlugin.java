@@ -20,6 +20,7 @@ import com.rpgcore.plugin.command.AuctionCommand;
 import com.rpgcore.plugin.command.CollectionCommand;
 import com.rpgcore.plugin.command.DuelCommand;
 import com.rpgcore.plugin.command.GoldCommand;
+import com.rpgcore.plugin.command.GuildCommand;
 import com.rpgcore.plugin.command.JobCommand;
 import com.rpgcore.plugin.command.LeaderboardCommand;
 import com.rpgcore.plugin.command.MenuCommand;
@@ -30,6 +31,9 @@ import com.rpgcore.plugin.command.TitleCommand;
 import com.rpgcore.plugin.command.TradeCommand;
 import com.rpgcore.plugin.duel.DuelListener;
 import com.rpgcore.plugin.duel.DuelService;
+import com.rpgcore.plugin.guild.GuildClaimListener;
+import com.rpgcore.plugin.guild.GuildVaultListener;
+import com.rpgcore.plugin.guild.GuildService;
 import com.rpgcore.plugin.gui.MenuListener;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.job.JobMenu;
@@ -102,6 +106,8 @@ public final class RpgCorePlugin extends JavaPlugin {
     private DuelService duels;
     private MailboxService mailbox;
     private AuctionService auctions;
+    private GuildService guilds;
+    private GuildClaimListener claimListener;
     private AuctionMenu auctionMenu;
     private MainMenu mainMenu;
     private ProgressListener progress;
@@ -155,6 +161,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.duels = new DuelService(this);
         this.auctions = new AuctionService(this);
         this.auctions.load();
+        this.guilds = new GuildService(this);
+        this.guilds.load();
 
         this.nameplates = new NameplateService(this);
 
@@ -177,6 +185,9 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.progress = new ProgressListener(this);
         getServer().getPluginManager().registerEvents(progress, this);
         getServer().getPluginManager().registerEvents(new DuelListener(this), this);
+        this.claimListener = new GuildClaimListener(this);
+        getServer().getPluginManager().registerEvents(claimListener, this);
+        getServer().getPluginManager().registerEvents(new GuildVaultListener(this), this);
         // Registered unconditionally; the listener itself honours the toggle,
         // so features.proximity-chat responds to /rpgcore reload like the rest.
         getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
@@ -196,6 +207,7 @@ public final class RpgCorePlugin extends JavaPlugin {
         scheduleHudTask();
 
         registerCommand("menu", new MenuCommand(this));
+        registerCommand("guild", new GuildCommand(this));
         registerCommand("auction", new AuctionCommand(this));
         registerCommand("job", new JobCommand(this));
         registerCommand("leaderboard", new LeaderboardCommand(this));
@@ -251,6 +263,11 @@ public final class RpgCorePlugin extends JavaPlugin {
         // write the process gets.
         if (auctions != null) {
             auctions.save();
+        }
+        // Guild vaults hold members' items, so the file has to be current
+        // before the process goes away.
+        if (guilds != null) {
+            guilds.save();
         }
         if (players != null) {
             for (Player player : getServer().getOnlinePlayers()) {
@@ -506,6 +523,9 @@ public final class RpgCorePlugin extends JavaPlugin {
         line(sender, "대결", rpgConfig.duelEnabled(), "최대 " + rpgConfig.duelMaxGold()
                 + "골드, " + rpgConfig.duelCountdownSeconds() + "초 카운트다운, 제한 "
                 + rpgConfig.duelMaxSeconds() + "초, 진행 중 " + duels.count() + "건");
+        line(sender, "길드", rpgConfig.guildEnabled(), guilds.count() + "개, 영지 "
+                + guilds.claimCount() + "곳 (반경 " + rpgConfig.guildClaimRadius()
+                + ", 보관함 " + rpgConfig.guildVaultRows() + "줄)");
         line(sender, "경매장", rpgConfig.auctionEnabled(), auctions.count() + "건 진행 중, "
                 + (rpgConfig.auctionDurationMinutes() / 60) + "시간, 등록 수수료 "
                 + rpgConfig.auctionListingFeePercent() + "% / 판매 수수료 "
@@ -600,6 +620,14 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public AuctionService auctions() {
         return auctions;
+    }
+
+    public GuildService guilds() {
+        return guilds;
+    }
+
+    public GuildClaimListener claimListener() {
+        return claimListener;
     }
 
     public AuctionMenu auctionMenu() {

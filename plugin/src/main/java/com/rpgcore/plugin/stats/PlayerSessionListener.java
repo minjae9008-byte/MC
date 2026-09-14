@@ -36,6 +36,7 @@ public final class PlayerSessionListener implements Listener {
         plugin.players().flush(player, data);
 
         plugin.parties().handleJoin(player);
+        plugin.guilds().handleJoin(player);
         plugin.collections().load(player);
         plugin.achievements().load(player);
         plugin.titles().load(player);

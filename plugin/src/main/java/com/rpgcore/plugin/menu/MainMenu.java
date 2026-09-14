@@ -33,7 +33,7 @@ public final class MainMenu {
     /** What a button does when it is clicked. */
     public enum Action {
         STATS, JOBS, TITLES, COLLECTION, ACHIEVEMENTS, LEADERBOARD,
-        PARTY, TRADE_HELP, DUEL_HELP, AUCTION, MAILBOX, CLOSE
+        PARTY, GUILD, GUILD_VAULT, TRADE_HELP, DUEL_HELP, AUCTION, MAILBOX, CLOSE
     }
 
     private static final int SIZE = 45;
@@ -93,15 +93,20 @@ public final class MainMenu {
         button(inv, holder, 16, Action.PARTY, plugin.rpgConfig().partyEnabled(), Material.WHITE_BANNER,
                 "&b파티", "파티를 만들고 관리합니다", partyLine(player));
 
-        button(inv, holder, 29, Action.AUCTION, plugin.rpgConfig().auctionEnabled(), Material.GOLD_BLOCK,
+        boolean guilds = plugin.rpgConfig().guildEnabled();
+        button(inv, holder, 28, Action.GUILD, guilds, Material.GREEN_BANNER,
+                "&a길드", "길드와 영지", guildLine(player));
+        button(inv, holder, 29, Action.GUILD_VAULT, guilds, Material.SHULKER_BOX,
+                "&a길드 보관함", "길드원이 함께 쓰는 상자", vaultLine(player));
+        button(inv, holder, 30, Action.AUCTION, plugin.rpgConfig().auctionEnabled(), Material.GOLD_BLOCK,
                 "&6경매장", "골드로 물건을 사고팝니다",
                 "&7진행 중 " + plugin.auctions().count() + "건");
-        button(inv, holder, 30, Action.MAILBOX, true, mailboxIcon(player),
+        button(inv, holder, 31, Action.MAILBOX, true, mailboxIcon(player),
                 "&e우편함", "경매와 대결에서 돌려받을 것", mailboxLine(player));
-        inv.setItem(31, goldCard(data));
-        button(inv, holder, 32, Action.TRADE_HELP, plugin.rpgConfig().tradeEnabled(), Material.CHEST,
+        inv.setItem(32, goldCard(data));
+        button(inv, holder, 33, Action.TRADE_HELP, plugin.rpgConfig().tradeEnabled(), Material.CHEST,
                 "&b거래", "다른 플레이어와 직접 교환합니다", "&7/trade <플레이어>");
-        button(inv, holder, 33, Action.DUEL_HELP, plugin.rpgConfig().duelEnabled(), Material.IRON_AXE,
+        button(inv, holder, 34, Action.DUEL_HELP, plugin.rpgConfig().duelEnabled(), Material.IRON_AXE,
                 "&b대결", "걸고 싸우는 1:1", "&7/duel <플레이어> [골드|hand]");
 
         button(inv, holder, 40, Action.CLOSE, true, Material.RED_STAINED_GLASS_PANE, "&c닫기", null, null);
@@ -178,6 +183,19 @@ public final class MainMenu {
     private String titleLine(Player player) {
         var worn = plugin.titles().worn(player);
         return worn == null ? "&8착용 중인 칭호 없음" : "&7착용 중: " + worn.display();
+    }
+
+    private String guildLine(Player player) {
+        var guild = plugin.guilds().guildOf(player);
+        return guild == null
+                ? "&8길드 없음 - /guild create <이름>"
+                : "&7" + guild.name() + " (" + guild.size() + "명, 영지 " + guild.claimCount() + "곳)";
+    }
+
+    private String vaultLine(Player player) {
+        return plugin.guilds().guildOf(player) == null
+                ? "&8길드에 들어가야 쓸 수 있습니다"
+                : "&7" + plugin.rpgConfig().guildVaultRows() * 9 + "칸";
     }
 
     private String partyLine(Player player) {

@@ -147,6 +147,8 @@ public final class MenuListener implements Listener {
             case TITLES -> later(player, () -> plugin.titleMenu().open(player));
             case COLLECTION -> later(player, () -> plugin.collectionMenu().open(player));
             case AUCTION -> later(player, () -> plugin.auctionMenu().open(player));
+            case GUILD -> chat(player, "guild info");
+            case GUILD_VAULT -> later(player, () -> plugin.guilds().openVault(player));
             case MAILBOX -> {
                 if (plugin.mailbox().pending(player.getUniqueId()) == 0) {
                     player.sendMessage(org.bukkit.ChatColor.GRAY + "[우편] 받을 것이 없습니다.");
@@ -168,6 +170,7 @@ public final class MenuListener implements Listener {
         }
     }
 
+    /** Closes the window, then runs a command whose answer is chat text. */
     private void chat(Player player, String command) {
         later(player, () -> {
             player.closeInventory();

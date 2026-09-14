@@ -400,6 +400,54 @@ collection:
 titles:
   menu-title: "&8칭호"
 
+# 길드. 파티가 하룻저녁 모임이라면 길드는 공동 보관함과 땅을 가진 조직입니다.
+#
+#   /guild create <이름>    창설 (create-cost 골드)
+#   /guild vault            공동 보관함 - 길드원 전원이 같은 상자를 함께 봅니다
+#   /guild banner           영지 깃발 구입 -> 세우면 그 자리가 영지
+#
+# 영지 안에서는:
+#   - 길드에 속하지 않은 사람은 블록을 부술 수 없습니다
+#   - 길드원은 이동속도 / 채굴속도 / 점프 버프를 받습니다
+#   - 작물이 한 단계 더 자랍니다 (자연 성장 1회당 +bonus 단계)
+guild:
+  name-max-length: 16
+  max-members: 20
+  create-cost: 1000            # 창설에 드는 골드. 0 이면 무료
+  invite-timeout-seconds: 60
+  # 공동 보관함 크기(줄). 6 = 큰 상자 한 개와 같은 54칸. 1~6 만 가능합니다.
+  # 줄이면 넘치는 칸의 물건은 길드장 우편함으로 갑니다.
+  vault-rows: 6
+  vault-title: "&8%guild% 보관함"
+  chat-prefix: "&2[%guild%] "   # %guild% 는 길드 이름으로 바뀝니다
+
+  claim:
+    radius: 32                 # 깃발에서 이만큼(정사각형)이 영지. 높이는 무제한
+    max-per-guild: 2
+    # 다른 영지와 이만큼은 더 떨어져야 합니다(두 반경 합에 더해서).
+    # 0 이면 경계가 딱 붙어, 블록 하나를 두고 다투게 됩니다.
+    gap-between-claims: 16
+    banner-cost: 2000          # 깃발 하나 값
+
+    # "블록을 부술 수 없다"를 실제로 지키는 항목들.
+    # block-place 를 끄면 외부인이 용암을 붓거나 TNT 를 놓을 수 있고,
+    # explosions 를 끄면 크리퍼가 대신 부숴 줍니다.
+    protect:
+      block-place: true
+      buckets: true
+      explosions: true         # 폭발·불탐. 영지 밖 블록은 그대로 터집니다
+
+    # 영지 안 길드원이 받는 버프. 숫자는 '레벨'이며 0 이면 끕니다.
+    # 플레이어가 이미 더 센 효과를 갖고 있으면 덮어쓰지 않습니다.
+    buffs:
+      speed: 1
+      haste: 1
+      jump: 1
+
+    # 자연 성장 1회마다 추가로 자랄 단계 수. 1 이면 수확까지 시간이 절반입니다.
+    # 0 이면 성장 보너스를 끕니다.
+    crop-growth-bonus-stages: 1
+
 # /menu 로 여는 허브 화면. 여기서 스탯·직업·칭호·도감·업적·순위표·파티·경매장으로
 # 갈 수 있습니다. settings.yml 에서 끈 기능은 회색 칸으로 남아 자리만 지킵니다.
 menu:

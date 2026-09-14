@@ -61,3 +61,4 @@ features:
   collection: true          # 수집 도감 (/collection)
   duels: true               # 1:1 대결 (/duel)
   auction: true             # 경매장 (/auction) - 골드로 사고팔기
+  guilds: true              # 길드 (/guild) - 공동 보관함과 영지
