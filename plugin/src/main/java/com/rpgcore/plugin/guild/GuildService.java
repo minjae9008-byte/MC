@@ -38,6 +38,10 @@ public final class GuildService {
     private final Map<UUID, Map<UUID, Long>> invites = new ConcurrentHashMap<>();
     /** Where the rolling banner check got to; see validateOneClaim. */
     private int validationCursor;
+    /** Live and recently finished wars, keyed by nothing - there are few. */
+    private final List<GuildWar> wars = new ArrayList<>();
+    /** guild pair -> when they may fight again. Keyed both ways round. */
+    private final Map<String, Long> warCooldowns = new HashMap<>();
 
     public GuildService(RpgCorePlugin plugin) {
         this.plugin = plugin;
@@ -58,13 +62,30 @@ public final class GuildService {
             for (UUID member : guild.members()) {
                 byMember.put(member, guild);
             }
-            for (GuildClaim claim : guild.claims()) {
-                claims.add(claim);
+            if (guild.hasClaim()) {
+                // Radius is derived from what the guild has invested rather
+                // than trusted from the file, so a change to the base radius
+                // or to the price of a block takes effect on reload instead of
+                // leaving every existing claim on yesterday's numbers.
+                guild.claim().radius(radiusFor(guild));
+                claims.add(guild.claim());
             }
             parkVault(guild, loaded);
         }
+        wars.clear();
+        warCooldowns.clear();
+        for (Map.Entry<String, Long> cooldown : storage.loadCooldowns().entrySet()) {
+            restoreCooldown(cooldown.getKey(), cooldown.getValue());
+        }
+        for (GuildWar war : storage.loadWars()) {
+            // A war whose guilds did not survive the file has nothing to be
+            // about; dropping it here keeps every later lookup simple.
+            if (byId.containsKey(war.attacker()) && byId.containsKey(war.defender())) {
+                wars.add(war);
+            }
+        }
         plugin.getLogger().info("Guilds loaded: " + byId.size() + " with "
-                + claims.size() + " claim(s).");
+                + claims.size() + " claim(s), " + liveWars().size() + " war(s) running.");
     }
 
     /** Holds a loaded vault as plain stacks until somebody opens it. */
@@ -93,7 +114,7 @@ public final class GuildService {
     }
 
     public void save() {
-        storage.save(byId.values());
+        storage.save(byId.values(), wars, activeCooldowns());
         for (Guild guild : byId.values()) {
             guild.clearVaultDirty();
         }
@@ -105,6 +126,23 @@ public final class GuildService {
 
     public int claimCount() {
         return claims.size();
+    }
+
+    /** Radius a guild's borders reach, base plus whatever it has invested. */
+    public int radiusFor(Guild guild) {
+        int base = plugin.rpgConfig().guildClaimRadius();
+        int perBlock = plugin.rpgConfig().guildInvestPerBlock();
+        int grown = perBlock <= 0 ? 0 : guild.invested() / perBlock;
+        return Math.clamp(base + grown, base, plugin.rpgConfig().guildMaxRadius());
+    }
+
+    /** Gold that would buy the next block of radius, or 0 when at the cap. */
+    public int nextRadiusCost(Guild guild) {
+        int perBlock = plugin.rpgConfig().guildInvestPerBlock();
+        if (perBlock <= 0 || radiusFor(guild) >= plugin.rpgConfig().guildMaxRadius()) {
+            return 0;
+        }
+        return perBlock - (guild.invested() % perBlock);
     }
 
     public Guild guildOf(Player player) {
@@ -373,10 +411,20 @@ public final class GuildService {
         }
 
         int returned = emptyVaultTo(guild, guild.leader(), "길드 해체");
-        for (GuildClaim claim : guild.claims()) {
+        if (guild.hasClaim()) {
+            GuildClaim claim = guild.claim();
             claims.remove(claim);
-            guild.removeClaim(claim);
+            guild.claim(null);
             returnBanner(claim, guild.leader());
+        }
+        // Any war they were in ends with them; the other side keeps its gold.
+        endWarsInvolving(guild.id(), "상대 길드가 해체되었습니다.");
+        // Treasury and invested gold go back to the leader rather than
+        // evaporating - disbanding is not a way to destroy a guild's savings.
+        int treasury = guild.gold();
+        if (treasury > 0) {
+            plugin.mailbox().giveGold(guild.leader(), treasury, "길드 해체 - 금고 반환");
+            guild.gold(0);
         }
         broadcast(guild, ChatColor.YELLOW + "[길드] '" + ChatColor.WHITE + guild.name()
                 + ChatColor.YELLOW + "' 길드가 해체되었습니다.");
@@ -500,6 +548,24 @@ public final class GuildService {
 
     // ---------------------------------------------------------------- claims
 
+    /**
+     * True when blasts must be kept off this block.
+     *
+     * A guild that is actually fighting a war loses its blast shield, so TNT
+     * works as a siege weapon on land that is already open to enemy pickaxes.
+     * Outside a war the shield always holds - otherwise "outsiders cannot
+     * destroy blocks here" would only mean "outsiders cannot destroy blocks
+     * here by hand".
+     */
+    public boolean shieldedFromBlasts(World world, int x, int z) {
+        GuildClaim claim = claims.at(world, x, z);
+        if (claim == null) {
+            return false;
+        }
+        GuildWar war = warOf(claim.guildId());
+        return war == null || !war.fighting(System.currentTimeMillis());
+    }
+
     /** The claim covering this location, or null. Hot path: chunk-indexed. */
     public GuildClaim claimAt(Location location) {
         World world = location.getWorld();
@@ -512,17 +578,109 @@ public final class GuildService {
     }
 
     /**
-     * True when this player may change blocks here: there is no claim, or they
-     * belong to the guild that holds it. Ops are always allowed, so an
-     * administrator is never locked out of their own server.
+     * True when this player may change blocks here.
+     *
+     * Three ways to be allowed: there is no claim, the claim is their guild's,
+     * or the two guilds are in a war that has actually started. Ops are always
+     * allowed, so an administrator is never locked out of their own server.
+     *
+     * The war case is the only one that lets a player break another guild's
+     * land, and it is deliberately narrow: a declared war that is still in its
+     * preparation window grants nothing, because the point of that window is
+     * that the defenders get to be there for it.
      */
     public boolean mayBuild(Player player, Location location) {
         GuildClaim claim = claimAt(location);
         if (claim == null || player.hasPermission("rpgcore.admin")) {
             return true;
         }
-        Guild guild = byId.get(claim.guildId());
-        return guild != null && guild.contains(player.getUniqueId());
+        Guild owner = byId.get(claim.guildId());
+        if (owner == null) {
+            return true;
+        }
+        if (owner.contains(player.getUniqueId())) {
+            return true;
+        }
+        Guild theirs = byMember.get(player.getUniqueId());
+        if (theirs == null) {
+            return false;
+        }
+        GuildWar war = warBetween(theirs.id(), owner.id());
+        return war != null && war.fighting(System.currentTimeMillis());
+    }
+
+    /**
+     * Why a player was refused, in words they can act on. "This is somebody
+     * else's land" and "the war has not started yet" are different problems
+     * and one of them is about to stop being one.
+     */
+    public String refusalFor(Player player, Location location) {
+        GuildClaim claim = claimAt(location);
+        if (claim == null) {
+            return null;
+        }
+        Guild owner = byId.get(claim.guildId());
+        if (owner == null) {
+            return null;
+        }
+        Guild theirs = byMember.get(player.getUniqueId());
+        GuildWar war = theirs == null ? null : warBetween(theirs.id(), owner.id());
+        if (war != null && war.phase(System.currentTimeMillis()) == GuildWar.Phase.PREPARING) {
+            return "교전 시작까지 " + war.remaining(System.currentTimeMillis()) + " 남았습니다.";
+        }
+        return owner.name() + " 길드의 영지입니다.";
+    }
+
+    /**
+     * A banner came down while its guild was in a war.
+     *
+     * Two ways that ends a war, and both have to be handled here or the other
+     * becomes the way around it:
+     *
+     *   - an enemy broke it, during the fighting. That is the win condition.
+     *   - the owners broke it themselves. That is a forfeit, at any point in
+     *     a war including the preparation window. Without this rule the losing
+     *     move is to knock down your own flag as the enemy approaches: the
+     *     objective disappears, the war runs out as a draw, and the treasury
+     *     that was at stake is never at stake again.
+     *
+     * Returns true when this settled a war, which tells the caller the claim
+     * is already down and not to treat it as an ordinary break.
+     */
+    public boolean handleBannerBreak(Player breaker, GuildClaim claim) {
+        Guild owner = byId.get(claim.guildId());
+        if (owner == null) {
+            return false;
+        }
+        Guild theirs = byMember.get(breaker.getUniqueId());
+        long now = System.currentTimeMillis();
+
+        if (theirs != null && !owner.id().equals(theirs.id())) {
+            GuildWar war = warBetween(theirs.id(), owner.id());
+            if (war == null || !war.fighting(now)) {
+                return false;
+            }
+            // The flag comes down with the guild that lost it, before the
+            // prize moves, so a second breaker in the same tick finds no claim.
+            owner.claim(null);
+            claims.remove(claim);
+            winWar(war, theirs, owner, breaker.getName() + " 이(가) 깃발을 무너뜨림");
+            return true;
+        }
+
+        // Their own flag, and they are in a war: that is a surrender.
+        GuildWar war = warOf(owner.id());
+        if (war == null) {
+            return false;
+        }
+        Guild enemy = byId.get(war.opponentOf(owner.id()));
+        if (enemy == null) {
+            return false;
+        }
+        owner.claim(null);
+        claims.remove(claim);
+        winWar(war, enemy, owner, owner.name() + " 이(가) 스스로 깃발을 내림");
+        return true;
     }
 
     /**
@@ -539,9 +697,16 @@ public final class GuildService {
             player.sendMessage(ChatColor.RED + "[영지] 길드장만 영지를 선포할 수 있습니다.");
             return false;
         }
-        int max = plugin.rpgConfig().guildMaxClaims();
-        if (guild.claimCount() >= max) {
-            player.sendMessage(ChatColor.RED + "[영지] 길드가 가질 수 있는 영지는 " + max + "곳까지입니다.");
+        if (guild.hasClaim()) {
+            player.sendMessage(ChatColor.RED + "[영지] 길드의 영지는 한 곳뿐입니다. "
+                    + ChatColor.GRAY + "(현재 " + guild.claim().describe() + ")");
+            player.sendMessage(ChatColor.GRAY + "  옮기려면 기존 깃발을 먼저 부수세요.");
+            return false;
+        }
+        if (atWar(guild.id())) {
+            // Re-planting mid-war would let a losing guild move the objective
+            // out from under an army that is already marching at it.
+            player.sendMessage(ChatColor.RED + "[영지] 전쟁 중에는 깃발을 세울 수 없습니다.");
             return false;
         }
         World world = bannerBlock.getWorld();
@@ -549,9 +714,9 @@ public final class GuildService {
             return false;
         }
 
-        int radius = plugin.rpgConfig().guildClaimRadius();
         GuildClaim proposed = new GuildClaim(guild.id(), world.getUID(),
-                bannerBlock.getBlockX(), bannerBlock.getBlockY(), bannerBlock.getBlockZ(), radius);
+                bannerBlock.getBlockX(), bannerBlock.getBlockY(), bannerBlock.getBlockZ(),
+                radiusFor(guild));
         GuildClaim clash = firstOverlap(proposed);
         if (clash != null) {
             Guild other = byId.get(clash.guildId());
@@ -561,7 +726,7 @@ public final class GuildService {
             return false;
         }
 
-        guild.addClaim(proposed);
+        guild.claim(proposed);
         claims.add(proposed);
         save();
 
@@ -576,12 +741,20 @@ public final class GuildService {
      * Two claims may not overlap, and must keep a gap beyond that - touching
      * borders make "whose land is this" a question about a single block, which
      * is exactly the argument claims exist to prevent.
+     *
+     * Judged at the largest radius a claim can ever reach, not the radius it
+     * has today. Borders grow when a guild invests, and spacing flags by their
+     * current size would let a guild buy its way into a neighbour's land - or,
+     * worse, make an investment they had already paid for impossible to apply.
+     * Spacing for the maximum once means growth never has to be refused.
      */
     private GuildClaim firstOverlap(GuildClaim proposed) {
         int gap = plugin.rpgConfig().guildClaimGap();
+        int reach = plugin.rpgConfig().guildMaxRadius();
+        double required = reach + reach + gap;
         for (GuildClaim existing : claims.allIn(proposed.worldId())) {
             double distance = existing.centreDistance(proposed);
-            if (distance >= 0 && distance < existing.radius() + proposed.radius() + gap) {
+            if (distance >= 0 && distance < required) {
                 return existing;
             }
         }
@@ -596,7 +769,7 @@ public final class GuildService {
         }
         Guild guild = byId.get(claim.guildId());
         if (guild != null) {
-            guild.removeClaim(claim);
+            guild.claim(null);
             broadcast(guild, ChatColor.YELLOW + "[영지] " + claim.describe() + " 의 영지가 사라졌습니다.");
         }
         claims.remove(claim);
@@ -645,7 +818,9 @@ public final class GuildService {
     public void validateOneClaim() {
         List<GuildClaim> all = new ArrayList<>();
         for (Guild guild : byId.values()) {
-            all.addAll(guild.claims());
+            if (guild.hasClaim()) {
+                all.add(guild.claim());
+            }
         }
         if (all.isEmpty()) {
             return;
@@ -663,12 +838,362 @@ public final class GuildService {
         Guild guild = byId.get(claim.guildId());
         plugin.getLogger().info("Claim at " + claim.describe() + " lost its banner; the claim is gone.");
         if (guild != null) {
-            guild.removeClaim(claim);
+            guild.claim(null);
             broadcast(guild, ChatColor.YELLOW + "[영지] " + claim.describe()
                     + " 의 깃발이 사라져 영지가 해제되었습니다.");
         }
         claims.remove(claim);
         save();
+    }
+
+    // -------------------------------------------------------------- treasury
+
+    /**
+     * Puts a member's own gold into the guild's.
+     *
+     * Any member may pay in; only the leader may take out or spend. A guild
+     * whose every member could withdraw would not have a treasury, it would
+     * have a shared wallet with the weakest link holding it.
+     */
+    public void deposit(Player player, int amount) {
+        Guild guild = guildOf(player);
+        if (guild == null) {
+            player.sendMessage(ChatColor.RED + "[길드] 길드에 속해 있지 않습니다.");
+            return;
+        }
+        if (amount <= 0) {
+            player.sendMessage(ChatColor.RED + "[길드] 1 골드 이상 넣어 주세요.");
+            return;
+        }
+        if (!plugin.economy().take(player, amount)) {
+            player.sendMessage(ChatColor.RED + "[길드] 골드가 부족합니다. (보유 "
+                    + plugin.economy().balance(player) + ")");
+            return;
+        }
+        guild.gold(addSaturating(guild.gold(), amount));
+        save();
+        broadcast(guild, ChatColor.GREEN + "[길드] " + player.getName() + " 이(가) 금고에 "
+                + plugin.economy().format(amount) + ChatColor.GREEN + " 을(를) 넣었습니다. "
+                + ChatColor.GRAY + "(금고 " + guild.gold() + ")");
+    }
+
+    public void withdraw(Player player, int amount) {
+        Guild guild = requireLeader(player, "금고에서 인출");
+        if (guild == null) {
+            return;
+        }
+        if (amount <= 0 || amount > guild.gold()) {
+            player.sendMessage(ChatColor.RED + "[길드] 금고에 " + guild.gold() + " 골드가 있습니다.");
+            return;
+        }
+        guild.gold(guild.gold() - amount);
+        // refund, not give: guild gold was already earned once by whoever
+        // deposited it, so taking it out must not count as earning it again.
+        plugin.economy().refund(player, amount);
+        save();
+        broadcast(guild, ChatColor.YELLOW + "[길드] " + player.getName() + " 이(가) 금고에서 "
+                + plugin.economy().format(amount) + ChatColor.YELLOW + " 을(를) 꺼냈습니다. "
+                + ChatColor.GRAY + "(금고 " + guild.gold() + ")");
+    }
+
+    /**
+     * Converts treasury gold into territory.
+     *
+     * One-way, and that is the point. Gold sitting in the treasury is what a
+     * war takes; gold spent on land is not. A guild choosing between hoarding
+     * and expanding is choosing between a bigger prize for whoever beats them
+     * and a bigger home they cannot be robbed of.
+     */
+    public void invest(Player player, int amount) {
+        Guild guild = requireLeader(player, "투자");
+        if (guild == null) {
+            return;
+        }
+        int perBlock = plugin.rpgConfig().guildInvestPerBlock();
+        if (perBlock <= 0) {
+            player.sendMessage(ChatColor.RED + "[길드] 이 서버에서는 영지를 넓힐 수 없습니다.");
+            return;
+        }
+        int before = radiusFor(guild);
+        if (before >= plugin.rpgConfig().guildMaxRadius()) {
+            player.sendMessage(ChatColor.YELLOW + "[길드] 이미 최대 반경(" + before + ")입니다.");
+            return;
+        }
+        if (amount <= 0 || amount > guild.gold()) {
+            player.sendMessage(ChatColor.RED + "[길드] 금고에 " + guild.gold() + " 골드가 있습니다. "
+                    + ChatColor.GRAY + "(다음 1블록까지 " + nextRadiusCost(guild) + ")");
+            return;
+        }
+
+        guild.gold(guild.gold() - amount);
+        guild.invested(addSaturating(guild.invested(), amount));
+        int after = radiusFor(guild);
+        applyRadius(guild, after);
+        save();
+
+        broadcast(guild, ChatColor.GREEN + "[길드] " + player.getName() + " 이(가) "
+                + plugin.economy().format(amount) + ChatColor.GREEN + " 을(를) 투자했습니다. "
+                + ChatColor.GRAY + "(누적 " + guild.invested() + ")");
+        if (after > before) {
+            broadcast(guild, ChatColor.GREEN + "[영지] 영지 반경이 " + before + " -> " + after
+                    + " 로 넓어졌습니다.");
+        } else {
+            player.sendMessage(ChatColor.GRAY + "  다음 1블록까지 " + nextRadiusCost(guild) + " 골드.");
+        }
+    }
+
+    /**
+     * Resizes a guild's claim in place.
+     *
+     * The claim has to leave and re-enter the chunk index, because the index
+     * files it under the chunks it covers and a wider claim covers more of
+     * them - changing the radius without reindexing would leave the new ring
+     * unprotected and invisible to every lookup.
+     */
+    private void applyRadius(Guild guild, int radius) {
+        GuildClaim claim = guild.claim();
+        if (claim == null || claim.radius() == radius) {
+            return;
+        }
+        claims.remove(claim);
+        claim.radius(radius);
+        claims.add(claim);
+    }
+
+    private static int addSaturating(int a, int b) {
+        return (int) Math.min((long) a + b, Integer.MAX_VALUE);
+    }
+
+    // ------------------------------------------------------------------ war
+
+    public List<GuildWar> liveWars() {
+        long now = System.currentTimeMillis();
+        List<GuildWar> live = new ArrayList<>();
+        for (GuildWar war : wars) {
+            if (war.phase(now) != GuildWar.Phase.OVER) {
+                live.add(war);
+            }
+        }
+        return live;
+    }
+
+    /** The war this guild is in, or null. A guild fights one war at a time. */
+    public GuildWar warOf(UUID guildId) {
+        long now = System.currentTimeMillis();
+        for (GuildWar war : wars) {
+            if (war.involves(guildId) && war.phase(now) != GuildWar.Phase.OVER) {
+                return war;
+            }
+        }
+        return null;
+    }
+
+    public boolean atWar(UUID guildId) {
+        return warOf(guildId) != null;
+    }
+
+    /** The live war between these two, if they are fighting each other. */
+    public GuildWar warBetween(UUID a, UUID b) {
+        long now = System.currentTimeMillis();
+        for (GuildWar war : wars) {
+            if (war.isBetween(a, b) && war.phase(now) != GuildWar.Phase.OVER) {
+                return war;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Declares war. Costs gold from the treasury, which the declarer does not
+     * get back - a war that is free to start is a war that is always running.
+     */
+    public void declareWar(Player player, String targetName) {
+        Guild attacker = requireLeader(player, "선전포고");
+        if (attacker == null) {
+            return;
+        }
+        Guild defender = byName(targetName);
+        if (defender == null) {
+            player.sendMessage(ChatColor.RED + "[전쟁] 그런 길드가 없습니다: " + targetName);
+            return;
+        }
+        if (defender.id().equals(attacker.id())) {
+            player.sendMessage(ChatColor.RED + "[전쟁] 자기 길드에는 선포할 수 없습니다.");
+            return;
+        }
+        // Both flags have to be standing. A war is won by taking the enemy's
+        // banner, so against a guild with no banner there is nothing to win -
+        // and a guild with no banner of its own would be wagering nothing.
+        if (!attacker.hasClaim()) {
+            player.sendMessage(ChatColor.RED + "[전쟁] 우리 길드의 깃발이 서 있어야 선포할 수 있습니다.");
+            return;
+        }
+        if (!defender.hasClaim()) {
+            player.sendMessage(ChatColor.RED + "[전쟁] 상대 길드에 영지가 없어 빼앗을 것이 없습니다.");
+            return;
+        }
+        if (atWar(attacker.id())) {
+            player.sendMessage(ChatColor.RED + "[전쟁] 이미 전쟁 중입니다.");
+            return;
+        }
+        if (atWar(defender.id())) {
+            player.sendMessage(ChatColor.RED + "[전쟁] 상대는 이미 다른 전쟁 중입니다.");
+            return;
+        }
+        long cooldown = cooldownLeft(attacker.id(), defender.id());
+        if (cooldown > 0) {
+            player.sendMessage(ChatColor.RED + "[전쟁] 최근에 맞붙었습니다. " + cooldown + "분 뒤에 가능합니다.");
+            return;
+        }
+        int cost = plugin.rpgConfig().guildWarCost();
+        if (cost > 0 && attacker.gold() < cost) {
+            player.sendMessage(ChatColor.RED + "[전쟁] 선전포고에 금고의 " + cost
+                    + " 골드가 필요합니다. (금고 " + attacker.gold() + ")");
+            return;
+        }
+        if (cost > 0) {
+            attacker.gold(attacker.gold() - cost);
+        }
+
+        long now = System.currentTimeMillis();
+        long prep = plugin.rpgConfig().guildWarPrepMinutes() * 60_000L;
+        long duration = plugin.rpgConfig().guildWarDurationMinutes() * 60_000L;
+        GuildWar war = new GuildWar(attacker.id(), defender.id(), now, now + prep, now + prep + duration);
+        wars.add(war);
+        save();
+
+        announceWar(ChatColor.DARK_RED + "[전쟁] " + ChatColor.WHITE + attacker.name()
+                + ChatColor.DARK_RED + " 이(가) " + ChatColor.WHITE + defender.name()
+                + ChatColor.DARK_RED + " 에 선전포고했습니다!");
+        String when = prep > 0
+                ? ChatColor.GRAY + "  " + plugin.rpgConfig().guildWarPrepMinutes() + "분 뒤 교전이 시작됩니다."
+                : ChatColor.GRAY + "  교전이 즉시 시작됩니다.";
+        announceWar(when + " 상대 깃발을 부수는 쪽이 이기고, 진 길드의 금고를 가져갑니다.");
+        broadcast(defender, ChatColor.DARK_RED + "[전쟁] 방어 준비를 하세요. 우리 깃발이 목표입니다: "
+                + ChatColor.WHITE + defender.claim().describe());
+    }
+
+    /**
+     * A banner came down in a war. The guild that took it wins, and the loser's
+     * treasury goes with the flag.
+     */
+    private void winWar(GuildWar war, Guild winner, Guild loser, String how) {
+        if (!war.settle()) {
+            return;
+        }
+        int share = plugin.rpgConfig().guildWarPrizePercent();
+        int prize = (int) ((long) loser.gold() * share / 100L);
+        if (prize > 0) {
+            loser.gold(loser.gold() - prize);
+            winner.gold(addSaturating(winner.gold(), prize));
+        }
+        startCooldown(war.attacker(), war.defender());
+        save();
+
+        announceWar(ChatColor.GOLD + "[전쟁] " + ChatColor.WHITE + winner.name()
+                + ChatColor.GOLD + " 이(가) " + ChatColor.WHITE + loser.name()
+                + ChatColor.GOLD + " 에게 승리했습니다! " + ChatColor.GRAY + "(" + how + ")");
+        if (prize > 0) {
+            announceWar(ChatColor.GRAY + "  전리품: " + plugin.economy().format(prize)
+                    + ChatColor.GRAY + " 이(가) " + winner.name() + " 금고로 넘어갔습니다.");
+        } else {
+            announceWar(ChatColor.GRAY + "  진 길드의 금고가 비어 있어 가져갈 것은 없었습니다.");
+        }
+    }
+
+    /** Ends wars whose clock ran out with both flags still standing. */
+    public void tickWars() {
+        if (wars.isEmpty()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        // Iterated directly: settling a war does not touch the list, and the
+        // one removal happens after. Copying here would allocate twenty times
+        // a second for the whole length of every war.
+        for (GuildWar war : wars) {
+            if (war.over() || now < war.endsAtMs()) {
+                continue;
+            }
+            if (!war.settle()) {
+                continue;
+            }
+            Guild attacker = byId.get(war.attacker());
+            Guild defender = byId.get(war.defender());
+            startCooldown(war.attacker(), war.defender());
+            if (attacker != null && defender != null) {
+                announceWar(ChatColor.YELLOW + "[전쟁] " + attacker.name() + " 과(와) "
+                        + defender.name() + " 의 전쟁이 시간이 다 되어 무승부로 끝났습니다. "
+                        + ChatColor.GRAY + "(양쪽 깃발 모두 건재)");
+            }
+            save();
+        }
+        // Settled wars are kept only long enough to be reported, then dropped
+        // so the list cannot grow for the life of the server.
+        wars.removeIf(war -> war.over() && now - war.endsAtMs() > 600_000L);
+    }
+
+    private void endWarsInvolving(UUID guildId, String reason) {
+        for (GuildWar war : wars) {
+            if (war.involves(guildId) && war.settle()) {
+                Guild other = byId.get(war.opponentOf(guildId));
+                if (other != null) {
+                    broadcast(other, ChatColor.YELLOW + "[전쟁] " + reason);
+                }
+            }
+        }
+    }
+
+    private String pairKey(UUID a, UUID b) {
+        return a.compareTo(b) <= 0 ? a + ":" + b : b + ":" + a;
+    }
+
+    private void startCooldown(UUID a, UUID b) {
+        warCooldowns.put(pairKey(a, b), System.currentTimeMillis()
+                + plugin.rpgConfig().guildWarCooldownMinutes() * 60_000L);
+    }
+
+    /** Cooldowns still running, for the storage layer. */
+    Map<String, Long> activeCooldowns() {
+        long now = System.currentTimeMillis();
+        warCooldowns.entrySet().removeIf(e -> e.getValue() <= now);
+        return warCooldowns;
+    }
+
+    void restoreCooldown(String key, long until) {
+        if (until > System.currentTimeMillis()) {
+            warCooldowns.put(key, until);
+        }
+    }
+
+    /**
+     * Re-derives every claim's radius from what its guild has invested.
+     *
+     * Called on /rpgcore reload so a changed base radius or block price takes
+     * effect on land that is already claimed, rather than leaving existing
+     * guilds on the numbers that were in the file when they planted.
+     */
+    public void refreshRadii() {
+        for (Guild guild : byId.values()) {
+            if (guild.hasClaim()) {
+                applyRadius(guild, radiusFor(guild));
+            }
+        }
+    }
+
+    /** Minutes still to wait before these two may fight again; 0 when ready. */
+    private long cooldownLeft(UUID a, UUID b) {
+        Long until = warCooldowns.get(pairKey(a, b));
+        if (until == null) {
+            return 0L;
+        }
+        long left = until - System.currentTimeMillis();
+        return left <= 0L ? 0L : (left + 59_999L) / 60_000L;
+    }
+
+    private void announceWar(String line) {
+        for (Player player : plugin.getServer().getOnlinePlayers()) {
+            player.sendMessage(line);
+        }
     }
 
     // --------------------------------------------------------------- talking

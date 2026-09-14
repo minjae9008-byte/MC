@@ -22,7 +22,12 @@ public final class GuildClaim {
     private final int x;
     private final int y;
     private final int z;
-    private final int radius;
+    /**
+     * Not final: a guild widens its own borders by investing gold, and the
+     * claim in the index is the same object the guild holds, so growing it has
+     * to be a change rather than a replacement.
+     */
+    private int radius;
 
     GuildClaim(UUID guildId, UUID worldId, int x, int y, int z, int radius) {
         this.guildId = guildId;
@@ -55,6 +60,10 @@ public final class GuildClaim {
 
     public int radius() {
         return radius;
+    }
+
+    void radius(int radius) {
+        this.radius = radius;
     }
 
     /** True when the banner block itself is at these coordinates. */

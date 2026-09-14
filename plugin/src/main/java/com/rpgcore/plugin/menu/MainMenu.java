@@ -189,7 +189,7 @@ public final class MainMenu {
         var guild = plugin.guilds().guildOf(player);
         return guild == null
                 ? "&8길드 없음 - /guild create <이름>"
-                : "&7" + guild.name() + " (" + guild.size() + "명, 영지 " + guild.claimCount() + "곳)";
+                : "&7" + guild.name() + " (" + guild.size() + "명, 금고 " + guild.gold() + ")";
     }
 
     private String vaultLine(Player player) {

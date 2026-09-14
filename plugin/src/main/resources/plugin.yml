@@ -1,5 +1,5 @@
 name: RPGCorePlugin
-version: '2.3.0'
+version: '2.4.0'
 main: com.rpgcore.plugin.RpgCorePlugin
 api-version: '26.2'
 author: RPGCore
@@ -20,7 +20,7 @@ commands:
     description: Browse, sell on, and collect from the auction house.
     aliases: [ah, 경매, 경매장]
   guild:
-    description: Create and run a guild - shared vault and claimed territory.
+    description: Create and run a guild - shared vault, treasury, territory and war.
     aliases: [g, 길드]
   stats:
     description: Open your RPGCore stats menu.

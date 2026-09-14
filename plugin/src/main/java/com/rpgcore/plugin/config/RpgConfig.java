@@ -146,8 +146,14 @@ public final class RpgConfig {
     private String guildVaultTitle;
     private String guildChatPrefix;
     private int guildClaimRadius;
-    private int guildMaxClaims;
     private int guildClaimGap;
+    private int guildMaxRadius;
+    private int guildInvestPerBlock;
+    private int guildWarCost;
+    private int guildWarPrepMinutes;
+    private int guildWarDurationMinutes;
+    private int guildWarCooldownMinutes;
+    private int guildWarPrizePercent;
     private int guildBannerCost;
     private boolean guildProtectPlace;
     private boolean guildProtectBuckets;
@@ -317,8 +323,12 @@ public final class RpgConfig {
         guildChatPrefix = c.getString("guild.chat-prefix", "&2[%guild%] ");
 
         guildClaimRadius = Math.clamp(c.getInt("guild.claim.radius", 32), 4, 256);
-        guildMaxClaims = Math.clamp(c.getInt("guild.claim.max-per-guild", 2), 1, 20);
         guildClaimGap = Math.max(0, c.getInt("guild.claim.gap-between-claims", 16));
+        // The ceiling is never below the base, or investing would shrink the
+        // borders it is supposed to widen.
+        guildMaxRadius = Math.clamp(c.getInt("guild.claim.max-radius", 96),
+                guildClaimRadius, 512);
+        guildInvestPerBlock = Math.max(0, c.getInt("guild.claim.invest-gold-per-block", 500));
         guildBannerCost = Math.max(0, c.getInt("guild.claim.banner-cost", 2000));
         guildProtectPlace = c.getBoolean("guild.claim.protect.block-place", true);
         guildProtectBuckets = c.getBoolean("guild.claim.protect.buckets", true);
@@ -329,6 +339,14 @@ public final class RpgConfig {
         guildBuffHaste = Math.clamp(c.getInt("guild.claim.buffs.haste", 1), 0, 5);
         guildBuffJump = Math.clamp(c.getInt("guild.claim.buffs.jump", 1), 0, 5);
         guildGrowthBonusStages = Math.clamp(c.getInt("guild.claim.crop-growth-bonus-stages", 1), 0, 7);
+
+        guildWarCost = Math.max(0, c.getInt("guild.war.declare-cost", 5000));
+        guildWarPrepMinutes = Math.clamp(c.getInt("guild.war.preparation-minutes", 10), 0, 1440);
+        // At least a minute of fighting: a zero-length war would be declared
+        // and lost in the same tick, before anyone could reach the border.
+        guildWarDurationMinutes = Math.clamp(c.getInt("guild.war.duration-minutes", 60), 1, 10080);
+        guildWarCooldownMinutes = Math.clamp(c.getInt("guild.war.cooldown-minutes", 1440), 0, 20160);
+        guildWarPrizePercent = Math.clamp(c.getInt("guild.war.prize-percent", 100), 0, 100);
 
         duelRequestSeconds = Math.max(5, c.getInt("duel.request-timeout-seconds", 60));
         duelMaxDistance = Math.max(0, c.getDouble("duel.max-distance", 32));
@@ -612,12 +630,36 @@ public final class RpgConfig {
         return guildClaimRadius;
     }
 
-    public int guildMaxClaims() {
-        return guildMaxClaims;
-    }
-
     public int guildClaimGap() {
         return guildClaimGap;
+    }
+
+    public int guildMaxRadius() {
+        return guildMaxRadius;
+    }
+
+    public int guildInvestPerBlock() {
+        return guildInvestPerBlock;
+    }
+
+    public int guildWarCost() {
+        return guildWarCost;
+    }
+
+    public int guildWarPrepMinutes() {
+        return guildWarPrepMinutes;
+    }
+
+    public int guildWarDurationMinutes() {
+        return guildWarDurationMinutes;
+    }
+
+    public int guildWarCooldownMinutes() {
+        return guildWarCooldownMinutes;
+    }
+
+    public int guildWarPrizePercent() {
+        return guildWarPrizePercent;
     }
 
     public int guildBannerCost() {

@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -65,13 +66,15 @@ final class GuildStorage {
                 Guild guild = new Guild(id, node.getString("name", "길드"), leader,
                         members.getString(leader.toString(), "?"),
                         node.getLong("created-at", System.currentTimeMillis()));
+                guild.gold(node.getInt("gold", 0));
+                guild.invested(node.getInt("invested", 0));
                 for (String memberKey : members.getKeys(false)) {
                     UUID member = UUID.fromString(memberKey);
                     if (!member.equals(leader)) {
                         guild.add(member, members.getString(memberKey, "?"));
                     }
                 }
-                readClaims(guild, node.getConfigurationSection("claims"));
+                readClaim(guild, node.getConfigurationSection("claim"));
 
                 List<ItemStack> stacks = new ArrayList<>();
                 List<Integer> slots = new ArrayList<>();
@@ -86,25 +89,49 @@ final class GuildStorage {
         return loaded;
     }
 
-    private void readClaims(Guild guild, ConfigurationSection claims) {
-        if (claims == null) {
+    private void readClaim(Guild guild, ConfigurationSection node) {
+        if (node == null) {
             return;
         }
-        for (String claimKey : claims.getKeys(false)) {
-            ConfigurationSection node = claims.getConfigurationSection(claimKey);
+        try {
+            guild.claim(new GuildClaim(guild.id(),
+                    UUID.fromString(node.getString("world", "")),
+                    node.getInt("x"), node.getInt("y"), node.getInt("z"),
+                    Math.max(1, node.getInt("radius", 32))));
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("guilds.yml: the claim of guild "
+                    + guild.name() + " is malformed - skipped.");
+        }
+    }
+
+    /** Live wars, which have to outlast a restart or they are a way out of one. */
+    List<GuildWar> loadWars() {
+        List<GuildWar> loaded = new ArrayList<>();
+        if (!file.isFile()) {
+            return loaded;
+        }
+        ConfigurationSection root = YamlConfiguration.loadConfiguration(file)
+                .getConfigurationSection("wars");
+        if (root == null) {
+            return loaded;
+        }
+        for (String key : root.getKeys(false)) {
+            ConfigurationSection node = root.getConfigurationSection(key);
             if (node == null) {
                 continue;
             }
             try {
-                guild.addClaim(new GuildClaim(guild.id(),
-                        UUID.fromString(node.getString("world", "")),
-                        node.getInt("x"), node.getInt("y"), node.getInt("z"),
-                        Math.max(1, node.getInt("radius", 32))));
+                loaded.add(new GuildWar(
+                        UUID.fromString(node.getString("attacker", "")),
+                        UUID.fromString(node.getString("defender", "")),
+                        node.getLong("declared-at"),
+                        node.getLong("fighting-from"),
+                        node.getLong("ends-at")));
             } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("guilds.yml: claim " + claimKey + " of guild "
-                        + guild.name() + " is malformed - skipped.");
+                plugin.getLogger().warning("guilds.yml: war " + key + " is malformed - skipped.");
             }
         }
+        return loaded;
     }
 
     private void readVault(ConfigurationSection vault, List<ItemStack> stacks, List<Integer> slots) {
@@ -126,8 +153,47 @@ final class GuildStorage {
         }
     }
 
-    void save(Collection<Guild> guilds) {
+    /**
+     * War cooldowns. Persisted because a restart is routine and a day-long
+     * cooldown that resets with the server is not a cooldown.
+     */
+    Map<String, Long> loadCooldowns() {
+        Map<String, Long> cooldowns = new java.util.HashMap<>();
+        if (!file.isFile()) {
+            return cooldowns;
+        }
+        ConfigurationSection root = YamlConfiguration.loadConfiguration(file)
+                .getConfigurationSection("war-cooldowns");
+        if (root == null) {
+            return cooldowns;
+        }
+        for (String key : root.getKeys(false)) {
+            cooldowns.put(key.replace('_', ':'), root.getLong(key));
+        }
+        return cooldowns;
+    }
+
+    void save(Collection<Guild> guilds, Collection<GuildWar> wars, Map<String, Long> cooldowns) {
         YamlConfiguration yaml = new YamlConfiguration();
+        int index = 0;
+        for (GuildWar war : wars) {
+            if (war.over()) {
+                // A settled war is history; it only has to survive long enough
+                // to be announced, which happens before this ever runs again.
+                continue;
+            }
+            String path = "wars." + index++;
+            yaml.set(path + ".attacker", war.attacker().toString());
+            yaml.set(path + ".defender", war.defender().toString());
+            yaml.set(path + ".declared-at", war.declaredAtMs());
+            yaml.set(path + ".fighting-from", war.fightingFromMs());
+            yaml.set(path + ".ends-at", war.endsAtMs());
+        }
+        for (Map.Entry<String, Long> cooldown : cooldowns.entrySet()) {
+            // ':' separates the pair, and YAML paths split on '.', so neither
+            // character may reach the key - '_' is safe in both.
+            yaml.set("war-cooldowns." + cooldown.getKey().replace(':', '_'), cooldown.getValue());
+        }
         for (Guild guild : guilds) {
             String path = "guilds." + guild.id();
             yaml.set(path + ".name", guild.name());
@@ -136,14 +202,15 @@ final class GuildStorage {
             for (UUID member : guild.ordered()) {
                 yaml.set(path + ".members." + member, guild.nameOf(member));
             }
-            int index = 0;
-            for (GuildClaim claim : guild.claims()) {
-                String claimPath = path + ".claims." + index++;
-                yaml.set(claimPath + ".world", claim.worldId().toString());
-                yaml.set(claimPath + ".x", claim.x());
-                yaml.set(claimPath + ".y", claim.y());
-                yaml.set(claimPath + ".z", claim.z());
-                yaml.set(claimPath + ".radius", claim.radius());
+            yaml.set(path + ".gold", guild.gold());
+            yaml.set(path + ".invested", guild.invested());
+            GuildClaim claim = guild.claim();
+            if (claim != null) {
+                yaml.set(path + ".claim.world", claim.worldId().toString());
+                yaml.set(path + ".claim.x", claim.x());
+                yaml.set(path + ".claim.y", claim.y());
+                yaml.set(path + ".claim.z", claim.z());
+                yaml.set(path + ".claim.radius", claim.radius());
             }
             writeVault(yaml, path, guild);
         }

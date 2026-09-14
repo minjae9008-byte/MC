@@ -202,6 +202,7 @@ public final class RpgCorePlugin extends JavaPlugin {
                 treeFell.tick();
                 duels.tick();
                 auctions.tick();
+                guilds.tickWars();
             }
         }.runTaskTimer(this, 1L, 1L);
         scheduleHudTask();
@@ -354,6 +355,10 @@ public final class RpgCorePlugin extends JavaPlugin {
                 // The HUD interval is baked into the running task, so a new
                 // value only takes effect if the task is replaced.
                 scheduleHudTask();
+                // Claim radius is derived from a guild's investment and the
+                // config, so a changed base radius or block price has to be
+                // pushed into the claims that are already on the ground.
+                guilds.refreshRadii();
                 leaderboard.invalidate();
                 for (Player player : getServer().getOnlinePlayers()) {
                     stats.recalculate(player);
@@ -524,8 +529,10 @@ public final class RpgCorePlugin extends JavaPlugin {
                 + "골드, " + rpgConfig.duelCountdownSeconds() + "초 카운트다운, 제한 "
                 + rpgConfig.duelMaxSeconds() + "초, 진행 중 " + duels.count() + "건");
         line(sender, "길드", rpgConfig.guildEnabled(), guilds.count() + "개, 영지 "
-                + guilds.claimCount() + "곳 (반경 " + rpgConfig.guildClaimRadius()
-                + ", 보관함 " + rpgConfig.guildVaultRows() + "줄)");
+                + guilds.claimCount() + "곳 (기본 반경 " + rpgConfig.guildClaimRadius()
+                + ", 최대 " + rpgConfig.guildMaxRadius()
+                + ", 보관함 " + rpgConfig.guildVaultRows() + "줄), 전쟁 "
+                + guilds.liveWars().size() + "건");
         line(sender, "경매장", rpgConfig.auctionEnabled(), auctions.count() + "건 진행 중, "
                 + (rpgConfig.auctionDurationMinutes() / 60) + "시간, 등록 수수료 "
                 + rpgConfig.auctionListingFeePercent() + "% / 판매 수수료 "

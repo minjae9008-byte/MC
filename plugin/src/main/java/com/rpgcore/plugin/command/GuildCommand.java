@@ -3,6 +3,7 @@ package com.rpgcore.plugin.command;
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.guild.Guild;
 import com.rpgcore.plugin.guild.GuildClaim;
+import com.rpgcore.plugin.guild.GuildWar;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -22,7 +23,8 @@ public final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of(
             "create", "invite", "accept", "deny", "leave", "kick", "transfer",
-            "disband", "info", "list", "vault", "banner", "chat");
+            "disband", "info", "list", "vault", "banner", "chat",
+            "deposit", "withdraw", "invest", "war");
 
     private final RpgCorePlugin plugin;
 
@@ -59,6 +61,13 @@ public final class GuildCommand implements CommandExecutor, TabCompleter {
             case "vault", "보관함", "창고" -> plugin.guilds().openVault(player);
             case "banner", "깃발", "영지" -> banner(player);
             case "chat", "채팅" -> plugin.guilds().chat(player, join(args, 1));
+            case "deposit", "입금" -> withAmount(player, args, "/guild deposit <금액>",
+                    amount -> plugin.guilds().deposit(player, amount));
+            case "withdraw", "출금" -> withAmount(player, args, "/guild withdraw <금액>",
+                    amount -> plugin.guilds().withdraw(player, amount));
+            case "invest", "투자" -> withAmount(player, args, "/guild invest <금액>",
+                    amount -> plugin.guilds().invest(player, amount));
+            case "war", "전쟁" -> war(player, args);
             case "list", "목록" -> list(player);
             case "info", "정보" -> info(player);
             default -> help(player);
@@ -77,6 +86,64 @@ public final class GuildCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.guilds().invite(player, target);
+    }
+
+    private void withAmount(Player player, String[] args, String usage,
+                            java.util.function.IntConsumer action) {
+        if (args.length < 2) {
+            player.sendMessage(ChatColor.YELLOW + usage);
+            return;
+        }
+        try {
+            action.accept(Integer.parseInt(args[1]));
+        } catch (NumberFormatException e) {
+            player.sendMessage(ChatColor.RED + "[길드] 금액은 숫자로 적어 주세요: " + args[1]);
+        }
+    }
+
+    /** /guild war [길드] - the status of the current war, or declare a new one. */
+    private void war(Player player, String[] args) {
+        Guild guild = plugin.guilds().guildOf(player);
+        if (guild == null) {
+            player.sendMessage(ChatColor.RED + "[길드] 길드에 속해 있지 않습니다.");
+            return;
+        }
+        if (args.length >= 2) {
+            plugin.guilds().declareWar(player, join(args, 1));
+            return;
+        }
+
+        GuildWar war = plugin.guilds().warOf(guild.id());
+        if (war == null) {
+            player.sendMessage(ChatColor.GRAY + "[전쟁] 진행 중인 전쟁이 없습니다.");
+            player.sendMessage(ChatColor.YELLOW + "  /guild war <길드 이름>" + ChatColor.GRAY
+                    + " 으로 선포합니다. (금고에서 "
+                    + plugin.rpgConfig().guildWarCost() + " 골드)");
+            player.sendMessage(ChatColor.GRAY + "  이긴 쪽이 진 길드 금고의 "
+                    + plugin.rpgConfig().guildWarPrizePercent() + "% 를 가져갑니다.");
+            return;
+        }
+
+        Guild other = plugin.guilds().byId(war.opponentOf(guild.id()));
+        long now = System.currentTimeMillis();
+        boolean attacking = war.attacker().equals(guild.id());
+        player.sendMessage(ChatColor.DARK_RED + "===== 전쟁 =====");
+        player.sendMessage(ChatColor.GRAY + "  상대: " + ChatColor.WHITE
+                + (other == null ? "?" : other.name())
+                + ChatColor.GRAY + " (" + (attacking ? "우리가 선포" : "상대가 선포") + ")");
+        player.sendMessage(ChatColor.GRAY + "  상태: " + switch (war.phase(now)) {
+            case PREPARING -> ChatColor.YELLOW + "준비 중 - " + war.remaining(now) + " 뒤 교전";
+            case FIGHTING -> ChatColor.RED + "교전 중 - " + war.remaining(now) + " 남음";
+            case OVER -> ChatColor.GRAY + "종료";
+        });
+        if (other != null && other.hasClaim()) {
+            player.sendMessage(ChatColor.GRAY + "  목표: " + ChatColor.WHITE
+                    + other.claim().describe());
+        }
+        if (guild.hasClaim()) {
+            player.sendMessage(ChatColor.GRAY + "  지킬 곳: " + ChatColor.WHITE
+                    + guild.claim().describe());
+        }
     }
 
     private void withName(Player player, String[] args, String usage, java.util.function.Consumer<String> action) {
@@ -102,10 +169,9 @@ public final class GuildCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(ChatColor.RED + "[길드] 길드장만 영지 깃발을 받을 수 있습니다.");
             return;
         }
-        int max = plugin.rpgConfig().guildMaxClaims();
-        if (guild.claimCount() >= max) {
-            player.sendMessage(ChatColor.RED + "[길드] 이미 영지가 " + max + "곳입니다. "
-                    + "기존 깃발을 부수면 하나가 비워집니다.");
+        if (guild.hasClaim()) {
+            player.sendMessage(ChatColor.RED + "[길드] 길드의 영지는 한 곳뿐이고, 이미 세워져 있습니다. "
+                    + ChatColor.GRAY + "(" + guild.claim().describe() + ")");
             return;
         }
         if (player.getInventory().firstEmpty() == -1) {
@@ -140,13 +206,26 @@ public final class GuildCommand implements CommandExecutor, TabCompleter {
                 + ChatColor.GOLD + " =====");
         player.sendMessage(ChatColor.GRAY + "인원 " + ChatColor.WHITE + guild.size() + "/"
                 + plugin.rpgConfig().guildMaxMembers()
-                + ChatColor.GRAY + "   영지 " + ChatColor.WHITE + guild.claimCount() + "/"
-                + plugin.rpgConfig().guildMaxClaims());
+                + ChatColor.GRAY + "   금고 " + ChatColor.GOLD + guild.gold()
+                + ChatColor.GRAY + "   투자 " + ChatColor.AQUA + guild.invested());
         for (String line : plugin.guilds().roster(guild)) {
             player.sendMessage("  " + line);
         }
-        for (GuildClaim claim : guild.claims()) {
-            player.sendMessage(ChatColor.GRAY + "  영지: " + ChatColor.WHITE + claim.describe());
+        if (guild.hasClaim()) {
+            GuildClaim claim = guild.claim();
+            int next = plugin.guilds().nextRadiusCost(guild);
+            player.sendMessage(ChatColor.GRAY + "  영지: " + ChatColor.WHITE + claim.describe()
+                    + (next > 0 ? ChatColor.DARK_GRAY + "  다음 +1블록: " + next + " 골드" : ""));
+        } else {
+            player.sendMessage(ChatColor.GRAY + "  영지: " + ChatColor.DARK_GRAY + "없음 ("
+                    + ChatColor.YELLOW + "/guild banner" + ChatColor.DARK_GRAY + ")");
+        }
+        GuildWar war = plugin.guilds().warOf(guild.id());
+        if (war != null) {
+            Guild other = plugin.guilds().byId(war.opponentOf(guild.id()));
+            player.sendMessage(ChatColor.DARK_RED + "  전쟁 중: " + ChatColor.WHITE
+                    + (other == null ? "?" : other.name()) + ChatColor.GRAY + " - "
+                    + ChatColor.YELLOW + "/guild war" + ChatColor.GRAY + " 로 확인");
         }
         player.sendMessage(ChatColor.GRAY + "  " + ChatColor.YELLOW + "/guild vault"
                 + ChatColor.GRAY + " 보관함, " + ChatColor.YELLOW + "/guild chat <말>"
@@ -162,7 +241,8 @@ public final class GuildCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.GOLD + "===== 길드 목록 (" + guilds.size() + ") =====");
         for (Guild guild : guilds) {
             player.sendMessage(ChatColor.WHITE + "  " + guild.name()
-                    + ChatColor.GRAY + " - " + guild.size() + "명, 영지 " + guild.claimCount() + "곳"
+                    + ChatColor.GRAY + " - " + guild.size() + "명, "
+                    + (guild.hasClaim() ? "영지 반경 " + guild.claim().radius() : "영지 없음")
                     + ChatColor.DARK_GRAY + " (장: " + guild.nameOf(guild.leader()) + ")");
         }
     }
@@ -178,6 +258,13 @@ public final class GuildCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.YELLOW + "/guild banner" + ChatColor.GRAY + " - 영지 깃발 ("
                 + plugin.rpgConfig().guildBannerCost() + " 골드)");
         player.sendMessage(ChatColor.YELLOW + "/guild chat <말>" + ChatColor.GRAY + " - 길드 채팅");
+        player.sendMessage(ChatColor.YELLOW + "/guild deposit|withdraw <금액>"
+                + ChatColor.GRAY + " - 금고 (인출은 길드장)");
+        player.sendMessage(ChatColor.YELLOW + "/guild invest <금액>"
+                + ChatColor.GRAY + " - 금고의 골드로 영지를 넓힙니다 ("
+                + plugin.rpgConfig().guildInvestPerBlock() + "골드당 +1블록)");
+        player.sendMessage(ChatColor.YELLOW + "/guild war [길드]"
+                + ChatColor.GRAY + " - 전황 확인 / 선전포고");
         player.sendMessage(ChatColor.YELLOW + "/guild info|list");
     }
 
@@ -204,6 +291,15 @@ public final class GuildCommand implements CommandExecutor, TabCompleter {
             Guild guild = plugin.guilds().guildOf(player);
             if (guild != null && (sub.equals("kick") || sub.equals("transfer"))) {
                 return plugin.guilds().memberNames(guild);
+            }
+            if (sub.equals("war")) {
+                List<String> names = new ArrayList<>();
+                for (Guild other : plugin.guilds().all()) {
+                    if (guild == null || !other.id().equals(guild.id())) {
+                        names.add(other.name());
+                    }
+                }
+                return names;
             }
         }
         return List.of();

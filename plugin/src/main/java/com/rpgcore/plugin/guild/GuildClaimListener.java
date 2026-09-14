@@ -80,7 +80,7 @@ public final class GuildClaimListener implements Listener {
         // An ordinary block, placed by somebody who may not be allowed to.
         if (plugin.rpgConfig().guildProtectPlace() && !plugin.guilds().mayBuild(player, block.getLocation())) {
             event.setCancelled(true);
-            refuse(player);
+            refuse(player, block.getLocation());
         }
     }
 
@@ -96,19 +96,29 @@ public final class GuildClaimListener implements Listener {
         }
         if (!plugin.guilds().mayBuild(player, block.getLocation())) {
             event.setCancelled(true);
-            refuse(player);
+            refuse(player, block.getLocation());
             return;
         }
 
-        // A member breaking their own banner takes the claim down with it.
-        if (claim.isBannerAt(world, block.getX(), block.getY(), block.getZ())) {
-            plugin.guilds().removeBannerAt(world, block.getX(), block.getY(), block.getZ());
-            // Dropped as a claim banner, so it can be planted again rather
-            // than becoming an ordinary banner the moment it is picked up.
-            event.setDropItems(false);
-            world.dropItemNaturally(block.getLocation().add(0.5D, 0.5D, 0.5D),
-                    claimBanner(block.getType()));
+        if (!claim.isBannerAt(world, block.getX(), block.getY(), block.getZ())) {
+            return;
         }
+
+        // The banner is coming down. In a war that settles it - an enemy has
+        // won, or the owners have just surrendered by knocking down their own
+        // objective - and the flag is a trophy, not a block to pick up.
+        if (plugin.guilds().handleBannerBreak(player, claim)) {
+            event.setDropItems(false);
+            return;
+        }
+
+        // Their own flag: the claim ends and the banner goes back in the box,
+        // still a claim banner so it can be planted again rather than becoming
+        // an ordinary banner the moment it is picked up.
+        plugin.guilds().removeBannerAt(world, block.getX(), block.getY(), block.getZ());
+        event.setDropItems(false);
+        world.dropItemNaturally(block.getLocation().add(0.5D, 0.5D, 0.5D),
+                claimBanner(block.getType()));
     }
 
     /** Lava and water poured over a border destroy blocks without breaking them. */
@@ -120,7 +130,7 @@ public final class GuildClaimListener implements Listener {
         Block target = event.getBlockClicked().getRelative(event.getBlockFace());
         if (!plugin.guilds().mayBuild(event.getPlayer(), target.getLocation())) {
             event.setCancelled(true);
-            refuse(event.getPlayer());
+            refuse(event.getPlayer(), target.getLocation());
         }
     }
 
@@ -128,7 +138,8 @@ public final class GuildClaimListener implements Listener {
      * Explosions are filtered block by block rather than cancelled outright:
      * a creeper that blows up on a border should still crater the unclaimed
      * half, and cancelling the whole event would make the claim protect land
-     * that is not its own.
+     * that is not its own. Land whose guild is mid-war keeps no shield at all -
+     * see shieldedFromBlasts.
      */
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
@@ -154,7 +165,7 @@ public final class GuildClaimListener implements Listener {
             return;
         }
         Block block = event.getBlock();
-        if (plugin.guilds().claimAt(block.getWorld(), block.getX(), block.getZ()) != null) {
+        if (plugin.guilds().shieldedFromBlasts(block.getWorld(), block.getX(), block.getZ())) {
             event.setCancelled(true);
         }
     }
@@ -162,7 +173,7 @@ public final class GuildClaimListener implements Listener {
     private void shieldClaimed(List<Block> blocks) {
         for (Iterator<Block> it = blocks.iterator(); it.hasNext(); ) {
             Block block = it.next();
-            if (plugin.guilds().claimAt(block.getWorld(), block.getX(), block.getZ()) != null) {
+            if (plugin.guilds().shieldedFromBlasts(block.getWorld(), block.getX(), block.getZ())) {
                 it.remove();
             }
         }
@@ -218,9 +229,10 @@ public final class GuildClaimListener implements Listener {
 
     // ---------------------------------------------------------------- shared
 
-    private void refuse(Player player) {
+    private void refuse(Player player, Location where) {
+        String why = plugin.guilds().refusalFor(player, where);
         player.sendActionBar(net.kyori.adventure.text.Component.text(
-                ChatColor.RED + "이곳은 다른 길드의 영지입니다."));
+                ChatColor.RED + (why == null ? "이곳에서는 작업할 수 없습니다." : why)));
     }
 
     // ------------------------------------------------------------- the item

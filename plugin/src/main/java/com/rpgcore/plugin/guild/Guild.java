@@ -3,9 +3,7 @@ package com.rpgcore.plugin.guild;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -30,8 +28,32 @@ public final class Guild {
     private UUID leader;
     /** Member id -> last known name, in join order. */
     private final Map<UUID, String> members = new LinkedHashMap<>();
-    private final List<GuildClaim> claims = new ArrayList<>();
+    /**
+     * The guild's one claim, or null before its flag goes up.
+     *
+     * One, not a list. A war is won by breaking the enemy's banner, and with
+     * two banners "breaking the banner" stops being a single thing that can be
+     * won - it becomes a question about which one, and what the other is still
+     * protecting after the war is over.
+     */
+    private GuildClaim claim;
     private final long createdAtMs;
+
+    /**
+     * The guild's own gold: deposited by members, spent on flags and wars, and
+     * taken whole by whoever wins a war against them.
+     *
+     * Kept apart from every member's personal balance on purpose. It is what a
+     * guild has to lose, which is what makes declaring war on one a decision
+     * rather than a formality.
+     */
+    private int gold;
+    /**
+     * Gold spent on widening the claim. Not part of {@link #gold} - it has
+     * been converted into land and cannot be taken back, which is the whole
+     * trade: hoarded gold is at risk in a war, invested gold is not.
+     */
+    private int invested;
 
     /**
      * The one shared vault container, built on first use. Null until then, so
@@ -122,20 +144,33 @@ public final class Guild {
         }
     }
 
-    public List<GuildClaim> claims() {
-        return List.copyOf(claims);
+    /** The guild's claim, or null when its flag is not planted. */
+    public GuildClaim claim() {
+        return claim;
     }
 
-    public int claimCount() {
-        return claims.size();
+    public boolean hasClaim() {
+        return claim != null;
     }
 
-    void addClaim(GuildClaim claim) {
-        claims.add(claim);
+    void claim(GuildClaim claim) {
+        this.claim = claim;
     }
 
-    void removeClaim(GuildClaim claim) {
-        claims.remove(claim);
+    public int gold() {
+        return gold;
+    }
+
+    void gold(int gold) {
+        this.gold = Math.max(0, gold);
+    }
+
+    public int invested() {
+        return invested;
+    }
+
+    void invested(int invested) {
+        this.invested = Math.max(0, invested);
     }
 
     // ----------------------------------------------------------------- vault
