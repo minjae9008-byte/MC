@@ -374,7 +374,7 @@ progress:
 economy:
   starting-gold: 0
   gold-per-mob-kill: 2
-  gold-per-level-up: 50
+  gold-per-level-up: 50     # 레벨 1단계마다. 한 번에 여러 단계가 오르면 그 횟수만큼
   symbol: "G"              # 금액 뒤에 붙는 단위 표시
   allow-player-transfer: true   # /pay 로 플레이어끼리 주고받기
 

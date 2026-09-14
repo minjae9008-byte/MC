@@ -178,6 +178,7 @@ public final class RpgCorePlugin extends JavaPlugin {
                 gear.tick();
                 treeFell.tick();
                 duels.tick();
+                parties.tick();
             }
         }.runTaskTimer(this, 1L, 1L);
         scheduleHudTask();
@@ -229,7 +230,8 @@ public final class RpgCorePlugin extends JavaPlugin {
             duels.endAll("서버가 종료되어 무승부입니다.");
         }
         if (parties != null) {
-            parties.save();
+            // Forced, not coalesced: there is no next tick to write on.
+            parties.saveNow();
         }
         if (players != null) {
             for (Player player : getServer().getOnlinePlayers()) {
@@ -427,6 +429,8 @@ public final class RpgCorePlugin extends JavaPlugin {
                 sender.sendMessage(ChatColor.GREEN + "[RPGCore] " + target.getName()
                         + " 의 스탯/업적/칭호/도감을 초기화했습니다. (골드 "
                         + economy.balance(target) + " 은(는) 그대로)");
+                sender.sendMessage(ChatColor.GRAY + "  도감은 새로 접속한 것과 같은 상태입니다 - "
+                        + "지금 들고 있는 것은 보상 없이 조용히 다시 등록됩니다.");
                 return true;
             }
             default -> {

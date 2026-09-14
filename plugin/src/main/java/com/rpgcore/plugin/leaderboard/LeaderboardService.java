@@ -91,16 +91,14 @@ public final class LeaderboardService {
 
         Category ranked = categories.get(key);
         String objective = ranked == null ? RpgScoreboard.LEVEL : ranked.objective();
+        // One pass, with the objectives resolved once for the whole scan and
+        // the init marker filtering out everything that is not RPGCore's; see
+        // RpgScoreboard#scan. This walks every entry the world's scoreboard
+        // has ever held, which is why the result is cached rather than rebuilt
+        // per command.
         List<Row> rows = new ArrayList<>();
-        for (String entry : board.entries()) {
-            // The init marker is what tells RPGCore's own entries apart from
-            // whatever else shares the main scoreboard.
-            if (board.read(entry, RpgScoreboard.INITIALISED) != 1) {
-                continue;
-            }
-            int level = board.read(entry, RpgScoreboard.LEVEL);
-            int xp = board.read(entry, RpgScoreboard.XP);
-            rows.add(new Row(0, entry, board.read(entry, objective), level, xp));
+        for (RpgScoreboard.Row scanned : board.scan(objective)) {
+            rows.add(new Row(0, scanned.entry(), scanned.value(), scanned.level(), scanned.xp()));
         }
 
         rows.sort(Comparator.comparingInt(Row::value).reversed()

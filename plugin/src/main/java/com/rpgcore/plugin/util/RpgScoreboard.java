@@ -6,7 +6,8 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Score;
 import org.bukkit.scoreboard.Scoreboard;
 
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Mirror of the plugin's state onto the vanilla scoreboard.
@@ -58,10 +59,51 @@ public final class RpgScoreboard {
         return score.isScoreSet() ? score.getScore() : 0;
     }
 
-    /** Every entry the main scoreboard tracks, RPGCore's and otherwise. */
-    public Set<String> entries() {
+    /** One player's row from a bulk scan. */
+    public record Row(String entry, int value, int level, int xp) {
+    }
+
+    /**
+     * Every entry RPGCore has initialised, with one objective's value and the
+     * level and XP that break ties.
+     *
+     * The scan is here rather than in the caller so the four objectives are
+     * resolved once for the whole pass instead of once per entry. That matters
+     * because the main scoreboard holds an entry for everyone who has ever had
+     * a score on this server - RPGCore's players and anybody else's - and the
+     * init marker is read first, so an entry that is not ours costs a single
+     * lookup rather than four.
+     */
+    public List<Row> scan(String valueObjective) {
         Scoreboard board = board();
-        return board == null ? Set.of() : board.getEntries();
+        if (board == null) {
+            return List.of();
+        }
+        Objective initialised = board.getObjective(INITIALISED);
+        if (initialised == null) {
+            return List.of();
+        }
+        Objective value = board.getObjective(valueObjective);
+        Objective level = board.getObjective(LEVEL);
+        Objective xp = board.getObjective(XP);
+
+        List<Row> rows = new ArrayList<>();
+        for (String entry : board.getEntries()) {
+            Score marker = initialised.getScore(entry);
+            if (!marker.isScoreSet() || marker.getScore() != 1) {
+                continue;
+            }
+            rows.add(new Row(entry, scoreOf(value, entry), scoreOf(level, entry), scoreOf(xp, entry)));
+        }
+        return rows;
+    }
+
+    private static int scoreOf(Objective objective, String entry) {
+        if (objective == null) {
+            return 0;
+        }
+        Score score = objective.getScore(entry);
+        return score.isScoreSet() ? score.getScore() : 0;
     }
 
     public void write(Player player, String objective, int value) {

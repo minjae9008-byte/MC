@@ -22,12 +22,17 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class PartyService {
 
+    /** Ticks a change waits before parties.yml is rewritten. */
+    private static final int SAVE_INTERVAL_TICKS = 100;
+
     private final RpgCorePlugin plugin;
     private final PartyStorage storage;
     private final Map<UUID, Party> byId = new LinkedHashMap<>();
     private final Map<UUID, Party> byMember = new ConcurrentHashMap<>();
     /** invited player -> (inviter -> expiry millis). */
     private final Map<UUID, Map<UUID, Long>> invites = new ConcurrentHashMap<>();
+    private boolean dirty;
+    private int sinceChange;
 
     public PartyService(RpgCorePlugin plugin) {
         this.plugin = plugin;
@@ -35,6 +40,11 @@ public final class PartyService {
     }
 
     public void load() {
+        // Writes are coalesced, so memory can be ahead of the file. Replacing
+        // memory from disk over changes that never reached it would lose them.
+        if (dirty) {
+            saveNow();
+        }
         byId.clear();
         byMember.clear();
         for (Party party : storage.load()) {
@@ -46,8 +56,38 @@ public final class PartyService {
         plugin.getLogger().info("Parties loaded: " + byId.size() + ".");
     }
 
-    public void save() {
+    /**
+     * Writes parties.yml now. Used on shutdown; everything else marks the file
+     * dirty and lets {@link #tick()} coalesce.
+     */
+    public void saveNow() {
+        dirty = false;
+        sinceChange = 0;
         storage.save(byId.values());
+    }
+
+    /**
+     * Notes that parties.yml no longer matches memory.
+     *
+     * Every mutation used to rewrite the whole file - all parties, serialised
+     * and written to disk on the main thread - so a busy evening of invites
+     * and kicks was a full dump per command. The write is now coalesced: at
+     * most one every {@link #SAVE_INTERVAL_TICKS}, plus a forced one on
+     * shutdown, which costs at worst a few seconds of party changes if the
+     * server dies without shutting down.
+     */
+    private void markDirty() {
+        dirty = true;
+    }
+
+    /** Called from the tick pump; writes at most once per save interval. */
+    public void tick() {
+        if (!dirty) {
+            return;
+        }
+        if (++sinceChange >= SAVE_INTERVAL_TICKS) {
+            saveNow();
+        }
     }
 
     public int count() {
@@ -113,7 +153,7 @@ public final class PartyService {
         Party party = new Party(UUID.randomUUID(), name, leader.getUniqueId(), leader.getName());
         byId.put(party.id(), party);
         byMember.put(leader.getUniqueId(), party);
-        save();
+        markDirty();
         leader.sendMessage(ChatColor.GREEN + "[파티] '" + ChatColor.WHITE + name + ChatColor.GREEN
                 + "' 파티를 만들었습니다. /party invite <플레이어> 로 초대하세요.");
         return party;
@@ -134,7 +174,7 @@ public final class PartyService {
             return;
         }
         party.name(name);
-        save();
+        markDirty();
         broadcast(party, ChatColor.GREEN + "[파티] 파티 이름이 '" + ChatColor.WHITE + name
                 + ChatColor.GREEN + "' 으로 바뀌었습니다.");
     }
@@ -239,7 +279,7 @@ public final class PartyService {
         pending.remove(inviter);
         party.add(player.getUniqueId(), player.getName());
         byMember.put(player.getUniqueId(), party);
-        save();
+        markDirty();
         broadcast(party, ChatColor.GREEN + "[파티] " + player.getName() + " 이(가) 파티에 들어왔습니다. ("
                 + party.size() + "/" + plugin.rpgConfig().partyMaxSize() + ")");
     }
@@ -330,7 +370,7 @@ public final class PartyService {
             byMember.remove(uuid);
         }
         byId.remove(party.id());
-        save();
+        markDirty();
     }
 
     /** Keeps the stored name current, in case the player renamed. */
@@ -341,7 +381,7 @@ public final class PartyService {
         }
         if (!player.getName().equals(party.nameOf(player.getUniqueId()))) {
             party.refreshName(player.getUniqueId(), player.getName());
-            save();
+            markDirty();
         }
         player.sendMessage(ChatColor.GRAY + "[파티] '" + ChatColor.WHITE + party.name()
                 + ChatColor.GRAY + "' 파티에 속해 있습니다. (" + party.size() + "명)");
@@ -413,7 +453,7 @@ public final class PartyService {
             party.leader(heir);
             broadcast(party, ChatColor.GOLD + "[파티] " + party.nameOf(heir) + " 이(가) 새 파티장이 되었습니다.");
         }
-        save();
+        markDirty();
     }
 
     private void purgeExpired(Map<UUID, Long> pending) {

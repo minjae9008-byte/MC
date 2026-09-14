@@ -12,6 +12,7 @@ import org.bukkit.Tag;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
@@ -161,7 +162,7 @@ public final class CollectionService {
      * - and the rewards would arrive for a shelf they filled months ago.
      */
     private void seed(Player player, Set<Material> set) {
-        for (org.bukkit.inventory.ItemStack stack : player.getInventory().getContents()) {
+        for (ItemStack stack : player.getInventory().getContents()) {
             if (stack != null && index.containsKey(stack.getType())) {
                 set.add(stack.getType());
             }
@@ -174,16 +175,32 @@ public final class CollectionService {
     }
 
     /**
-     * Called for every carried stack by the encumbrance scan. Returns true when
-     * this was genuinely new, which is the caller's cue that a save happened.
+     * Registers everything a player is carrying, from the encumbrance scan.
+     *
+     * The scan hands its contents over rather than calling in once per slot:
+     * the player's discovery set is then fetched once for the whole pass
+     * instead of forty-one times, and a server with the log switched off - or
+     * with nothing configured - pays one check for the whole inventory.
      */
-    public boolean record(Player player, Material material) {
-        CollectionCategory category = index.get(material);
-        if (category == null) {
-            return false;
+    public void recordAll(Player player, ItemStack[] contents) {
+        if (index.isEmpty()) {
+            return;
         }
         Set<Material> set = found.get(player.getUniqueId());
-        if (set == null || !set.add(material)) {
+        if (set == null) {
+            return;
+        }
+        for (ItemStack stack : contents) {
+            if (stack != null && !stack.getType().isAir()) {
+                record(player, set, stack.getType());
+            }
+        }
+    }
+
+    /** Returns true when this was genuinely new, so the caller knows it saved. */
+    private boolean record(Player player, Set<Material> set, Material material) {
+        CollectionCategory category = index.get(material);
+        if (category == null || !set.add(material)) {
             return false;
         }
         save(player, set);
@@ -262,10 +279,21 @@ public final class CollectionService {
         return have;
     }
 
-    /** Clears a player's log, for /rpgcore reset. */
+    /**
+     * Clears a player's log, for /rpgcore reset.
+     *
+     * Re-seeded from what they are carrying, exactly as a player who has never
+     * had a log is on their first join. Clearing outright would not stay
+     * cleared: the encumbrance scan runs within the tick and would register
+     * every carried stack again - as a discovery each, with a line of chat
+     * each, and with the gold, XP, title and server-wide announcement for any
+     * page that filled up on the way. An admin resetting someone's character
+     * should not hand them the rewards a second time.
+     */
     public void reset(Player player) {
-        player.getPersistentDataContainer().remove(storageKey);
-        found.put(player.getUniqueId(), EnumSet.noneOf(Material.class));
+        Set<Material> set = EnumSet.noneOf(Material.class);
+        found.put(player.getUniqueId(), set);
+        seed(player, set);
     }
 
     public List<CollectionCategory> categories() {

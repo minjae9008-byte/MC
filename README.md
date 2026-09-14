@@ -569,7 +569,7 @@ categories:
 economy:
   starting-gold: 0
   gold-per-mob-kill: 2
-  gold-per-level-up: 50
+  gold-per-level-up: 50     # 레벨 1단계마다
   symbol: "G"
   allow-player-transfer: true   # /pay 로 주고받기
 
@@ -644,9 +644,9 @@ UI도 일반 상자 GUI 하나만 쓰므로 Geyser가 알아서 베드락 화면
 스코어보드에 그대로 미러링됩니다. '서버 최초' 업적의 주인만 `records.yml` 에 남습니다.
 
 **파티**는 이름·구성원을 가진 그룹이라 스코어보드에도 개인 데이터에도 맞지 않아,
-`plugins/RPGCorePlugin/parties.yml` 에 저장됩니다. 파티가 바뀔 때마다 즉시 기록되므로
-서버가 갑자기 내려가도 남습니다. 진행 중인 거래는 저장되지 않고, 서버 종료 시 물건을
-주인에게 돌려준 뒤 정리됩니다.
+`plugins/RPGCorePlugin/parties.yml` 에 저장됩니다. 파일 전체를 다시 쓰는 방식이라 변경은
+최대 5초까지 모았다가 한 번에 기록하고, 서버 종료 시에는 즉시 기록합니다. 진행 중인 거래는
+저장되지 않고, 서버 종료 시 물건을 주인에게 돌려준 뒤 정리됩니다.
 
 어트리뷰트 모디파이어 네임스페이스는 플러그인 이름에서 나오므로 `rpgcoreplugin:*` 입니다.
 

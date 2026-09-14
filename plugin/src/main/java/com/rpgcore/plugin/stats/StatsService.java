@@ -12,7 +12,10 @@ import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Owns levelling, stat allocation and every derived value. Nothing here runs
@@ -32,6 +35,14 @@ public final class StatsService {
     private final NamespacedKey agiSpeedKey;
     private final NamespacedKey agiJumpKey;
     private final NamespacedKey luckKey;
+    /**
+     * Players whose level-up run is already in progress.
+     *
+     * A level-up pays gold and can complete an achievement, and either can pay
+     * XP straight back to the same player - so addXp re-enters itself from
+     * inside its own loop. This is what keeps that to one run of levels.
+     */
+    private final Set<UUID> levelling = new HashSet<>();
 
     public StatsService(RpgCorePlugin plugin) {
         this.plugin = plugin;
@@ -92,22 +103,45 @@ public final class StatsService {
         }
         data.xp(data.xp() + amount);
 
-        boolean levelled = false;
-        while (data.xp() >= data.xpNeed() && data.xpNeed() > 0 && !atMaxLevel(data)) {
-            data.xp(data.xp() - data.xpNeed());
-            data.level(data.level() + 1);
-            data.points(data.points() + plugin.rpgConfig().pointsPerLevel());
-            data.xpNeed(xpNeedFor(data.level()));
-            levelled = true;
+        // Levelling up pays gold and can complete an achievement, and both of
+        // those can pay XP straight back into this same player - so addXp can
+        // re-enter itself while the loop below is halfway through a level.
+        // The XP is already banked above; letting the call that is running
+        // consume it keeps one sequence of levels and one set of level-up
+        // messages, instead of two loops interleaving over the same data.
+        if (!levelling.add(player.getUniqueId())) {
+            return;
         }
-        if (atMaxLevel(data)) {
-            data.xp(0);
+        boolean levelled = false;
+        try {
+            while (data.xp() >= data.xpNeed() && data.xpNeed() > 0 && !atMaxLevel(data)) {
+                data.xp(data.xp() - data.xpNeed());
+                data.level(data.level() + 1);
+                data.points(data.points() + plugin.rpgConfig().pointsPerLevel());
+                data.xpNeed(xpNeedFor(data.level()));
+                levelled = true;
+
+                // Per level, inside the loop: gaining two levels at once used
+                // to pay gold-per-level-up once. Gold can complete an
+                // achievement that pays XP back, and the guard above banks
+                // that, so the next pass of this loop takes it rather than it
+                // arriving after the loop has decided it is finished.
+                plugin.economy().give(player, plugin.rpgConfig().goldPerLevel());
+            }
+            if (atMaxLevel(data)) {
+                data.xp(0);
+            }
+        } finally {
+            levelling.remove(player.getUniqueId());
         }
 
+        // Once, on the level the run ended on. A jump of several levels is one
+        // announcement rather than a burst of them, the attributes only care
+        // where it landed, and a single check catches every level goal passed
+        // on the way since they are tested against the level itself.
         if (levelled) {
             recalculate(player, data);
             announceLevelUp(player, data);
-            plugin.economy().give(player, plugin.rpgConfig().goldPerLevel());
             plugin.achievements().checkLevel(player, data);
         }
         plugin.players().flush(player, data);

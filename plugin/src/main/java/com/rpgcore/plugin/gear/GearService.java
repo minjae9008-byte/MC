@@ -53,7 +53,18 @@ public final class GearService {
         if (stack == null || stack.getType().isAir()) {
             return 100;
         }
-        ItemMeta meta = stack.getItemMeta();
+        return conditionPercent(stack, stack.getItemMeta());
+    }
+
+    /**
+     * The same, for a caller that already holds the meta.
+     *
+     * getItemMeta() copies the whole thing, and this runs for the held item
+     * and every worn piece each time a durability point is spent - so a caller
+     * that has already paid for the copy passes it in rather than asking for a
+     * second one.
+     */
+    private static int conditionPercent(ItemStack stack, ItemMeta meta) {
         if (!(meta instanceof Damageable damageable)) {
             return 100;
         }
@@ -86,11 +97,21 @@ public final class GearService {
      * whose gear a listener flagged, so standing still costs one flag read.
      */
     public void tick() {
+        // Budgeted like the encumbrance scan next door, and for the same
+        // reason: the periodic safety rescan marks every online player dirty
+        // at once, and a recompute copies the meta of the held item and every
+        // worn piece. Without a cap that lands on one tick.
+        int budget = plugin.rpgConfig().weightScanBatch();
         for (Player player : plugin.getServer().getOnlinePlayers()) {
-            PlayerData data = plugin.players().cached(player.getUniqueId());
-            if (data != null && data.gearDirty()) {
-                recompute(player, data);
+            if (budget <= 0) {
+                return;
             }
+            PlayerData data = plugin.players().cached(player.getUniqueId());
+            if (data == null || !data.gearDirty()) {
+                continue;
+            }
+            budget--;
+            recompute(player, data);
         }
     }
 
@@ -137,10 +158,11 @@ public final class GearService {
             if (piece == null || piece.getType().isAir()) {
                 continue;
             }
-            if (!(piece.getItemMeta() instanceof Damageable)) {
+            ItemMeta meta = piece.getItemMeta();
+            if (!(meta instanceof Damageable)) {
                 continue;
             }
-            total += conditionPercent(piece);
+            total += conditionPercent(piece, meta);
             pieces++;
         }
         return pieces == 0 ? 100 : total / pieces;

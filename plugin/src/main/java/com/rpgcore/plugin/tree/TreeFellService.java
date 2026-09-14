@@ -159,7 +159,11 @@ public final class TreeFellService {
         int spent = 0;
         while (spent < budget && !job.queue.isEmpty() && job.broken < maxBlocks && !job.toolBroke) {
             Block block = job.queue.poll();
-            if (block == null || block.getType() != job.logType) {
+            // Same guard as when it was queued: a chunk can unload in the ticks
+            // between the two, and reading the block would pull it back in.
+            if (block == null
+                    || !block.getWorld().isChunkLoaded(block.getX() >> 4, block.getZ() >> 4)
+                    || block.getType() != job.logType) {
                 // Not a block this fell will break, so it costs nothing.
                 continue;
             }
@@ -277,11 +281,21 @@ public final class TreeFellService {
                             continue;
                         }
                         Block next = block.getRelative(dx, dy, dz);
-                        if (next.getY() < originY || next.getType() != logType) {
+                        // Cheap tests first, and getType() last of all: reading
+                        // a block's type in a chunk that is not loaded pulls
+                        // that chunk in synchronously, and a tree on a chunk
+                        // border touches its neighbours on every ring. A tree
+                        // does not grow into unloaded ground, so skipping those
+                        // costs nothing and saves the load.
+                        if (next.getY() < originY) {
                             continue;
                         }
                         if (Math.max(Math.abs(next.getX() - originX),
                                 Math.abs(next.getZ() - originZ)) > radius) {
+                            continue;
+                        }
+                        if (!next.getWorld().isChunkLoaded(next.getX() >> 4, next.getZ() >> 4)
+                                || next.getType() != logType) {
                             continue;
                         }
                         if (seen.add(next)) {

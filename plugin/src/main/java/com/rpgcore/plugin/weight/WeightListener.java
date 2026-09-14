@@ -2,6 +2,7 @@ package com.rpgcore.plugin.weight;
 
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.data.PlayerData;
+import com.rpgcore.plugin.trade.TradeSession;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.DoubleChest;
 import org.bukkit.entity.Entity;
@@ -63,6 +64,14 @@ public final class WeightListener implements Listener {
      */
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onItemSpawn(ItemSpawnEvent event) {
+        // This fires for every item entity that appears anywhere in the world -
+        // mob drops, block drops, dispensers, farms - so it is the busiest
+        // path in the plugin, and it does nothing at all when the feature is
+        // off. A ground item that was stamped before it was switched off keeps
+        // its line until it reaches an inventory, where the scan strips it.
+        if (!plugin.weight().lore().enabled()) {
+            return;
+        }
         ItemStack stack = event.getEntity().getItemStack();
         if (plugin.weight().lore().apply(stack)) {
             event.getEntity().setItemStack(stack);
@@ -118,9 +127,20 @@ public final class WeightListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onClick(InventoryClickEvent event) {
-        if (event.getWhoClicked() instanceof Player player) {
+        if (event.getWhoClicked() instanceof Player player && canChangeLoad(event.getView().getTopInventory())) {
             mark(player);
         }
+    }
+
+    /**
+     * False for RPGCore's own read-only menus, where every click is cancelled
+     * and nothing a player carries can move. Marking there would cost a
+     * forty-one slot rescan for each click on a button. The trade window is
+     * the exception - items really do leave a player's inventory through it.
+     */
+    private boolean canChangeLoad(Inventory top) {
+        InventoryHolder holder = top.getHolder();
+        return holder instanceof TradeSession || !plugin.isOwnMenu(holder);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

@@ -13,6 +13,7 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +29,9 @@ import java.util.Map;
  */
 public final class WeightLore {
 
+    /** Cap on the plain-text cache, whose keys come off item data. */
+    private static final int MAX_REMEMBERED_LINES = 64;
+
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
     private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
 
@@ -41,6 +45,16 @@ public final class WeightLore {
      * every inventory change.
      */
     private final Map<Material, String> lines = new EnumMap<>(Material.class);
+    /**
+     * The same line already parsed, and the plain text it renders as.
+     *
+     * Every stamp used to re-parse its legacy string into a Component and
+     * re-serialise the old one to plain text to find it in the lore. Both
+     * depend only on the material, and this path runs once per item entity
+     * spawned anywhere in the world, so both are built once per material.
+     */
+    private final Map<Material, Component> components = new EnumMap<>(Material.class);
+    private final Map<String, String> plainLines = new HashMap<>();
 
     public WeightLore(RpgCorePlugin plugin, ItemWeightTable table) {
         this.plugin = plugin;
@@ -51,6 +65,13 @@ public final class WeightLore {
     /** Drops the rendered lines, for when the format or the table changed. */
     public void reload() {
         lines.clear();
+        components.clear();
+        plainLines.clear();
+    }
+
+    /** Whether tooltips are being written at all, for callers that can skip. */
+    public boolean enabled() {
+        return plugin.rpgConfig().weightLoreEnabled();
     }
 
     /**
@@ -87,13 +108,20 @@ public final class WeightLore {
             // Matched on the text rather than on the line's old position: a
             // player who renamed the item, or another plugin that added lore
             // of its own, may well have moved it.
-            String plain = PLAIN.serialize(LEGACY.deserialize(previous));
+            // Keyed by the stored line rather than by material, because the
+            // line on an item may predate a config change. Capped, since that
+            // key comes off item data and an item from elsewhere could carry
+            // anything in it.
+            String plain = plainLines.size() < MAX_REMEMBERED_LINES
+                    ? plainLines.computeIfAbsent(previous, raw -> PLAIN.serialize(LEGACY.deserialize(raw)))
+                    : PLAIN.serialize(LEGACY.deserialize(previous));
             lore.removeIf(existing -> plain.equals(PLAIN.serialize(existing)));
         }
         if (line != null) {
             // Lore renders italic by default, which reads as "this is special"
             // - the opposite of what a quiet reference number should look like.
-            lore.add(LEGACY.deserialize(line).decoration(TextDecoration.ITALIC, false));
+            lore.add(components.computeIfAbsent(stack.getType(), material ->
+                    LEGACY.deserialize(lines.get(material)).decoration(TextDecoration.ITALIC, false)));
             meta.getPersistentDataContainer().set(markerKey, PersistentDataType.STRING, line);
         } else {
             meta.getPersistentDataContainer().remove(markerKey);
