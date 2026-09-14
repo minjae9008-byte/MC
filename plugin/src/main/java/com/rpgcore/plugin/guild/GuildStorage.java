@@ -7,7 +7,6 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -173,7 +172,13 @@ final class GuildStorage {
         return cooldowns;
     }
 
-    void save(Collection<Guild> guilds, Collection<GuildWar> wars, Map<String, Long> cooldowns) {
+    /**
+     * Assembles the whole file in memory. Called on the main thread, because
+     * it reads live vault inventories; the expensive half - turning this tree
+     * into YAML text - happens off it. See {@link com.rpgcore.plugin.util.DeferredSave}.
+     */
+    YamlConfiguration build(Collection<Guild> guilds, Collection<GuildWar> wars,
+                            Map<String, Long> cooldowns) {
         YamlConfiguration yaml = new YamlConfiguration();
         int index = 0;
         for (GuildWar war : wars) {
@@ -214,16 +219,7 @@ final class GuildStorage {
             }
             writeVault(yaml, path, guild);
         }
-        try {
-            if (!plugin.getDataFolder().isDirectory() && !plugin.getDataFolder().mkdirs()) {
-                plugin.getLogger().severe("Could not create the plugin folder - guilds will not persist.");
-                return;
-            }
-            yaml.save(file);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Could not write guilds.yml: " + e.getMessage()
-                    + " - guild vaults and claims will be lost on restart.");
-        }
+        return yaml;
     }
 
     /**
@@ -239,7 +235,7 @@ final class GuildStorage {
             for (int slot = 0; slot < guild.parkedVault().length; slot++) {
                 ItemStack stack = guild.parkedVault()[slot];
                 if (stack != null && !stack.getType().isAir()) {
-                    yaml.set(path + ".vault." + slot, stack);
+                    yaml.set(path + ".vault." + slot, stack.clone());
                 }
             }
             return;
@@ -248,7 +244,10 @@ final class GuildStorage {
         for (int slot = 0; slot < contents.length; slot++) {
             ItemStack stack = contents[slot];
             if (stack != null && !stack.getType().isAir()) {
-                yaml.set(path + ".vault." + slot, stack);
+                // Cloned, not referenced. The stack is turned into YAML on a
+                // writer thread some time after this returns, and the live one
+                // belongs to an inventory members are still clicking in.
+                yaml.set(path + ".vault." + slot, stack.clone());
             }
         }
     }

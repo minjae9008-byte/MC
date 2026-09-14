@@ -59,6 +59,7 @@ public final class PlayerSessionListener implements Listener {
         // is saved with the world, so leaving it behind would accumulate one
         // dead team per player who ever logged in.
         plugin.nameplates().clear(event.getPlayer());
+        plugin.guilds().handleQuit(event.getPlayer());
         plugin.collections().unload(event.getPlayer());
         plugin.achievements().unload(event.getPlayer());
         plugin.titles().unload(event.getPlayer());

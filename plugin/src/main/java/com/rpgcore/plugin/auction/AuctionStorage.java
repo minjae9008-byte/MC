@@ -6,7 +6,6 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -77,13 +76,16 @@ final class AuctionStorage {
         return listings;
     }
 
-    void save(Collection<AuctionListing> listings) {
+    /** Assembles the book in memory; the YAML dump happens off the main thread. */
+    YamlConfiguration build(Collection<AuctionListing> listings) {
         YamlConfiguration yaml = new YamlConfiguration();
         for (AuctionListing listing : listings) {
             String path = "listings." + listing.id();
             yaml.set(path + ".seller", listing.seller().toString());
             yaml.set(path + ".seller-name", listing.sellerName());
-            yaml.set(path + ".item", listing.item());
+            // Cloned: the writer thread turns this into YAML later, and the
+            // lot's own stack must not be reachable from two threads at once.
+            yaml.set(path + ".item", listing.item().clone());
             yaml.set(path + ".start-price", listing.startPrice());
             yaml.set(path + ".buy-now-price", listing.buyNowPrice());
             yaml.set(path + ".created-at", listing.createdAtMs());
@@ -94,15 +96,6 @@ final class AuctionStorage {
                 yaml.set(path + ".top-bid", listing.topBid());
             }
         }
-        try {
-            if (!plugin.getDataFolder().isDirectory() && !plugin.getDataFolder().mkdirs()) {
-                plugin.getLogger().severe("Could not create the plugin folder - auctions will not persist.");
-                return;
-            }
-            yaml.save(file);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Could not write auctions.yml: " + e.getMessage()
-                    + " - live auctions will be lost on restart.");
-        }
+        return yaml;
     }
 }

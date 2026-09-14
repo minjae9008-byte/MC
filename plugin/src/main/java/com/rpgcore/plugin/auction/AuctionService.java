@@ -2,6 +2,7 @@ package com.rpgcore.plugin.auction;
 
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.collection.CollectionService;
+import com.rpgcore.plugin.util.DeferredSave;
 import org.bukkit.ChatColor;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -49,9 +50,13 @@ public final class AuctionService {
      */
     private long soonestEndMs = Long.MAX_VALUE;
 
+    private final DeferredSave writer;
+
     public AuctionService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.storage = new AuctionStorage(plugin);
+        this.writer = new DeferredSave(plugin, plugin.saveQueue(), "auctions.yml",
+                () -> storage.build(listings.values()));
     }
 
     public boolean enabled() {
@@ -67,9 +72,23 @@ public final class AuctionService {
         plugin.getLogger().info("Auction lots loaded: " + listings.size() + ".");
     }
 
+    /**
+     * Marks the book stale; the write is coalesced off the main thread. A busy
+     * auction bids far faster than it needs writing, and every bid used to
+     * rebuild the whole file on the spot.
+     */
     public void save() {
-        storage.save(listings.values());
         refreshSoonestEnd();
+        writer.markDirty();
+    }
+
+    /** Builds and writes on this thread. For shutdown only. */
+    public void saveNow() {
+        writer.flushNow();
+    }
+
+    public void flushIfDirty() {
+        writer.flushIfDirty();
     }
 
     private void refreshSoonestEnd() {

@@ -50,12 +50,28 @@ public final class RpgScoreboard {
      * rank people who are not online - the mirror keeps their scores.
      */
     public int read(String entry, String objective) {
-        Objective obj = objective(objective);
-        if (obj == null) {
+        return read(entry, objective(objective));
+    }
+
+    /**
+     * Reads against an already-resolved objective.
+     *
+     * The leaderboard reads four objectives for every entry the scoreboard
+     * holds, and looking each of them up by name per row meant thousands of
+     * map lookups to answer one command. Callers that read the same objective
+     * repeatedly resolve it once through {@link #objectiveByName} instead.
+     */
+    public int read(String entry, Objective objective) {
+        if (objective == null) {
             return 0;
         }
-        Score score = obj.getScore(entry);
+        Score score = objective.getScore(entry);
         return score.isScoreSet() ? score.getScore() : 0;
+    }
+
+    /** Resolves an objective once, for a caller about to read it many times. */
+    public Objective objectiveByName(String name) {
+        return objective(name);
     }
 
     /** Every entry the main scoreboard tracks, RPGCore's and otherwise. */

@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.mail;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.util.DeferredSave;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -8,7 +9,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -68,10 +68,12 @@ public final class MailboxService {
     private final RpgCorePlugin plugin;
     private final File file;
     private final Map<UUID, List<Entry>> boxes = new LinkedHashMap<>();
+    private final DeferredSave writer;
 
     public MailboxService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.file = new File(plugin.getDataFolder(), FILE);
+        this.writer = new DeferredSave(plugin, plugin.saveQueue(), FILE, this::build);
     }
 
     public void load() {
@@ -221,7 +223,10 @@ public final class MailboxService {
         int gold = 0;
         for (Entry entry : box) {
             if (entry.isGold()) {
-                plugin.economy().refund(player, entry.gold());
+                // Summed, then paid once below. Each refund writes the
+                // player's balance through to the scoreboard mirror, and a
+                // mailbox full of small credits should not cost one write per
+                // credit.
                 gold += entry.gold();
             } else if (deliverStack(player, entry.item())) {
                 items++;
@@ -230,6 +235,9 @@ public final class MailboxService {
             }
         }
 
+        if (gold > 0) {
+            plugin.economy().refund(player, gold);
+        }
         if (kept.isEmpty()) {
             boxes.remove(player.getUniqueId());
         } else {
@@ -291,7 +299,21 @@ public final class MailboxService {
 
     // ------------------------------------------------------------- storage
 
+    /** Marks the file stale; the write is coalesced off the main thread. */
     private void save() {
+        writer.markDirty();
+    }
+
+    /** Builds and writes on this thread. For shutdown only. */
+    public void saveNow() {
+        writer.flushNow();
+    }
+
+    public void flushIfDirty() {
+        writer.flushIfDirty();
+    }
+
+    private YamlConfiguration build() {
         YamlConfiguration yaml = new YamlConfiguration();
         for (Map.Entry<UUID, List<Entry>> box : boxes.entrySet()) {
             List<Map<String, Object>> serialised = new ArrayList<>();
@@ -300,22 +322,15 @@ public final class MailboxService {
                 if (entry.isGold()) {
                     map.put("gold", entry.gold());
                 } else {
-                    map.put("item", entry.item());
+                    // Cloned: this is turned into YAML on a writer thread, and
+                    // the entry's own stack outlives that call here.
+                    map.put("item", entry.item().clone());
                 }
                 map.put("note", entry.note());
                 serialised.add(map);
             }
             yaml.set("mail." + box.getKey(), serialised);
         }
-        try {
-            if (!plugin.getDataFolder().isDirectory() && !plugin.getDataFolder().mkdirs()) {
-                plugin.getLogger().severe("Could not create the plugin folder - mailbox contents will be lost.");
-                return;
-            }
-            yaml.save(file);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Could not write " + FILE + ": " + e.getMessage()
-                    + " - mailbox contents will be lost on restart.");
-        }
+        return yaml;
     }
 }

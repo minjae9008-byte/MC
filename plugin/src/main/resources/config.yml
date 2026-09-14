@@ -313,6 +313,12 @@ trade:
   max-distance: 0             # 블록. 0 이면 같은 월드면 거리 제한 없음
   title: "&8거래"
 
+# 길드 보관함·경매·파티·우편함이 디스크에 기록되는 주기(틱).
+# 바뀐 내용은 메모리에 모아 두었다가 이 주기마다 한 번에, 메인 스레드 밖에서 씁니다.
+# 낮출수록 갑작스러운 크래시에 덜 잃고 기록 횟수가 늘어납니다. 20 = 1초.
+persistence:
+  flush-interval-ticks: 20
+
 hud:
   # Action-bar text persists ~3s, so once a second is smooth and cheap.
   # 이름표 갱신과 과적재 페널티 재적용도 이 주기를 탑니다. 과적재 효과 지속

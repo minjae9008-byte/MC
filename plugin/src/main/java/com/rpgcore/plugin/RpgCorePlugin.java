@@ -57,6 +57,7 @@ import com.rpgcore.plugin.stats.StatsService;
 import com.rpgcore.plugin.tree.TreeFellListener;
 import com.rpgcore.plugin.tree.TreeFellService;
 import com.rpgcore.plugin.util.RpgScoreboard;
+import com.rpgcore.plugin.util.SaveQueue;
 import com.rpgcore.plugin.voice.VoiceChatHook;
 import com.rpgcore.plugin.weight.ItemWeightTable;
 import com.rpgcore.plugin.weight.WeightListener;
@@ -117,11 +118,15 @@ public final class RpgCorePlugin extends JavaPlugin {
      * changed interval means replacing the task, not re-reading a field.
      */
     private HudTask hudTask;
+    /** The single thread every file write goes through. */
+    private SaveQueue saveQueue;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
+        // Before any store: each builds a writer against it on construction.
+        this.saveQueue = new SaveQueue(this);
         this.rpgConfig = new RpgConfig(this);
         this.scoreboard = new RpgScoreboard();
         this.players = new PlayerDataManager(this, scoreboard);
@@ -195,6 +200,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         // Two light repeating tasks total: one tick pump for the weight/tree
         // queues, and the HUD on its own slower interval.
         new BukkitRunnable() {
+            private int sinceFlush;
+
             @Override
             public void run() {
                 weight.tick();
@@ -203,6 +210,16 @@ public final class RpgCorePlugin extends JavaPlugin {
                 duels.tick();
                 auctions.tick();
                 guilds.tickWars();
+                // Everything that changed since the last pass is written out
+                // together, once, off the main thread. All four stores flush
+                // in the same tick on purpose: an auction lot and the mailbox
+                // entry it paid into are one transaction, and writing them at
+                // different moments is how a crash between the two loses an
+                // item that no longer exists anywhere else.
+                if (++sinceFlush >= rpgConfig.persistenceFlushTicks()) {
+                    sinceFlush = 0;
+                    flushStores();
+                }
             }
         }.runTaskTimer(this, 1L, 1L);
         scheduleHudTask();
@@ -256,19 +273,20 @@ public final class RpgCorePlugin extends JavaPlugin {
         if (duels != null) {
             duels.endAll("서버가 종료되어 무승부입니다.");
         }
+        // Shutdown writes on this thread: a queued async task would never run.
         if (parties != null) {
-            parties.save();
+            parties.saveNow();
         }
         // Lots are not settled on the way down - they are meant to outlive a
         // restart - but the file has to be current in case this is the last
         // write the process gets.
         if (auctions != null) {
-            auctions.save();
+            auctions.saveNow();
         }
         // Guild vaults hold members' items, so the file has to be current
         // before the process goes away.
         if (guilds != null) {
-            guilds.save();
+            guilds.saveNow();
         }
         if (players != null) {
             for (Player player : getServer().getOnlinePlayers()) {
@@ -294,6 +312,16 @@ public final class RpgCorePlugin extends JavaPlugin {
         if (hudTask != null) {
             hudTask.cancel();
             hudTask = null;
+        }
+        // Last: unwinding trades, duels and guilds above can all post to it.
+        if (mailbox != null) {
+            mailbox.saveNow();
+        }
+        // Every store has now written synchronously; this only waits out
+        // anything the writer thread still had in hand so the process cannot
+        // exit part-way through a file.
+        if (saveQueue != null) {
+            saveQueue.shutdown();
         }
         getLogger().info("RPGCore plugin disabled.");
     }
@@ -554,6 +582,14 @@ public final class RpgCorePlugin extends JavaPlugin {
                 + ChatColor.WHITE + label + ChatColor.GRAY + " - " + (enabled ? detail : "꺼짐"));
     }
 
+    /** Queues a write for any store whose file no longer matches memory. */
+    private void flushStores() {
+        parties.flushIfDirty();
+        auctions.flushIfDirty();
+        guilds.flushIfDirty();
+        mailbox.flushIfDirty();
+    }
+
     /** (Re)schedules the HUD task on the interval currently configured. */
     private void scheduleHudTask() {
         if (hudTask != null) {
@@ -619,6 +655,10 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public DuelService duels() {
         return duels;
+    }
+
+    public SaveQueue saveQueue() {
+        return saveQueue;
     }
 
     public MailboxService mailbox() {

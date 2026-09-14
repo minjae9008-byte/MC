@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.party;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.util.DeferredSave;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 
@@ -29,9 +30,13 @@ public final class PartyService {
     /** invited player -> (inviter -> expiry millis). */
     private final Map<UUID, Map<UUID, Long>> invites = new ConcurrentHashMap<>();
 
+    private final DeferredSave writer;
+
     public PartyService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.storage = new PartyStorage(plugin);
+        this.writer = new DeferredSave(plugin, plugin.saveQueue(), "parties.yml",
+                () -> storage.build(byId.values()));
     }
 
     public void load() {
@@ -46,8 +51,18 @@ public final class PartyService {
         plugin.getLogger().info("Parties loaded: " + byId.size() + ".");
     }
 
+    /** Marks the file stale; the write is coalesced off the main thread. */
     public void save() {
-        storage.save(byId.values());
+        writer.markDirty();
+    }
+
+    /** Builds and writes on this thread. For shutdown only. */
+    public void saveNow() {
+        writer.flushNow();
+    }
+
+    public void flushIfDirty() {
+        writer.flushIfDirty();
     }
 
     public int count() {

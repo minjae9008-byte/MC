@@ -4,6 +4,7 @@ import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.progress.CounterType;
 import com.rpgcore.plugin.stats.StatType;
 import com.rpgcore.plugin.util.RpgScoreboard;
+import org.bukkit.scoreboard.Objective;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -90,17 +91,25 @@ public final class LeaderboardService {
         }
 
         Category ranked = categories.get(key);
-        String objective = ranked == null ? RpgScoreboard.LEVEL : ranked.objective();
+        String objectiveName = ranked == null ? RpgScoreboard.LEVEL : ranked.objective();
+
+        // Resolved once, not once per entry per column. This loop runs over
+        // every entry the scoreboard has ever held, which on an established
+        // server is every player who has ever joined.
+        Objective initialised = board.objectiveByName(RpgScoreboard.INITIALISED);
+        Objective levels = board.objectiveByName(RpgScoreboard.LEVEL);
+        Objective xps = board.objectiveByName(RpgScoreboard.XP);
+        Objective ranking = board.objectiveByName(objectiveName);
+
         List<Row> rows = new ArrayList<>();
         for (String entry : board.entries()) {
             // The init marker is what tells RPGCore's own entries apart from
             // whatever else shares the main scoreboard.
-            if (board.read(entry, RpgScoreboard.INITIALISED) != 1) {
+            if (board.read(entry, initialised) != 1) {
                 continue;
             }
-            int level = board.read(entry, RpgScoreboard.LEVEL);
-            int xp = board.read(entry, RpgScoreboard.XP);
-            rows.add(new Row(0, entry, board.read(entry, objective), level, xp));
+            rows.add(new Row(0, entry, board.read(entry, ranking),
+                    board.read(entry, levels), board.read(entry, xps)));
         }
 
         rows.sort(Comparator.comparingInt(Row::value).reversed()

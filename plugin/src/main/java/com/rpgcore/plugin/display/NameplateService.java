@@ -39,6 +39,17 @@ public final class NameplateService {
     public static final String NAMEPLATE = "nameplate";
     public static final String TABLIST = "tablist";
 
+    /**
+     * The segment order, hoisted out of the two builders below.
+     *
+     * They run four times per player per HUD pass - plate prefix and suffix,
+     * player-list prefix and suffix - so allocating these two arrays inside
+     * them made a hundred players a steady four hundred throwaway arrays a
+     * second, for a pair of constants.
+     */
+    private static final String[] PREFIX_SEGMENTS = {"party", "title"};
+    private static final String[] SUFFIX_SEGMENTS = {"level", "job"};
+
     private final RpgCorePlugin plugin;
     /** Last text written per player, so an unchanged plate costs one compare. */
     private final Map<UUID, String> written = new HashMap<>();
@@ -137,7 +148,7 @@ public final class NameplateService {
      */
     private String prefix(String where, Player player, PlayerData data) {
         StringBuilder out = new StringBuilder();
-        for (String what : new String[]{"party", "title"}) {
+        for (String what : PREFIX_SEGMENTS) {
             String part = segment(where, what, player, data);
             if (!part.isEmpty()) {
                 out.append(part).append(' ');
@@ -152,7 +163,7 @@ public final class NameplateService {
      */
     private String suffix(String where, Player player, PlayerData data) {
         List<String> parts = new ArrayList<>(2);
-        for (String what : new String[]{"level", "job"}) {
+        for (String what : SUFFIX_SEGMENTS) {
             String part = segment(where, what, player, data);
             if (!part.isEmpty()) {
                 parts.add(part);

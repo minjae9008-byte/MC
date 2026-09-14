@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.guild;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.util.DeferredSave;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -43,9 +44,13 @@ public final class GuildService {
     /** guild pair -> when they may fight again. Keyed both ways round. */
     private final Map<String, Long> warCooldowns = new HashMap<>();
 
+    private final DeferredSave writer;
+
     public GuildService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.storage = new GuildStorage(plugin);
+        this.writer = new DeferredSave(plugin, plugin.saveQueue(), "guilds.yml",
+                () -> storage.build(byId.values(), wars, activeCooldowns()));
     }
 
     public boolean enabled() {
@@ -113,11 +118,23 @@ public final class GuildService {
         guild.parkedVault(parked);
     }
 
+    /**
+     * Marks the file stale. The write itself is coalesced and moved off the
+     * main thread - a guild file with full vaults costs tens of milliseconds
+     * to turn into YAML, and this used to be paid on the spot by every deposit,
+     * every vault close and every membership change.
+     */
     public void save() {
-        storage.save(byId.values(), wars, activeCooldowns());
-        for (Guild guild : byId.values()) {
-            guild.clearVaultDirty();
-        }
+        writer.markDirty();
+    }
+
+    /** Builds and writes on this thread. For shutdown only. */
+    public void saveNow() {
+        writer.flushNow();
+    }
+
+    public void flushIfDirty() {
+        writer.flushIfDirty();
     }
 
     public int count() {
@@ -456,6 +473,18 @@ public final class GuildService {
         return guild;
     }
 
+    /**
+     * Drops what a leaving player was holding open.
+     *
+     * Every other invite list in the plugin is cleared on quit; this one was
+     * not, so an invitation nobody ever answered stayed in the map for the
+     * life of the server. Expiry only ever ran when the target typed /guild
+     * accept, which is exactly what someone who logged off never does.
+     */
+    public void handleQuit(Player player) {
+        invites.remove(player.getUniqueId());
+    }
+
     /** Keeps the stored name current, in case the player renamed. */
     public void handleJoin(Player player) {
         Guild guild = guildOf(player);
@@ -509,9 +538,7 @@ public final class GuildService {
 
     /** Called when a viewer closes the vault; that is when it is written out. */
     public void handleVaultClosed(UUID guildId) {
-        Guild guild = byId.get(guildId);
-        if (guild != null) {
-            guild.markVaultDirty();
+        if (byId.containsKey(guildId)) {
             save();
         }
     }
@@ -816,17 +843,34 @@ public final class GuildService {
      * unreadable there, and nobody is being kept out of land nobody is near.
      */
     public void validateOneClaim() {
-        List<GuildClaim> all = new ArrayList<>();
-        for (Guild guild : byId.values()) {
-            if (guild.hasClaim()) {
-                all.add(guild.claim());
-            }
-        }
-        if (all.isEmpty()) {
+        if (byId.isEmpty()) {
             return;
         }
-        validationCursor = (validationCursor + 1) % all.size();
-        GuildClaim claim = all.get(validationCursor);
+        // Walked rather than collected. This runs on the HUD interval forever,
+        // and building a list of every claim just to index one of them made
+        // the idle cost of the feature proportional to the number of guilds.
+        GuildClaim claim = null;
+        int seen = 0;
+        int wanted = validationCursor;
+        for (Guild guild : byId.values()) {
+            if (!guild.hasClaim()) {
+                continue;
+            }
+            if (seen == wanted) {
+                claim = guild.claim();
+            }
+            seen++;
+        }
+        if (seen == 0) {
+            validationCursor = 0;
+            return;
+        }
+        validationCursor = (wanted + 1) % seen;
+        if (claim == null) {
+            // The cursor was past the end because a claim went away; the line
+            // above has already wrapped it, so the next pass picks up again.
+            return;
+        }
 
         World world = plugin.getServer().getWorld(claim.worldId());
         if (world == null || !world.isChunkLoaded(claim.x() >> 4, claim.z() >> 4)) {

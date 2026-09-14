@@ -70,8 +70,6 @@ public final class Guild {
      * the two is live.
      */
     private ItemStack[] parked = new ItemStack[0];
-    /** True when the vault has changed since it was last written to disk. */
-    private boolean vaultDirty;
 
     Guild(UUID id, String name, UUID leader, String leaderName, long createdAtMs) {
         this.id = id;
@@ -194,15 +192,4 @@ public final class Guild {
         this.parked = parked;
     }
 
-    public boolean vaultDirty() {
-        return vaultDirty;
-    }
-
-    void markVaultDirty() {
-        this.vaultDirty = true;
-    }
-
-    void clearVaultDirty() {
-        this.vaultDirty = false;
-    }
 }

@@ -6,6 +6,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.block.data.Ageable;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
@@ -219,12 +220,15 @@ public final class GuildClaimListener implements Listener {
         }
         // getNewState is where the block is heading; nudging that rather than
         // the block itself keeps this a single change the server applies once.
-        BlockData data = event.getNewState().getBlockData();
+        // Captured once: getBlockData hands back a copy, so the copy has to be
+        // written back to the same state object it came from.
+        BlockState newState = event.getNewState();
+        BlockData data = newState.getBlockData();
         if (!(data instanceof Ageable ageable) || ageable.getAge() >= ageable.getMaximumAge()) {
             return;
         }
         ageable.setAge(Math.min(ageable.getMaximumAge(), ageable.getAge() + bonus));
-        event.getNewState().setBlockData(ageable);
+        newState.setBlockData(ageable);
     }
 
     // ---------------------------------------------------------------- shared

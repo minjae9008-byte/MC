@@ -93,6 +93,7 @@ public final class RpgConfig {
     private boolean durabilityAffectsRanged;
 
     private int hudInterval;
+    private int persistenceFlushTicks;
 
     /** Segment name -> format string, and surface.segment -> shown. */
     private final Map<String, String> displayFormats = new HashMap<>();
@@ -252,6 +253,11 @@ public final class RpgConfig {
         durabilityAffectsRanged = c.getBoolean("durability-scaling.affects.ranged-damage", true);
 
         hudInterval = Math.max(5, c.getInt("hud.interval-ticks", 20));
+        // How long a change may sit in memory before it reaches disk. Lower is
+        // safer against a hard crash and costs more; the write itself is off
+        // the main thread either way, so the floor is about write frequency
+        // rather than about tick time.
+        persistenceFlushTicks = Math.clamp(c.getInt("persistence.flush-interval-ticks", 20), 1, 1200);
 
         displayFormats.clear();
         displayShown.clear();
@@ -850,6 +856,10 @@ public final class RpgConfig {
 
     public int hudInterval() {
         return hudInterval;
+    }
+
+    public int persistenceFlushTicks() {
+        return persistenceFlushTicks;
     }
 
     public double proximityRange() {

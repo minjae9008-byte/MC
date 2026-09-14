@@ -5,7 +5,6 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -68,7 +67,8 @@ final class PartyStorage {
         return parties;
     }
 
-    void save(Iterable<Party> parties) {
+    /** Assembles the file in memory; the YAML dump happens off the main thread. */
+    YamlConfiguration build(Iterable<Party> parties) {
         YamlConfiguration yaml = new YamlConfiguration();
         for (Party party : parties) {
             String path = "parties." + party.id();
@@ -78,14 +78,6 @@ final class PartyStorage {
                 yaml.set(path + ".members." + member, party.nameOf(member));
             }
         }
-        try {
-            if (!plugin.getDataFolder().isDirectory() && !plugin.getDataFolder().mkdirs()) {
-                plugin.getLogger().warning("Could not create the plugin folder - parties will not persist.");
-                return;
-            }
-            yaml.save(file);
-        } catch (IOException e) {
-            plugin.getLogger().warning("Could not write parties.yml: " + e.getMessage());
-        }
+        return yaml;
     }
 }
