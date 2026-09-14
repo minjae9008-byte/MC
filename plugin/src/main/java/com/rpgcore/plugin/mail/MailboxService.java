@@ -35,8 +35,13 @@ import java.util.UUID;
  *     the floor next to a player who may be standing in lava, or silently
  *     eaten. The player frees a slot and collects again.
  *
- * The file is written on every change rather than at shutdown, because the
- * situation this exists for is the one where shutdown was not orderly.
+ * The file is not left to shutdown - the situation this exists for is
+ * precisely the one where shutdown was not orderly - but nor is it written on
+ * the spot for each change: a change marks it stale and the tick pump pushes
+ * it out, off the main thread, within a second. That window is shared with
+ * every other store on purpose, so an item that left an auction lot and
+ * arrived here is written at the same moment as the lot's disappearance
+ * rather than between the two. See {@link com.rpgcore.plugin.util.DeferredSave}.
  */
 public final class MailboxService {
 

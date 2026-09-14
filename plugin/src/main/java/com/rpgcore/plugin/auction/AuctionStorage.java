@@ -16,9 +16,9 @@ import java.util.UUID;
  *
  * A live lot holds two things that belong to real people - the seller's item
  * and the top bidder's gold - so this file is not a cache that can be thrown
- * away. It is written on every change, and a lot that cannot be read back is
- * reported loudly rather than skipped quietly, because a skipped lot is a
- * player's item disappearing.
+ * away. Every change marks it stale and it is written within a second, off
+ * the main thread; a lot that cannot be read back is reported loudly rather
+ * than skipped quietly, because a skipped lot is a player's item disappearing.
  */
 final class AuctionStorage {
 

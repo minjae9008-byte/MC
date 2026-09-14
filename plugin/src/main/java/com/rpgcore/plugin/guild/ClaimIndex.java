@@ -4,8 +4,10 @@ import org.bukkit.World;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -76,32 +78,27 @@ final class ClaimIndex {
         return null;
     }
 
-    /** Every claim in a world, for the overlap check when a new flag goes up. */
-    List<GuildClaim> allIn(UUID worldId) {
+    /**
+     * Every claim in a world, for the overlap check when a new flag goes up.
+     *
+     * A claim sits in one bucket per chunk it touches, so the same one comes
+     * back many times over - twenty-five times at the default radius. The
+     * de-duplication is a hash set rather than a scan of what has been kept so
+     * far: with a few claims the difference is nothing, and with a few hundred
+     * the scan turns planting one banner into millions of comparisons.
+     * GuildClaim does not override equals, so a HashSet is identity anyway,
+     * which is the comparison this wants.
+     */
+    Set<GuildClaim> allIn(UUID worldId) {
         Map<Long, List<GuildClaim>> claims = byWorld.get(worldId);
         if (claims == null) {
-            return List.of();
+            return Set.of();
         }
-        // A claim sits in many buckets, so the same one comes back repeatedly;
-        // identity is enough to thin it out because these are the live objects.
-        List<GuildClaim> unique = new ArrayList<>();
+        Set<GuildClaim> unique = new HashSet<>();
         for (List<GuildClaim> bucket : claims.values()) {
-            for (GuildClaim claim : bucket) {
-                if (!containsSame(unique, claim)) {
-                    unique.add(claim);
-                }
-            }
+            unique.addAll(bucket);
         }
         return unique;
-    }
-
-    private static boolean containsSame(List<GuildClaim> list, GuildClaim claim) {
-        for (GuildClaim existing : list) {
-            if (existing == claim) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void forEachChunk(GuildClaim claim, java.util.function.LongConsumer action) {

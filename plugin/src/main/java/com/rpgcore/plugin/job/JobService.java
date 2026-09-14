@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 
 /**
@@ -34,11 +35,16 @@ public final class JobService {
     private final NamespacedKey storageKey;
     private final Map<String, RpgJob> jobs = new LinkedHashMap<>();
     /**
-     * Every attribute any job touches. A job change has to clear the modifiers
-     * of the job left behind, so recalculate walks this whole set rather than
-     * just the attributes of the job now worn.
+     * Every attribute any job touches, accumulated rather than replaced.
+     *
+     * A job change has to clear the modifiers of the job left behind, so
+     * recalculate walks this whole set rather than just the attributes of the
+     * job now worn. It only ever grows because a reload can take a job out of
+     * jobs.yml entirely: forgetting the attribute it used would strip it from
+     * this list while every player who had that job still wears its modifier,
+     * with nothing left that knows to remove it.
      */
-    private final List<String> managedAttributes = new ArrayList<>();
+    private final Set<String> managedAttributes = new TreeSet<>();
     /** jobs.yml, reloaded on every load() so edits need no restart. */
     private FileConfiguration settings;
 
@@ -49,7 +55,6 @@ public final class JobService {
 
     public void load() {
         jobs.clear();
-        managedAttributes.clear();
         settings = plugin.rpgConfig().jobs();
         if (!plugin.rpgConfig().jobsEnabled()) {
             plugin.getLogger().info("Jobs are disabled (settings.yml features.jobs).");
@@ -61,7 +66,6 @@ public final class JobService {
             return;
         }
 
-        TreeSet<String> touched = new TreeSet<>();
         for (String id : list.getKeys(false)) {
             ConfigurationSection node = list.getConfigurationSection(id);
             if (node == null) {
@@ -70,11 +74,10 @@ public final class JobService {
             RpgJob job = parse(id.toLowerCase(Locale.ROOT), node);
             if (job != null) {
                 jobs.put(job.id(), job);
-                touched.addAll(job.attributeAdd().keySet());
-                touched.addAll(job.attributeMul().keySet());
+                managedAttributes.addAll(job.attributeAdd().keySet());
+                managedAttributes.addAll(job.attributeMul().keySet());
             }
         }
-        managedAttributes.addAll(touched);
         plugin.getLogger().info("Jobs loaded: " + jobs.size() + ".");
     }
 
@@ -149,7 +152,7 @@ public final class JobService {
         return List.copyOf(jobs.values());
     }
 
-    public List<String> managedAttributes() {
+    public Set<String> managedAttributes() {
         return managedAttributes;
     }
 

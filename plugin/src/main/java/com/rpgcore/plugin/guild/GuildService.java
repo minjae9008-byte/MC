@@ -427,6 +427,10 @@ public final class GuildService {
             return;
         }
 
+        // Settled before a single coin moves: the prize is what the treasury
+        // holds now, not what is left after the losing side empties it.
+        forfeitWarIfAny(guild, guild.name() + " 이(가) 길드를 해체함");
+
         int returned = emptyVaultTo(guild, guild.leader(), "길드 해체");
         if (guild.hasClaim()) {
             GuildClaim claim = guild.claim();
@@ -434,7 +438,9 @@ public final class GuildService {
             guild.claim(null);
             returnBanner(claim, guild.leader());
         }
-        // Any war they were in ends with them; the other side keeps its gold.
+        // A backstop for the one case the forfeit above cannot settle: a war
+        // whose other side is no longer in the book. Normally this finds
+        // nothing, because disbanding mid-war has already been paid for.
         endWarsInvolving(guild.id(), "상대 길드가 해체되었습니다.");
         // Treasury and invested gold go back to the leader rather than
         // evaporating - disbanding is not a way to destroy a guild's savings.
@@ -585,7 +591,7 @@ public final class GuildService {
      * here by hand".
      */
     public boolean shieldedFromBlasts(World world, int x, int z) {
-        GuildClaim claim = claims.at(world, x, z);
+        GuildClaim claim = claimAt(world, x, z);
         if (claim == null) {
             return false;
         }
@@ -597,11 +603,16 @@ public final class GuildService {
     public GuildClaim claimAt(Location location) {
         World world = location.getWorld();
         return world == null ? null
-                : claims.at(world, location.getBlockX(), location.getBlockZ());
+                : claimAt(world, location.getBlockX(), location.getBlockZ());
     }
 
     public GuildClaim claimAt(World world, int x, int z) {
-        return claims.at(world, x, z);
+        // The toggle is honoured here rather than at registration, so
+        // features.guilds responds to /rpgcore reload like every other one.
+        // It matters most on this path: with the feature off, land would
+        // otherwise still be protected and buffed while every command that
+        // could unclaim it was refused.
+        return enabled() ? claims.at(world, x, z) : null;
     }
 
     /**
@@ -696,17 +707,12 @@ public final class GuildService {
         }
 
         // Their own flag, and they are in a war: that is a surrender.
-        GuildWar war = warOf(owner.id());
-        if (war == null) {
-            return false;
-        }
-        Guild enemy = byId.get(war.opponentOf(owner.id()));
-        if (enemy == null) {
+        if (warOf(owner.id()) == null) {
             return false;
         }
         owner.claim(null);
         claims.remove(claim);
-        winWar(war, enemy, owner, owner.name() + " 이(가) 스스로 깃발을 내림");
+        forfeitWarIfAny(owner, owner.name() + " 이(가) 스스로 깃발을 내림");
         return true;
     }
 
@@ -885,6 +891,9 @@ public final class GuildService {
             guild.claim(null);
             broadcast(guild, ChatColor.YELLOW + "[영지] " + claim.describe()
                     + " 의 깃발이 사라져 영지가 해제되었습니다.");
+            // Same rule as breaking it by hand: a war objective that stops
+            // existing settles the war rather than running out the clock.
+            forfeitWarIfAny(guild, "깃발이 사라짐");
         }
         claims.remove(claim);
         save();
@@ -923,7 +932,7 @@ public final class GuildService {
 
     public void withdraw(Player player, int amount) {
         Guild guild = requireLeader(player, "금고에서 인출");
-        if (guild == null) {
+        if (guild == null || treasuryFrozen(player, guild, "꺼낼")) {
             return;
         }
         if (amount <= 0 || amount > guild.gold()) {
@@ -941,6 +950,25 @@ public final class GuildService {
     }
 
     /**
+     * True, with a message, when a war means the treasury cannot be drained.
+     *
+     * The prize is whatever is in the vault, so a treasury that can be emptied
+     * after the declaration is not a prize - and the preparation window, which
+     * exists so defenders can gather, is exactly when a leader would empty it.
+     * Paying in is still allowed: reinforcing at the cost of a bigger prize is
+     * a decision worth having.
+     */
+    private boolean treasuryFrozen(Player player, Guild guild, String what) {
+        if (!atWar(guild.id())) {
+            return false;
+        }
+        player.sendMessage(ChatColor.RED + "[길드] 전쟁 중에는 금고에서 골드를 " + what + " 수 없습니다.");
+        player.sendMessage(ChatColor.GRAY + "  지금 금고에 있는 " + guild.gold()
+                + " 골드가 이 전쟁에 걸려 있습니다. 넣는 것은 가능합니다.");
+        return true;
+    }
+
+    /**
      * Converts treasury gold into territory.
      *
      * One-way, and that is the point. Gold sitting in the treasury is what a
@@ -951,6 +979,9 @@ public final class GuildService {
     public void invest(Player player, int amount) {
         Guild guild = requireLeader(player, "투자");
         if (guild == null) {
+            return;
+        }
+        if (treasuryFrozen(player, guild, "투자할")) {
             return;
         }
         int perBlock = plugin.rpgConfig().guildInvestPerBlock();
@@ -1143,6 +1174,28 @@ public final class GuildService {
         } else {
             announceWar(ChatColor.GRAY + "  진 길드의 금고가 비어 있어 가져갈 것은 없었습니다.");
         }
+    }
+
+    /**
+     * Settles a war this guild is in as a loss, if it is in one.
+     *
+     * Every way a guild can stop being a target while a war is running goes
+     * through here: knocking down its own flag, losing it to something no
+     * listener saw, or disbanding outright. Without that, each of those is a
+     * way to keep a treasury that was already on the table - and the cheapest
+     * of them is simply to disband and found the guild again.
+     */
+    private void forfeitWarIfAny(Guild loser, String how) {
+        GuildWar war = warOf(loser.id());
+        if (war == null) {
+            return;
+        }
+        Guild winner = byId.get(war.opponentOf(loser.id()));
+        if (winner == null) {
+            war.settle();
+            return;
+        }
+        winWar(war, winner, loser, how);
     }
 
     /** Ends wars whose clock ran out with both flags still standing. */

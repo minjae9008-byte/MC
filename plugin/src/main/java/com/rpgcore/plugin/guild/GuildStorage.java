@@ -18,10 +18,13 @@ import java.util.UUID;
  *
  * A guild file holds three different kinds of thing, and only one of them is
  * cheap to lose: the roster and the claims are small and change rarely, while
- * the vault is a chest full of other people's belongings. So the vault is
- * written whenever it has actually changed and the whole file is written with
- * it - there is no separate "items file" to fall out of step with the roster
+ * the vault is a chest full of other people's belongings. They share one file
+ * so there is no separate "items file" to fall out of step with the roster
  * that says who may open it.
+ *
+ * Assembling that file is this class's job; turning it into YAML text and
+ * writing it is not, and happens on another thread - which is why every stack
+ * put into the snapshot is a clone.
  */
 final class GuildStorage {
 
