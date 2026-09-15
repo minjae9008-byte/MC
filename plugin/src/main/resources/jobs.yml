@@ -1,96 +1,292 @@
 # ==========================================================================
 #  RPGCore - 직업(클래스) 정의
-# ==========================================================================
-#  직업을 추가하려면 list: 아래에 블록을 하나 더 붙이면 됩니다. 코드 수정 없음.
-#  고친 뒤 /rpgcore reload 하면 바로 반영됩니다.
+#  직업은 3단계로 나뉩니다.
+#    1단계 (레벨 1)   - 바로 고를 수 있는 기본 직업. 방향만 정해 줍니다.
+#    2단계 (레벨 12)  - 한 가지를 확실히 잘하는 대신 다른 하나를 포기합니다.
+#    3단계 (레벨 30)  - 극단적인 특화. 약점이 분명한 대신 강점이 큽니다.
 #
-#  쓸 수 있는 항목
-#    name           보여줄 이름. &0~&f 색코드 사용 가능
-#    icon           메뉴에 뜰 아이템 ID
-#    description    설명 줄 목록
-#    min-level      이 RPG 레벨부터 선택 가능 (없으면 1)
-#    stat-bonus     STR/DEX/VIT/AGI/LUCK 에 더해줄 값
-#    weight-bonus   최대 소지무게에 더해줄 값
-#    xp-multiplier  획득 경험치 배율 (1.0 = 그대로)
-#    attributes.add       바닐라 어트리뷰트에 고정값 더하기
-#    attributes.multiply  합계에 비율 곱하기 (0.1 = +10%)
+#  stat-bonus 는 소프트캡(settings.yml 의 stats.soft-cap)에 함께 들어갑니다.
+#  즉 자기 특화와 같은 스탯을 주는 직업을 고르면 캡에 더 빨리 닿습니다 -
+#  그게 직업을 고르는 이유입니다.
 #
-#  attributes 에 쓸 수 있는 ID (이 서버에 없는 ID 는 경고만 남기고 무시):
-#    max_health  attack_damage  attack_speed  armor  armor_toughness
-#    movement_speed  knockback_resistance  block_break_speed  luck
-#    jump_strength  scale  step_height ...
+#  attributes.multiply 는 합계에 대한 비율이라 강력합니다. 0.25 = +25%.
 # ==========================================================================
-
-# 한 번 고른 직업을 바꿀 수 있는지. false 면 한 번 고르면 못 바꿉니다.
-allow-change: true
-# 직업을 바꿀 때 소모할 바닐라 경험치 레벨 (0 = 무료).
-change-cost-levels: 0
-# 직업 선택 창 제목.
-menu-title: "&8직업 선택"
 
 list:
+
+  # --- 1단계: 레벨 1부터 ----------------------------------------------------
+
   warrior:
     name: "&c전사"
     icon: minecraft:iron_sword
     description:
-      - "&7앞에서 버티며 싸우는 직업."
+      - "&7앞에 서서 버티는 기본형."
+      - "&8공격과 체력을 고루 받습니다."
     stat-bonus:
       str: 3
       vit: 2
-    weight-bonus: 40
+    weight-bonus: 30
     attributes:
       add:
         max_health: 4
       multiply:
         knockback_resistance: 0.15
+
   archer:
     name: "&a궁수"
     icon: minecraft:bow
     description:
-      - "&7거리를 두고 싸우는 직업."
+      - "&7거리를 두고 싸웁니다."
+      - "&8활 피해는 무기 상태를 그대로 따라갑니다."
     stat-bonus:
       dex: 3
       agi: 2
     attributes:
       multiply:
         movement_speed: 0.08
+      add:
+        entity_interaction_range: 0.5
+
   miner:
     name: "&e광부"
     icon: minecraft:iron_pickaxe
     description:
-      - "&7캐고 나르는 데 특화된 직업."
+      - "&7캐고 나르는 데 특화."
+      - "&8물속에서도 채굴 속도가 유지됩니다."
     stat-bonus:
       str: 2
       vit: 1
-    weight-bonus: 80
+    weight-bonus: 70
     xp-multiplier: 1.1
     attributes:
       multiply:
         block_break_speed: 0.25
-  rogue:
-    name: "&b도적"
-    icon: minecraft:golden_sword
+        submerged_mining_speed: 1.0
+      add:
+        oxygen_bonus: 2
+
+  lumberjack:
+    name: "&6나무꾼"
+    icon: minecraft:iron_axe
     description:
-      - "&7빠르고 운이 좋은 직업."
-    min-level: 5
+      - "&7연쇄 벌목으로 먹고삽니다."
+      - "&8나무를 벨 때 받는 경험치가 늘어납니다."
     stat-bonus:
-      agi: 3
-      luck: 3
+      str: 2
+      dex: 2
+    weight-bonus: 50
+    xp-multiplier: 1.15
     attributes:
       multiply:
-        movement_speed: 0.12
-        attack_speed: 0.1
-  guardian:
-    name: "&9수호자"
+        block_break_speed: 0.15
+
+  fisher:
+    name: "&b어부"
+    icon: minecraft:fishing_rod
+    description:
+      - "&7물에서 강하고 운이 좋습니다."
+      - "&8숨을 오래 참고 물속에서 빠릅니다."
+    stat-bonus:
+      luck: 4
+      vit: 1
+    attributes:
+      add:
+        oxygen_bonus: 4
+      multiply:
+        water_movement_efficiency: 0.6
+
+  # --- 2단계: 레벨 12부터 ---------------------------------------------------
+
+  knight:
+    name: "&9기사"
     icon: minecraft:shield
     description:
-      - "&7맞아주는 데 특화된 직업."
-    min-level: 10
+      - "&7맞아주는 역할."
+      - "&8느린 대신 잘 버팁니다."
+    min-level: 12
     stat-bonus:
       vit: 4
+      str: 2
     weight-bonus: 60
     attributes:
       add:
         armor: 4
         armor_toughness: 2
         max_health: 6
+      multiply:
+        knockback_resistance: 0.4
+        movement_speed: -0.06
+
+  rogue:
+    name: "&b도적"
+    icon: minecraft:golden_sword
+    description:
+      - "&7빠르고 운이 좋습니다."
+      - "&8체력이 낮은 대신 먼저 움직입니다."
+    min-level: 12
+    stat-bonus:
+      agi: 4
+      luck: 3
+    attributes:
+      multiply:
+        movement_speed: 0.14
+        attack_speed: 0.12
+        sneaking_speed: 0.5
+      add:
+        max_health: -4
+
+  hunter:
+    name: "&2사냥꾼"
+    icon: minecraft:crossbow
+    description:
+      - "&7몬스터를 잡아 먹고삽니다."
+      - "&8사거리가 길고 낙하에 강합니다."
+    min-level: 12
+    stat-bonus:
+      dex: 3
+      agi: 3
+      luck: 1
+    attributes:
+      add:
+        entity_interaction_range: 1.0
+        safe_fall_distance: 3
+      multiply:
+        movement_speed: 0.06
+
+  smith:
+    name: "&7대장장이"
+    icon: minecraft:anvil
+    description:
+      - "&7무겁게 들고 다니며 장비를 고칩니다."
+      - "&8소지 무게가 압도적입니다."
+    min-level: 12
+    stat-bonus:
+      str: 4
+      vit: 2
+    weight-bonus: 160
+    attributes:
+      add:
+        armor: 2
+      multiply:
+        block_break_speed: 0.1
+        movement_speed: -0.04
+
+  scout:
+    name: "&a탐험가"
+    icon: minecraft:map
+    description:
+      - "&7멀리, 빨리, 높이."
+      - "&8전투는 약합니다."
+    min-level: 12
+    stat-bonus:
+      agi: 5
+      luck: 1
+    attributes:
+      multiply:
+        movement_speed: 0.18
+        jump_strength: 0.15
+      add:
+        safe_fall_distance: 5
+        step_height: 0.5
+        attack_damage: -1
+
+  # --- 3단계: 레벨 30부터 ---------------------------------------------------
+
+  guardian:
+    name: "&1수호자"
+    icon: minecraft:netherite_chestplate
+    description:
+      - "&7움직이는 요새."
+      - "&8밀려나지 않지만 느립니다."
+    min-level: 30
+    stat-bonus:
+      vit: 7
+      str: 2
+    weight-bonus: 120
+    attributes:
+      add:
+        armor: 7
+        armor_toughness: 4
+        max_health: 12
+        explosion_knockback_resistance: 0.5
+      multiply:
+        knockback_resistance: 0.7
+        movement_speed: -0.1
+
+  berserker:
+    name: "&4광전사"
+    icon: minecraft:netherite_axe
+    description:
+      - "&7방어를 버리고 전부 화력에."
+      - "&8체력과 방어가 깎입니다."
+    min-level: 30
+    stat-bonus:
+      str: 7
+      dex: 3
+    weight-bonus: 40
+    attributes:
+      multiply:
+        attack_damage: 0.3
+        attack_knockback: 0.5
+        sweeping_damage_ratio: 0.5
+      add:
+        max_health: -6
+        armor: -2
+
+  assassin:
+    name: "&5암살자"
+    icon: minecraft:netherite_sword
+    description:
+      - "&7한 번에 붙어서 끝냅니다."
+      - "&8유리몸입니다."
+    min-level: 30
+    stat-bonus:
+      dex: 6
+      agi: 4
+    attributes:
+      multiply:
+        attack_speed: 0.3
+        movement_speed: 0.2
+        sneaking_speed: 0.8
+      add:
+        max_health: -8
+        entity_interaction_range: 0.5
+
+  sage:
+    name: "&d현자"
+    icon: minecraft:enchanting_table
+    description:
+      - "&7싸움보다 성장이 빠릅니다."
+      - "&8경험치를 크게 더 받습니다."
+    min-level: 30
+    stat-bonus:
+      luck: 6
+      vit: 2
+      dex: 2
+    xp-multiplier: 1.4
+    attributes:
+      add:
+        luck: 3
+      multiply:
+        attack_damage: -0.15
+
+  warden:
+    name: "&3파수꾼"
+    icon: minecraft:beacon
+    description:
+      - "&7길드 영지를 지키는 자리."
+      - "&8균형형이지만 어느 쪽도 최고는 아닙니다."
+    min-level: 30
+    stat-bonus:
+      str: 3
+      vit: 4
+      dex: 3
+      agi: 2
+    weight-bonus: 80
+    xp-multiplier: 1.1
+    attributes:
+      add:
+        armor: 3
+        max_health: 6
+      multiply:
+        block_break_speed: 0.12

@@ -3,6 +3,7 @@ package com.rpgcore.plugin.stats;
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.progress.CounterType;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
@@ -84,8 +85,19 @@ public final class PlayerSessionListener implements Listener {
         if (killer == null) {
             return;
         }
-        plugin.stats().awardXp(killer, plugin.rpgConfig().xpPerMobKill());
-        plugin.economy().give(killer, plugin.rpgConfig().goldPerMobKill());
+        // LUCK is the one stat with nothing to point at in vanilla - the luck
+        // attribute moves fishing loot tables and almost nothing else, which
+        // made it a trap: a whole column of the stat screen that did not
+        // reward investment. Here it buys a chance that a kill simply pays
+        // twice, which is something a player can feel.
+        boolean lucky = plugin.stats().rollLuck(killer);
+        int multiplier = lucky ? 2 : 1;
+        plugin.stats().awardXp(killer, plugin.rpgConfig().xpPerMobKill() * multiplier);
+        plugin.economy().give(killer, plugin.rpgConfig().goldPerMobKill() * multiplier);
         plugin.achievements().bump(killer, CounterType.MOB_KILLS, 1);
+        if (lucky) {
+            killer.sendActionBar(LegacyComponentSerializer.legacyAmpersand()
+                    .deserialize("&a✦ 행운! &f보상 2배"));
+        }
     }
 }

@@ -40,135 +40,387 @@ announce-to-server: true
 
 achievements:
 
-  # ------------------------------------------------------------ 사냥
-  hunter-100:
-    display: "&e초보 사냥꾼"
-    description: "몬스터 100마리 처치"
+  # --- 전투 -------------------------------------------------------------
+
+  hunter-50:
+    type: mob-kills
+    goal: 50
+    display: "&7첫 사냥"
+    description: "몬스터 50마리를 잡습니다."
     icon: minecraft:wooden_sword
+    reward-gold: 80
+    reward-xp: 60
+  hunter-250:
     type: mob-kills
-    goal: 100
-    reward-gold: 100
-    reward-xp: 50
-
-  hunter-500:
-    display: "&6숙련 사냥꾼"
-    description: "몬스터 500마리 처치"
-    icon: minecraft:iron_sword
-    type: mob-kills
-    goal: 500
-    title: "&6[사냥꾼]"
-    reward-gold: 400
+    goal: 250
+    display: "&f사냥꾼"
+    description: "몬스터 250마리를 잡습니다."
+    icon: minecraft:stone_sword
+    reward-gold: 250
     reward-xp: 200
-
-  slayer-1000:
-    display: "&c학살자"
-    description: "몬스터 1,000마리 처치"
-    icon: minecraft:diamond_sword
+  hunter-1000:
     type: mob-kills
     goal: 1000
-    title: "&c[전설]"
-    reward-gold: 1500
-    reward-xp: 800
-
-  # ------------------------------------------------------------ 채굴
-  miner-500:
-    display: "&7광부"
-    description: "광석 500개 채굴"
-    icon: minecraft:iron_pickaxe
-    type: ores-mined
-    goal: 500
-    title: "&b[광부]"
-    reward-gold: 500
-    reward-xp: 250
-
-  digger-10000:
-    display: "&8땅파기 장인"
-    description: "블록 10,000개 채굴"
-    icon: minecraft:netherite_shovel
-    type: blocks-mined
-    goal: 10000
-    title: "&8[대지의 주인]"
-    reward-gold: 1200
+    display: "&e숙련된 사냥꾼"
+    description: "몬스터 1,000마리를 잡습니다."
+    icon: minecraft:iron_sword
+    reward-gold: 700
     reward-xp: 600
+    title: "&e[사냥꾼]"
+  hunter-5000:
+    type: mob-kills
+    goal: 5000
+    display: "&6학살자"
+    description: "몬스터 5,000마리를 잡습니다."
+    icon: minecraft:diamond_sword
+    reward-gold: 2500
+    reward-xp: 2000
+    title: "&6[학살자]"
+  hunter-20000:
+    type: mob-kills
+    goal: 20000
+    display: "&4종결자"
+    description: "몬스터 20,000마리를 잡습니다."
+    icon: minecraft:netherite_sword
+    reward-gold: 10000
+    reward-xp: 8000
+    title: "&4[종결자]"
 
-  # ------------------------------------------------------------ 벌목 / 낚시
-  lumberjack-1000:
-    display: "&2나무꾼"
-    description: "원목 1,000개 벌목"
-    icon: minecraft:iron_axe
-    type: logs-chopped
-    goal: 1000
-    title: "&2[나무꾼]"
-    reward-gold: 500
+  # --- 채굴 -------------------------------------------------------------
+
+  miner-500:
+    type: blocks-mined
+    goal: 500
+    display: "&7곡괭이질"
+    description: "블록 500개를 캡니다."
+    icon: minecraft:wooden_pickaxe
+    reward-gold: 80
+    reward-xp: 60
+  miner-5000:
+    type: blocks-mined
+    goal: 5000
+    display: "&f굴착"
+    description: "블록 5,000개를 캡니다."
+    icon: minecraft:stone_pickaxe
+    reward-gold: 300
     reward-xp: 250
-
-  angler-200:
-    display: "&b낚시왕"
-    description: "물고기 200마리 낚기"
-    icon: minecraft:fishing_rod
-    type: fish-caught
-    goal: 200
-    title: "&b[낚시왕]"
-    reward-gold: 600
-    reward-xp: 300
-
-  # ------------------------------------------------------------ 대결 / 재화
-  duelist-25:
-    display: "&c검투사"
-    description: "대결 25승"
-    icon: minecraft:shield
-    type: duels-won
-    goal: 25
-    title: "&c[검투사]"
+  miner-25000:
+    type: blocks-mined
+    goal: 25000
+    display: "&e지하 생활자"
+    description: "블록 25,000개를 캡니다."
+    icon: minecraft:iron_pickaxe
+    reward-gold: 1200
+    reward-xp: 900
+    title: "&e[지하 생활자]"
+  miner-100000:
+    type: blocks-mined
+    goal: 100000
+    display: "&b대굴착"
+    description: "블록 100,000개를 캡니다."
+    icon: minecraft:netherite_pickaxe
+    reward-gold: 6000
+    reward-xp: 4500
+    title: "&b[대굴착자]"
+  ore-100:
+    type: ores-mined
+    goal: 100
+    display: "&7첫 광맥"
+    description: "광석 100개를 캡니다."
+    icon: minecraft:raw_iron
+    reward-gold: 120
+    reward-xp: 100
+  ore-1000:
+    type: ores-mined
+    goal: 1000
+    display: "&b광맥 추적자"
+    description: "광석 1,000개를 캡니다."
+    icon: minecraft:raw_gold
     reward-gold: 800
-    reward-xp: 400
+    reward-xp: 600
+    title: "&b[광맥 추적자]"
+  ore-5000:
+    type: ores-mined
+    goal: 5000
+    display: "&3심층 채굴"
+    description: "광석 5,000개를 캡니다."
+    icon: minecraft:diamond
+    reward-gold: 3500
+    reward-xp: 2500
+    title: "&3[심층 채굴자]"
 
-  rich-10000:
-    display: "&6대부호"
-    description: "누적 10,000 골드 획득"
-    icon: minecraft:gold_block
+  # --- 벌목과 낚시 ------------------------------------------------------
+
+  log-200:
+    type: logs-chopped
+    goal: 200
+    display: "&7땔감"
+    description: "원목 200개를 벱니다."
+    icon: minecraft:wooden_axe
+    reward-gold: 80
+    reward-xp: 60
+  log-2000:
+    type: logs-chopped
+    goal: 2000
+    display: "&6벌목꾼"
+    description: "원목 2,000개를 벱니다."
+    icon: minecraft:iron_axe
+    reward-gold: 600
+    reward-xp: 500
+    title: "&6[벌목꾼]"
+  log-10000:
+    type: logs-chopped
+    goal: 10000
+    display: "&2숲을 밀다"
+    description: "원목 10,000개를 벱니다."
+    icon: minecraft:netherite_axe
+    reward-gold: 3000
+    reward-xp: 2200
+    title: "&2[숲을 민 자]"
+  fish-50:
+    type: fish-caught
+    goal: 50
+    display: "&7입질"
+    description: "물고기 50마리를 낚습니다."
+    icon: minecraft:cod
+    reward-gold: 100
+    reward-xp: 80
+  fish-500:
+    type: fish-caught
+    goal: 500
+    display: "&9낚시꾼"
+    description: "물고기 500마리를 낚습니다."
+    icon: minecraft:salmon
+    reward-gold: 700
+    reward-xp: 550
+    title: "&9[낚시꾼]"
+  fish-2500:
+    type: fish-caught
+    goal: 2500
+    display: "&3바다의 인내"
+    description: "물고기 2,500마리를 낚습니다."
+    icon: minecraft:tropical_fish
+    reward-gold: 3000
+    reward-xp: 2200
+    title: "&3[바다의 인내]"
+
+  # --- 대결 -------------------------------------------------------------
+
+  duel-1:
+    type: duels-won
+    goal: 1
+    display: "&7첫 승"
+    description: "대결에서 한 번 이깁니다."
+    icon: minecraft:wooden_axe
+    reward-gold: 100
+    reward-xp: 80
+  duel-10:
+    type: duels-won
+    goal: 10
+    display: "&f검객"
+    description: "대결에서 10번 이깁니다."
+    icon: minecraft:iron_axe
+    reward-gold: 400
+    reward-xp: 300
+  duel-50:
+    type: duels-won
+    goal: 50
+    display: "&c투사"
+    description: "대결에서 50번 이깁니다."
+    icon: minecraft:diamond_axe
+    reward-gold: 1800
+    reward-xp: 1400
+    title: "&c[투사]"
+  duel-200:
+    type: duels-won
+    goal: 200
+    display: "&4무패의 전설"
+    description: "대결에서 200번 이깁니다."
+    icon: minecraft:netherite_axe
+    reward-gold: 8000
+    reward-xp: 6000
+    title: "&4[무패의 전설]"
+
+  # --- 재화와 수집 ------------------------------------------------------
+
+  gold-1000:
+    type: gold-earned
+    goal: 1000
+    display: "&7첫 자본"
+    description: "골드를 누적 1,000 모읍니다."
+    icon: minecraft:gold_nugget
+    reward-gold: 0
+    reward-xp: 120
+  gold-10000:
     type: gold-earned
     goal: 10000
+    display: "&e상인"
+    description: "골드를 누적 10,000 모읍니다."
+    icon: minecraft:gold_ingot
+    reward-gold: 0
+    reward-xp: 800
+    title: "&e[상인]"
+  gold-100000:
+    type: gold-earned
+    goal: 100000
+    display: "&6대부호"
+    description: "골드를 누적 100,000 모읍니다."
+    icon: minecraft:gold_block
+    reward-gold: 0
+    reward-xp: 5000
     title: "&6[대부호]"
-    reward-gold: 2000
+  gold-1000000:
+    type: gold-earned
+    goal: 1000000
+    display: "&6&l황금 손"
+    description: "골드를 누적 1,000,000 모읍니다."
+    icon: minecraft:raw_gold_block
+    reward-gold: 0
+    reward-xp: 30000
+    title: "&6&l[황금 손]"
+  collect-25:
+    type: collected
+    goal: 25
+    display: "&7수집의 시작"
+    description: "도감에 25종을 등록합니다."
+    icon: minecraft:book
+    reward-gold: 150
+    reward-xp: 120
+  collect-100:
+    type: collected
+    goal: 100
+    display: "&b수집가"
+    description: "도감에 100종을 등록합니다."
+    icon: minecraft:writable_book
+    reward-gold: 900
+    reward-xp: 700
+    title: "&b[수집가]"
+  collect-250:
+    type: collected
+    goal: 250
+    display: "&d박물학자"
+    description: "도감에 250종을 등록합니다."
+    icon: minecraft:knowledge_book
+    reward-gold: 4000
+    reward-xp: 3000
+    title: "&d[박물학자]"
 
-  # ------------------------------------------------------------ 성장 (서버 최초)
-  first-level-10:
-    display: "&a모험가"
-    description: "레벨 10 달성"
+  # --- 레벨 -------------------------------------------------------------
+
+  level-5:
+    type: level
+    goal: 5
+    display: "&7적응"
+    description: "레벨 5에 도달합니다."
     icon: minecraft:leather_chestplate
+    reward-gold: 100
+    reward-xp: 0
+  level-10:
     type: level
     goal: 10
-    reward-gold: 200
+    display: "&f견습"
+    description: "레벨 10에 도달합니다."
+    icon: minecraft:iron_chestplate
+    reward-gold: 300
     reward-xp: 0
-
-  first-level-20:
-    display: "&6선구자"
-    description: "서버에서 가장 먼저 레벨 20 달성"
-    icon: minecraft:beacon
+  level-20:
     type: level
     goal: 20
-    first-only: true
-    title: "&6[선구자]"
-    reward-gold: 3000
-
-  first-level-50:
-    display: "&d개척자"
-    description: "서버에서 가장 먼저 레벨 50 달성"
-    icon: minecraft:nether_star
+    display: "&e숙련"
+    description: "레벨 20에 도달합니다."
+    icon: minecraft:golden_apple
+    reward-gold: 900
+    reward-xp: 0
+    title: "&e[숙련자]"
+  level-30:
+    type: level
+    goal: 30
+    display: "&b정예"
+    description: "레벨 30에 도달합니다."
+    icon: minecraft:diamond_chestplate
+    reward-gold: 2000
+    reward-xp: 0
+    title: "&b[정예]"
+  level-50:
     type: level
     goal: 50
-    first-only: true
-    title: "&d[개척자]"
-    reward-gold: 10000
+    display: "&6달인"
+    description: "레벨 50에 도달합니다."
+    icon: minecraft:netherite_chestplate
+    reward-gold: 6000
+    reward-xp: 0
+    title: "&6[달인]"
+  level-75:
+    type: level
+    goal: 75
+    display: "&5초월"
+    description: "레벨 75에 도달합니다."
+    icon: minecraft:end_crystal
+    reward-gold: 15000
+    reward-xp: 0
+    title: "&5[초월자]"
+  level-100:
+    type: level
+    goal: 100
+    display: "&4&l한계"
+    description: "레벨 100에 도달합니다."
+    icon: minecraft:dragon_egg
+    reward-gold: 40000
+    reward-xp: 0
+    title: "&4&l[한계를 넘은 자]"
 
-  # ------------------------------------------------------------ 도감
-  collector-50:
-    display: "&5수집가"
-    description: "도감 50종 등록"
-    icon: minecraft:bookshelf
+  # --- 서버 최초 (한 명만) ------------------------------------------------
+  #
+  # first-only 는 서버에서 가장 먼저 도달한 한 명만 받습니다. 기록은
+  # records.yml 에 즉시 남으므로, 같은 틱에 둘이 도달해도 한 명만 가져갑니다.
+
+  first-level-25:
+    type: level
+    goal: 25
+    display: "&6&l개척자"
+    description: "서버에서 가장 먼저 레벨 25에 도달합니다."
+    icon: minecraft:beacon
+    reward-gold: 5000
+    reward-xp: 0
+    title: "&6&l[개척자]"
+    first-only: true
+  first-level-60:
+    type: level
+    goal: 60
+    display: "&5&l선구자"
+    description: "서버에서 가장 먼저 레벨 60에 도달합니다."
+    icon: minecraft:nether_star
+    reward-gold: 20000
+    reward-xp: 0
+    title: "&5&l[선구자]"
+    first-only: true
+  first-duel-25:
+    type: duels-won
+    goal: 25
+    display: "&4&l초대 챔피언"
+    description: "서버에서 가장 먼저 대결 25승을 거둡니다."
+    icon: minecraft:netherite_sword
+    reward-gold: 10000
+    reward-xp: 3000
+    title: "&4&l[초대 챔피언]"
+    first-only: true
+  first-ore-2500:
+    type: ores-mined
+    goal: 2500
+    display: "&b&l첫 광맥왕"
+    description: "서버에서 가장 먼저 광석 2,500개를 캡니다."
+    icon: minecraft:diamond_block
+    reward-gold: 10000
+    reward-xp: 3000
+    title: "&b&l[광맥왕]"
+    first-only: true
+  first-collect-200:
     type: collected
-    goal: 50
-    title: "&5[수집가]"
-    reward-gold: 800
-    reward-xp: 400
+    goal: 200
+    display: "&d&l초대 관장"
+    description: "서버에서 가장 먼저 도감 200종을 채웁니다."
+    icon: minecraft:enchanting_table
+    reward-gold: 12000
+    reward-xp: 4000
+    title: "&d&l[초대 관장]"
+    first-only: true

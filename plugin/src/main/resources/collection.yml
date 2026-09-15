@@ -28,33 +28,36 @@
 
 categories:
 
+  # --- 자원 --------------------------------------------------------------
+
   wood:
     display: "&6원목"
     icon: minecraft:oak_log
     items:
-      - minecraft:oak_log
-      - minecraft:spruce_log
-      - minecraft:birch_log
-      - minecraft:jungle_log
-      - minecraft:acacia_log
-      - minecraft:dark_oak_log
-      - minecraft:mangrove_log
-      - minecraft:cherry_log
-      - minecraft:pale_oak_log
-      - minecraft:crimson_stem
-      - minecraft:warped_stem
+      - '#minecraft:logs'
       - minecraft:bamboo_block
     title: "&2[벌목왕]"
     reward-gold: 400
-    reward-xp: 200
+    reward-xp: 300
+
+  planks:
+    display: "&e나무 가공"
+    icon: minecraft:oak_planks
+    items:
+      - '#minecraft:planks'
+      - '#minecraft:wooden_stairs'
+      - '#minecraft:wooden_doors'
+    title: "&6[목수]"
+    reward-gold: 350
+    reward-xp: 250
 
   ore:
     display: "&b광물"
-    icon: minecraft:raw_iron
+    icon: minecraft:diamond
     items:
       - minecraft:coal
-      - minecraft:raw_copper
       - minecraft:raw_iron
+      - minecraft:raw_copper
       - minecraft:raw_gold
       - minecraft:redstone
       - minecraft:lapis_lazuli
@@ -62,35 +65,327 @@ categories:
       - minecraft:emerald
       - minecraft:quartz
       - minecraft:ancient_debris
+      - minecraft:netherite_scrap
       - minecraft:amethyst_shard
-    title: "&b[대장장이]"
+    title: "&b[광물학자]"
     reward-gold: 800
+    reward-xp: 600
+
+  ingot:
+    display: "&f주괴와 보석"
+    icon: minecraft:netherite_ingot
+    items:
+      - minecraft:iron_ingot
+      - minecraft:gold_ingot
+      - minecraft:copper_ingot
+      - minecraft:netherite_ingot
+      - minecraft:iron_nugget
+      - minecraft:gold_nugget
+      - minecraft:iron_block
+      - minecraft:gold_block
+      - minecraft:diamond_block
+      - minecraft:emerald_block
+      - minecraft:netherite_block
+      - minecraft:copper_block
+    title: "&7[제련사]"
+    reward-gold: 900
+    reward-xp: 700
+
+  stone:
+    display: "&8돌과 광맥"
+    icon: minecraft:deepslate
+    items:
+      - minecraft:stone
+      - minecraft:granite
+      - minecraft:diorite
+      - minecraft:andesite
+      - minecraft:deepslate
+      - minecraft:tuff
+      - minecraft:calcite
+      - minecraft:dripstone_block
+      - minecraft:obsidian
+      - minecraft:crying_obsidian
+    title: "&8[석공]"
+    reward-gold: 300
+    reward-xp: 200
+
+  # --- 자연 --------------------------------------------------------------
+
+  crop:
+    display: "&a작물"
+    icon: minecraft:wheat
+    items:
+      - minecraft:wheat
+      - minecraft:potato
+      - minecraft:carrot
+      - minecraft:beetroot
+      - minecraft:melon_slice
+      - minecraft:pumpkin
+      - minecraft:sugar_cane
+      - minecraft:cocoa_beans
+      - minecraft:nether_wart
+      - minecraft:sweet_berries
+      - minecraft:glow_berries
+      - minecraft:bamboo
+      - minecraft:kelp
+      - minecraft:cactus
+    title: "&a[농부]"
+    reward-gold: 500
     reward-xp: 400
 
-  wool:
-    display: "&d양털"
-    icon: minecraft:white_wool
-    items: ['#minecraft:wool']
-    title: "&d[염색공]"
+  flower:
+    display: "&d꽃"
+    icon: minecraft:poppy
+    items:
+      - '#minecraft:small_flowers'
+      - minecraft:sunflower
+      - minecraft:lilac
+      - minecraft:rose_bush
+      - minecraft:peony
+      - minecraft:pitcher_plant
+      - minecraft:pink_petals
+    title: "&d[꽃길]"
+    reward-gold: 400
+    reward-xp: 300
+
+  sapling:
+    display: "&2묘목"
+    icon: minecraft:oak_sapling
+    items:
+      - '#minecraft:saplings'
+      - minecraft:mangrove_propagule
+    title: "&2[조림가]"
     reward-gold: 300
-    reward-xp: 150
+    reward-xp: 250
+
+  mushroom:
+    display: "&c버섯과 균사"
+    icon: minecraft:red_mushroom
+    items:
+      - minecraft:red_mushroom
+      - minecraft:brown_mushroom
+      - minecraft:crimson_fungus
+      - minecraft:warped_fungus
+      - minecraft:shroomlight
+      - minecraft:mycelium
+      - minecraft:nether_wart_block
+      - minecraft:warped_wart_block
+    title: "&c[균학자]"
+    reward-gold: 450
+    reward-xp: 350
+
+  coral:
+    display: "&3산호"
+    icon: minecraft:brain_coral
+    items:
+      - minecraft:tube_coral
+      - minecraft:brain_coral
+      - minecraft:bubble_coral
+      - minecraft:fire_coral
+      - minecraft:horn_coral
+      - minecraft:tube_coral_fan
+      - minecraft:brain_coral_fan
+      - minecraft:bubble_coral_fan
+      - minecraft:fire_coral_fan
+      - minecraft:horn_coral_fan
+      - minecraft:tube_coral_block
+      - minecraft:brain_coral_block
+      - minecraft:bubble_coral_block
+      - minecraft:fire_coral_block
+      - minecraft:horn_coral_block
+    title: "&3[산호초]"
+    reward-gold: 600
+    reward-xp: 450
 
   fish:
-    display: "&3물고기"
+    display: "&9물고기"
     icon: minecraft:cod
     items:
       - minecraft:cod
       - minecraft:salmon
       - minecraft:tropical_fish
       - minecraft:pufferfish
-    title: "&3[강태공]"
-    reward-gold: 500
+      - minecraft:cooked_cod
+      - minecraft:cooked_salmon
+      - minecraft:nautilus_shell
+      - minecraft:ink_sac
+      - minecraft:glow_ink_sac
+    title: "&9[강태공]"
+    reward-gold: 700
+    reward-xp: 500
+
+  # --- 전리품 ------------------------------------------------------------
+
+  drop:
+    display: "&8몬스터 전리품"
+    icon: minecraft:ender_pearl
+    items:
+      - minecraft:rotten_flesh
+      - minecraft:bone
+      - minecraft:string
+      - minecraft:spider_eye
+      - minecraft:gunpowder
+      - minecraft:ender_pearl
+      - minecraft:blaze_rod
+      - minecraft:ghast_tear
+      - minecraft:magma_cream
+      - minecraft:slime_ball
+      - minecraft:phantom_membrane
+      - minecraft:prismarine_shard
+      - minecraft:prismarine_crystals
+      - minecraft:shulker_shell
+      - minecraft:dragon_breath
+      - minecraft:nether_star
+    title: "&5[사냥꾼의 증표]"
+    reward-gold: 1500
+    reward-xp: 1200
+
+  head:
+    display: "&4머리"
+    icon: minecraft:skeleton_skull
+    items:
+      - minecraft:skeleton_skull
+      - minecraft:wither_skeleton_skull
+      - minecraft:zombie_head
+      - minecraft:creeper_head
+      - minecraft:dragon_head
+      - minecraft:piglin_head
+    title: "&4[수집가의 선반]"
+    reward-gold: 2500
+    reward-xp: 1500
+
+  # --- 만들어야 하는 것 ---------------------------------------------------
+
+  wool:
+    display: "&f양털"
+    icon: minecraft:white_wool
+    items:
+      - '#minecraft:wool'
+    title: "&f[목장주]"
+    reward-gold: 350
     reward-xp: 250
 
-  flower:
-    display: "&a꽃"
-    icon: minecraft:poppy
-    items: ['#minecraft:small_flowers']
-    title: "&a[정원사]"
-    reward-gold: 300
-    reward-xp: 150
+  dye:
+    display: "&5염료"
+    icon: minecraft:purple_dye
+    items:
+      - minecraft:white_dye
+      - minecraft:orange_dye
+      - minecraft:magenta_dye
+      - minecraft:light_blue_dye
+      - minecraft:yellow_dye
+      - minecraft:lime_dye
+      - minecraft:pink_dye
+      - minecraft:gray_dye
+      - minecraft:light_gray_dye
+      - minecraft:cyan_dye
+      - minecraft:purple_dye
+      - minecraft:blue_dye
+      - minecraft:brown_dye
+      - minecraft:green_dye
+      - minecraft:red_dye
+      - minecraft:black_dye
+    title: "&5[염색공]"
+    reward-gold: 500
+    reward-xp: 400
+
+  armor:
+    display: "&7방어구 한 벌"
+    icon: minecraft:diamond_chestplate
+    items:
+      - '#minecraft:head_armor'
+      - '#minecraft:chest_armor'
+      - '#minecraft:leg_armor'
+      - '#minecraft:foot_armor'
+    title: "&7[무장]"
+    reward-gold: 1200
+    reward-xp: 900
+
+  tool:
+    display: "&e연장"
+    icon: minecraft:diamond_pickaxe
+    items:
+      - '#minecraft:pickaxes'
+      - '#minecraft:axes'
+      - '#minecraft:shovels'
+      - '#minecraft:hoes'
+      - '#minecraft:swords'
+      - minecraft:bow
+      - minecraft:crossbow
+      - minecraft:trident
+      - minecraft:shears
+      - minecraft:flint_and_steel
+      - minecraft:fishing_rod
+      - minecraft:shield
+    title: "&e[장인]"
+    reward-gold: 1000
+    reward-xp: 800
+
+  music:
+    display: "&d음악 디스크"
+    icon: minecraft:jukebox
+    items:
+      - minecraft:music_disc_13
+      - minecraft:music_disc_cat
+      - minecraft:music_disc_blocks
+      - minecraft:music_disc_chirp
+      - minecraft:music_disc_far
+      - minecraft:music_disc_mall
+      - minecraft:music_disc_mellohi
+      - minecraft:music_disc_stal
+      - minecraft:music_disc_strad
+      - minecraft:music_disc_ward
+      - minecraft:music_disc_11
+      - minecraft:music_disc_wait
+      - minecraft:music_disc_otherside
+      - minecraft:music_disc_5
+      - minecraft:music_disc_pigstep
+      - minecraft:music_disc_relic
+      - minecraft:music_disc_creator
+      - minecraft:music_disc_creator_music_box
+      - minecraft:music_disc_precipice
+      - minecraft:music_disc_lava_chicken
+      - minecraft:music_disc_tears
+    title: "&d[음유시인]"
+    reward-gold: 3000
+    reward-xp: 2000
+
+  # --- 다른 차원 ----------------------------------------------------------
+
+  nether:
+    display: "&c네더"
+    icon: minecraft:netherrack
+    items:
+      - minecraft:netherrack
+      - minecraft:soul_sand
+      - minecraft:soul_soil
+      - minecraft:basalt
+      - minecraft:blackstone
+      - minecraft:glowstone
+      - minecraft:magma_block
+      - minecraft:gilded_blackstone
+      - minecraft:crimson_nylium
+      - minecraft:warped_nylium
+      - minecraft:nether_bricks
+      - minecraft:iron_chain
+      - minecraft:twisting_vines
+      - minecraft:weeping_vines
+    title: "&c[지옥 답사]"
+    reward-gold: 900
+    reward-xp: 700
+
+  end:
+    display: "&5엔드"
+    icon: minecraft:end_stone
+    items:
+      - minecraft:end_stone
+      - minecraft:purpur_block
+      - minecraft:chorus_fruit
+      - minecraft:chorus_flower
+      - minecraft:end_rod
+      - minecraft:shulker_box
+      - minecraft:elytra
+      - minecraft:dragon_egg
+    title: "&5[끝에 다녀온 자]"
+    reward-gold: 4000
+    reward-xp: 2500

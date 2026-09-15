@@ -71,6 +71,15 @@ public final class RpgConfig {
     private double speedPerAgi;
     private double jumpPerAgi;
     private double luckPerLuck;
+    private int statSoftCap;
+    private int statBeyondCapPercent;
+    private double knockbackPerStr;
+    private double miningPerDex;
+    private double sweepPerDex;
+    private double knockbackResistPerVit;
+    private double safeFallPerAgi;
+    private double luckKillChancePerPoint;
+    private int luckKillMaxChance;
 
     private int weightBase;
     private int weightPerStr;
@@ -191,14 +200,14 @@ public final class RpgConfig {
         }
 
         maxLevel = Math.max(0, settings.getInt("level.max", 0));
-        xpBase = Math.max(1, settings.getInt("level.xp-base", 100));
-        xpGrowth = Math.max(0, settings.getInt("level.xp-growth", 50));
-        xpMultiplier = Math.clamp(settings.getDouble("level.xp-multiplier", 1.0D), 1.0D, 10.0D);
+        xpBase = Math.max(1, settings.getInt("level.xp-base", 80));
+        xpGrowth = Math.max(0, settings.getInt("level.xp-growth", 30));
+        xpMultiplier = Math.clamp(settings.getDouble("level.xp-multiplier", 1.022D), 1.0D, 10.0D);
         startingPoints = Math.max(0, settings.getInt("level.starting-points", 5));
         pointsPerLevel = Math.max(0, settings.getInt("level.points-per-level", 1));
 
-        xpPerMobKill = Math.max(0, settings.getInt("xp-sources.per-mob-kill", 10));
-        xpPerTreeLog = Math.max(0, settings.getInt("xp-sources.per-tree-log", 1));
+        xpPerMobKill = Math.max(0, settings.getInt("xp-sources.per-mob-kill", 15));
+        xpPerTreeLog = Math.max(0, settings.getInt("xp-sources.per-tree-log", 2));
 
         enchantRespectVanilla = settings.getBoolean("enchant.respect-vanilla-limits", false);
         enchantMaxLevel = Math.clamp(settings.getInt("enchant.max-level", 255), 1, 255);
@@ -222,16 +231,28 @@ public final class RpgConfig {
         guildEnabled = settings.getBoolean("features.guilds", true);
 
         baseHp = c.getInt("stats.base-hp", 20);
-        hpPerLevel = c.getInt("stats.hp-per-level", 2);
-        hpPerVit = c.getInt("stats.hp-per-vit", 1);
-        attackPerStr = c.getDouble("stats.attack-damage-per-str", 0.5);
-        attackSpeedPerDex = c.getDouble("stats.attack-speed-per-dex", 0.05);
-        speedPerAgi = c.getDouble("stats.movement-speed-per-agi", 0.002);
-        jumpPerAgi = c.getDouble("stats.jump-strength-per-agi", 0.01);
-        luckPerLuck = c.getDouble("stats.luck-per-luck", 0.5);
+        hpPerLevel = c.getInt("stats.hp-per-level", 1);
+        hpPerVit = c.getInt("stats.hp-per-vit", 2);
+        attackPerStr = c.getDouble("stats.attack-damage-per-str", 0.35);
+        attackSpeedPerDex = c.getDouble("stats.attack-speed-per-dex", 0.06);
+        speedPerAgi = c.getDouble("stats.movement-speed-per-agi", 0.0012);
+        jumpPerAgi = c.getDouble("stats.jump-strength-per-agi", 0.007);
+        luckPerLuck = c.getDouble("stats.luck-per-luck", 0.4);
+        knockbackPerStr = c.getDouble("stats.attack-knockback-per-str", 0.02);
+        miningPerDex = c.getDouble("stats.mining-speed-per-dex", 0.008);
+        sweepPerDex = c.getDouble("stats.sweeping-damage-per-dex", 0.01);
+        knockbackResistPerVit = c.getDouble("stats.knockback-resistance-per-vit", 0.008);
+        safeFallPerAgi = c.getDouble("stats.safe-fall-blocks-per-agi", 0.15);
+
+        // 0 turns the curve off and every point is worth the last one again.
+        statSoftCap = Math.max(0, c.getInt("stats.soft-cap", 20));
+        statBeyondCapPercent = Math.clamp(c.getInt("stats.beyond-soft-cap-percent", 35), 0, 100);
+
+        luckKillChancePerPoint = Math.max(0.0D, c.getDouble("economy.luck-double-chance-per-point", 2.0));
+        luckKillMaxChance = Math.clamp(c.getInt("economy.luck-double-chance-max", 60), 0, 100);
 
         weightBase = c.getInt("weight.base-capacity", 100);
-        weightPerStr = c.getInt("weight.capacity-per-str", 10);
+        weightPerStr = c.getInt("weight.capacity-per-str", 8);
         weightScanBatch = Math.max(1, c.getInt("weight.scans-per-tick", 8));
         weightRescanInterval = Math.max(20, c.getInt("weight.safety-rescan-ticks", 200));
         weightLoreFormat = c.getString("weight.lore-format", "&8무게 %weight%");
@@ -292,8 +313,8 @@ public final class RpgConfig {
         tradeMaxDistance = Math.max(0, c.getDouble("trade.max-distance", 0));
 
         startingGold = Math.max(0, c.getInt("economy.starting-gold", 0));
-        goldPerMobKill = Math.max(0, c.getInt("economy.gold-per-mob-kill", 2));
-        goldPerLevel = Math.max(0, c.getInt("economy.gold-per-level-up", 50));
+        goldPerMobKill = Math.max(0, c.getInt("economy.gold-per-mob-kill", 6));
+        goldPerLevel = Math.max(0, c.getInt("economy.gold-per-level-up", 120));
         goldSymbol = c.getString("economy.symbol", "G");
         goldTransferAllowed = c.getBoolean("economy.allow-player-transfer", true);
 
@@ -320,7 +341,7 @@ public final class RpgConfig {
 
         guildNameMaxLength = Math.clamp(c.getInt("guild.name-max-length", 16), 1, 32);
         guildMaxMembers = Math.clamp(c.getInt("guild.max-members", 20), 1, 200);
-        guildCreateCost = Math.max(0, c.getInt("guild.create-cost", 1000));
+        guildCreateCost = Math.max(0, c.getInt("guild.create-cost", 2000));
         guildInviteSeconds = Math.max(5, c.getInt("guild.invite-timeout-seconds", 60));
         // Rows, not slots: a value that is not a legal chest height would
         // throw on createInventory, which is a crash rather than a setting.
@@ -334,8 +355,8 @@ public final class RpgConfig {
         // borders it is supposed to widen.
         guildMaxRadius = Math.clamp(c.getInt("guild.claim.max-radius", 96),
                 guildClaimRadius, 512);
-        guildInvestPerBlock = Math.max(0, c.getInt("guild.claim.invest-gold-per-block", 500));
-        guildBannerCost = Math.max(0, c.getInt("guild.claim.banner-cost", 2000));
+        guildInvestPerBlock = Math.max(0, c.getInt("guild.claim.invest-gold-per-block", 250));
+        guildBannerCost = Math.max(0, c.getInt("guild.claim.banner-cost", 3000));
         guildProtectPlace = c.getBoolean("guild.claim.protect.block-place", true);
         guildProtectBuckets = c.getBoolean("guild.claim.protect.buckets", true);
         guildProtectExplosions = c.getBoolean("guild.claim.protect.explosions", true);
@@ -346,7 +367,7 @@ public final class RpgConfig {
         guildBuffJump = Math.clamp(c.getInt("guild.claim.buffs.jump", 1), 0, 5);
         guildGrowthBonusStages = Math.clamp(c.getInt("guild.claim.crop-growth-bonus-stages", 1), 0, 7);
 
-        guildWarCost = Math.max(0, c.getInt("guild.war.declare-cost", 5000));
+        guildWarCost = Math.max(0, c.getInt("guild.war.declare-cost", 2500));
         guildWarPrepMinutes = Math.clamp(c.getInt("guild.war.preparation-minutes", 10), 0, 1440);
         // At least a minute of fighting: a zero-length war would be declared
         // and lost in the same tick, before anyone could reach the border.
@@ -788,6 +809,43 @@ public final class RpgConfig {
 
     public double luckPerLuck() {
         return luckPerLuck;
+    }
+
+    public int statSoftCap() {
+        return statSoftCap;
+    }
+
+    public int statBeyondCapPercent() {
+        return statBeyondCapPercent;
+    }
+
+    public double knockbackPerStr() {
+        return knockbackPerStr;
+    }
+
+    public double miningPerDex() {
+        return miningPerDex;
+    }
+
+    public double sweepPerDex() {
+        return sweepPerDex;
+    }
+
+    public double knockbackResistPerVit() {
+        return knockbackResistPerVit;
+    }
+
+    public double safeFallPerAgi() {
+        return safeFallPerAgi;
+    }
+
+    /** Percentage points of double-reward chance each LUCK point buys. */
+    public double luckKillChancePerPoint() {
+        return luckKillChancePerPoint;
+    }
+
+    public int luckKillMaxChance() {
+        return luckKillMaxChance;
     }
 
     public int weightBase() {

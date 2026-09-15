@@ -215,6 +215,14 @@ public final class StatsMenu {
                 lore.toArray(new String[0]));
     }
 
+    /**
+     * One stat tile.
+     *
+     * The soft cap is spelled out here rather than left to be discovered.
+     * Points past it are worth less, and a player who is not told that reads
+     * the flat number, keeps pouring points in, and concludes the plugin is
+     * broken - so the tile says what the next point is actually worth.
+     */
     private ItemStack buildStatItem(PlayerData data, StatType type) {
         ItemStack item = new ItemStack(type.icon());
         ItemMeta meta = item.getItemMeta();
@@ -223,12 +231,35 @@ public final class StatsMenu {
         meta.setDisplayName(ChatColor.AQUA + type.label() + ChatColor.GRAY + ": "
                 + ChatColor.WHITE + total
                 + (total != own ? ChatColor.GRAY + " (" + own + " +" + (total - own) + " 직업)" : ""));
-        meta.setLore(List.of(
-                ChatColor.GRAY + type.description(),
-                ChatColor.GREEN + "클릭하여 포인트 1개 사용 (+1 " + type.label() + ")"
-        ));
+
+        List<String> lore = new ArrayList<>();
+        lore.add(ChatColor.GRAY + type.description());
+
+        int cap = plugin.rpgConfig().statSoftCap();
+        int beyond = plugin.rpgConfig().statBeyondCapPercent();
+        if (cap > 0) {
+            double effective = plugin.stats().scale(total);
+            if (total > cap) {
+                lore.add(ChatColor.YELLOW + "실효 " + trim(effective)
+                        + ChatColor.GRAY + " - " + cap + " 초과분은 " + beyond + "%만 적용됩니다.");
+                lore.add(ChatColor.DARK_GRAY + "다음 1포인트의 값어치: "
+                        + beyond + "% (다른 스탯은 100%)");
+            } else {
+                lore.add(ChatColor.DARK_GRAY + "" + cap + " 까지는 포인트당 100%, 그 뒤로는 " + beyond + "%");
+            }
+        }
+        lore.add(ChatColor.GREEN + "클릭하여 포인트 1개 사용 (+1 " + type.label() + ")");
+
+        meta.setLore(lore);
         item.setItemMeta(meta);
         return item;
+    }
+
+    /** "24.9", or "25" when the fraction would only add noise. */
+    private static String trim(double value) {
+        return value == Math.rint(value)
+                ? String.valueOf((long) value)
+                : String.format("%.1f", value);
     }
 
     private ItemStack buildInfoItem(Material material, String name, String... lore) {

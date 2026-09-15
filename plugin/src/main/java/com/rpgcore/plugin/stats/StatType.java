@@ -9,11 +9,11 @@ import org.bukkit.Material;
  */
 public enum StatType {
 
-    STR("STR", "rpgcore.str", Material.IRON_SWORD, "공격력 / 최대 소지무게"),
-    DEX("DEX", "rpgcore.dex", Material.FEATHER, "공격 속도"),
-    VIT("VIT", "rpgcore.vit", Material.GOLDEN_APPLE, "최대 체력"),
-    AGI("AGI", "rpgcore.agi", Material.RABBIT_FOOT, "이동속도 / 점프력"),
-    LUCK("LUCK", "rpgcore.luck", Material.EMERALD, "행운");
+    STR("STR", "rpgcore.str", Material.IRON_SWORD, "공격력 / 소지무게 / 밀쳐내기"),
+    DEX("DEX", "rpgcore.dex", Material.FEATHER, "공격 속도 / 채굴 속도 / 휩쓸기"),
+    VIT("VIT", "rpgcore.vit", Material.GOLDEN_APPLE, "최대 체력 / 넉백 저항"),
+    AGI("AGI", "rpgcore.agi", Material.RABBIT_FOOT, "이동속도 / 점프 / 낙하 버티기"),
+    LUCK("LUCK", "rpgcore.luck", Material.EMERALD, "행운 / 처치 보상 2배 확률");
 
     private final String label;
     private final String objective;

@@ -18,21 +18,30 @@ level:
   # 레벨 곡선. 다음 레벨까지 필요한 XP 는 이렇게 계산됩니다.
   #   (xp-base + (현재레벨-1) x xp-growth) x (xp-multiplier ^ (현재레벨-1))
   #
-  #   xp-multiplier 1.0  = 직선.      Lv2:100  Lv5:250  Lv10:550  Lv20:1050
-  #   xp-multiplier 1.05 = 완만한 곡선. Lv2:100  Lv5:289  Lv10:769  Lv20:2117
-  #   xp-multiplier 1.15 = 가파른 곡선. Lv2:100  Lv5:437  Lv10:1946 Lv20:15330
-  xp-base: 100
-  xp-growth: 50
-  xp-multiplier: 1.0
+  # 기본값(80 / 30 / 1.022)은 이렇게 됩니다:
+  #   Lv2:80  Lv10:380  Lv20:917  Lv30:1,692  Lv50:4,320
+  #   레벨 50까지 누적 약 80,000 XP (몹만 잡는다면 5,400마리)
+  #
+  # 곡선을 넣은 이유: 배수 1.0 이면 50레벨이 10레벨과 똑같은 무게로 느껴집니다.
+  # 1.022 에서는 마지막 레벨이 10레벨의 10배가 들어서, 초반은 빠르게 흐르고
+  # 후반 레벨 하나하나가 실제로 사건이 됩니다.
+  #
+  #   xp-multiplier 1.0   = 직선 (후반이 밋밋함)
+  #   xp-multiplier 1.022 = 기본. 레벨 50까지 대략 35시간
+  #   xp-multiplier 1.05  = 가파름. 후반이 아주 길어집니다
+  xp-base: 80
+  xp-growth: 30
+  xp-multiplier: 1.022
 
   # 레벨업 때 주는 스탯 포인트와, 처음 시작할 때 주는 포인트.
   points-per-level: 1
   starting-points: 5
 
 # 경험치를 어디서 얼마나 받는지.
+# 파티로 나눠 받을 때는 인원 보너스가 따로 붙습니다(config.yml 의 party.xp).
 xp-sources:
-  per-mob-kill: 10
-  per-tree-log: 1
+  per-mob-kill: 15
+  per-tree-log: 2
 
 # 모루 강화(config.yml 의 anvil.recipes)로 올릴 수 있는 인챈트 한계.
 enchant:

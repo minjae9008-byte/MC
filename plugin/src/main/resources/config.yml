@@ -15,19 +15,54 @@
 #  지금 설정이 어떻게 읽혔는지는 /rpgcore check 로 확인하세요.
 # ==========================================================================
 
+# ==========================================================================
+#  스탯
+# ==========================================================================
+#  스탯 하나가 여러 가지를 동시에 올립니다. 한 스탯이 숫자 하나만 움직이면
+#  그건 선택이 아니라 그냥 숫자입니다 - "공격력 스탯"으로 읽히고 찍거나 안
+#  찍거나로 끝납니다. 스탯마다 2~3가지를 주면 어떤 빌드든 포기하는 것이
+#  실제로 생깁니다.
+#
+#    STR  공격력 · 소지무게 · 밀쳐내기
+#    DEX  공격속도 · 채굴속도 · 휩쓸기 피해
+#    VIT  최대체력 · 넉백 저항
+#    AGI  이동속도 · 점프 · 낙하 안전거리
+#    LUCK 행운(낚시 등) · 몬스터 처치 보상 2배 확률
+#
+#  소프트캡이 핵심입니다. 캡까지는 포인트당 100%, 그 뒤로는 일부만
+#  적용됩니다. 이게 없으면 빌드의 질문이 "어느 스탯"이 아니라 "몇 점"만
+#  남습니다 - 포인트마다 값어치가 같으니 제일 센 스탯에 전부 붓는 게 항상
+#  정답이고, 모든 플레이어가 똑같아집니다.
+#
+#  기본값(캡 20 / 초과분 35%) 기준 레벨 50(54포인트):
+#    한 스탯에 전부  -> 실효 31.9 (포인트 54개로 32개 값)
+#    20/20/14 로 분산 -> 실효 20/20/14 = 54 전부 100%
+#  그래서 두 번째 스탯을 찍는 쪽이 첫 스탯을 깊게 파는 것보다 항상 이득이고,
+#  자연히 "주 특화 + 부 특화" 형태가 됩니다.
 stats:
-  base-hp: 20           # attribute points; 20 = the vanilla 10 hearts
-  hp-per-level: 2
-  hp-per-vit: 1
-  attack-damage-per-str: 0.5
-  attack-speed-per-dex: 0.05
-  movement-speed-per-agi: 0.002
-  jump-strength-per-agi: 0.01   # Java only: Bedrock has no jump attribute
-  luck-per-luck: 0.5
+  soft-cap: 20                  # 여기까지는 포인트당 100%
+  beyond-soft-cap-percent: 35   # 그 뒤로는 이만큼만. 0 이면 캡이 곧 상한
+  # 0 으로 두면 곡선을 끄고 예전처럼 완전 선형이 됩니다.
+
+  base-hp: 20           # 어트리뷰트 기준값. 20 = 바닐라 10칸
+  # 레벨은 체력을 조금만 줍니다. 레벨당 2였을 때는 레벨 50에서 아무 것도
+  # 안 찍고 120(60칸)이 되어 VIT 를 찍을 이유가 사라졌습니다.
+  hp-per-level: 1
+  hp-per-vit: 2
+  attack-damage-per-str: 0.35   # 20포인트 = +7 (다이아검 7 -> 14)
+  attack-knockback-per-str: 0.02
+  attack-speed-per-dex: 0.06    # 20포인트 = 초당 타격 +30%
+  mining-speed-per-dex: 0.008   # 합계 비율. 20포인트 = 채굴 +16%
+  sweeping-damage-per-dex: 0.01
+  knockback-resistance-per-vit: 0.008
+  movement-speed-per-agi: 0.0012  # 20포인트 = +24%. 이동속도는 과하기 쉽습니다
+  jump-strength-per-agi: 0.007    # 자바 전용: 베드락에는 점프 어트리뷰트가 없습니다
+  safe-fall-blocks-per-agi: 0.15  # 20포인트 = 3블록 더 떨어져도 안 아픔
+  luck-per-luck: 0.4
 
 weight:
   base-capacity: 100
-  capacity-per-str: 10
+  capacity-per-str: 8
   # Weight is only recomputed for players whose inventory changed (events set
   # a dirty flag). These two just bound the worst case.
   scans-per-tick: 8
@@ -135,6 +170,9 @@ weight:
         - minecraft:iron_leggings
         - minecraft:diamond_chestplate
         - minecraft:diamond_leggings
+    # 무거운 것을 옮기는 일 자체가 선택지가 되도록, 값나가는 블록일수록
+    # 무겁게 잡혀 있습니다. STR 을 찍거나 대장장이를 고르거나, 아니면
+    # 여러 번 왕복하거나.
     very_heavy:
       weight: 20
       items:
@@ -151,6 +189,38 @@ weight:
         - minecraft:lodestone
         - minecraft:respawn_anchor
         - minecraft:enchanting_table
+        - minecraft:ancient_debris
+        - minecraft:netherite_axe
+        - minecraft:netherite_sword
+        - minecraft:netherite_pickaxe
+        - minecraft:netherite_shovel
+        - minecraft:netherite_hoe
+        - minecraft:conduit
+        - minecraft:end_crystal
+        - minecraft:dragon_egg
+    # 물·용암을 나르는 것과 상자를 통째로 옮기는 것은 무게가 있어야 합니다.
+    bulky:
+      weight: 12
+      items:
+        - '#minecraft:beds'
+        - minecraft:brewing_stand
+        - minecraft:cauldron
+        - minecraft:smithing_table
+        - minecraft:blast_furnace
+        - minecraft:smoker
+        - minecraft:grindstone
+        - minecraft:stonecutter
+        - minecraft:loom
+        - minecraft:cartography_table
+        - minecraft:fletching_table
+        - minecraft:composter
+        - minecraft:bookshelf
+        - minecraft:chiseled_bookshelf
+        - minecraft:end_stone
+        - minecraft:purpur_block
+        - minecraft:packed_ice
+        - minecraft:blue_ice
+        - minecraft:magma_block
 
 tree-felling:
   # Hard cap per tree, so a griefed "log wall" can never run away.
@@ -288,6 +358,102 @@ anvil:
       level-cost: 1
       repair-percent: 25
 
+    # --- 여기부터는 후반부용. 재료가 비싸고 효과가 큽니다 -----------------
+
+    master-repair:
+      name: "&a완전 정비"                    # 네더라이트로 통째로 벼려낸다
+      target: ['#minecraft:enchantable/durability']
+      ingredient: minecraft:netherite_scrap
+      ingredient-amount: 1
+      level-cost: 5
+      repair-percent: 100
+
+    looting:
+      name: "&b약탈 각인"                    # 상자에서 나온 실로 매듭을 짓는다
+      target: ['#minecraft:swords']
+      ingredient: minecraft:string
+      ingredient-amount: 16
+      level-cost: 3
+      enchantments:
+        looting:
+          levels: 1
+          max-level: 5
+
+    fortune:
+      name: "&e행운 각인"                    # 청금석을 갈아 날에 먹인다
+      target: ['#minecraft:enchantable/mining']
+      ingredient: minecraft:lapis_lazuli
+      ingredient-amount: 24
+      level-cost: 4
+      enchantments:
+        fortune:
+          levels: 1
+          max-level: 3
+
+    silk:
+      name: "&f섬세한 손길"                  # 거미줄처럼 조심스럽게
+      target: ['#minecraft:enchantable/mining']
+      ingredient: minecraft:cobweb
+      ingredient-amount: 4
+      level-cost: 4
+      enchantments:
+        silk_touch:
+          levels: 1
+          max-level: 1
+
+    power:
+      name: "&b활시위 보강"                  # 힘줄을 꼬아 시위를 덧댄다
+      target: ['#minecraft:enchantable/bow']
+      ingredient: minecraft:phantom_membrane
+      ingredient-amount: 3
+      level-cost: 2
+      enchantments:
+        power: 1
+
+    feather-fall:
+      name: "&a깃털 안감"                    # 신발 안에 깃털을 넣는다
+      target: ['#minecraft:enchantable/foot_armor']
+      ingredient: minecraft:feather
+      ingredient-amount: 16
+      level-cost: 2
+      enchantments:
+        feather_falling:
+          levels: 1
+          max-level: 4
+
+    respiration:
+      name: "&3해초 여과"                    # 마른 해초로 숨길을 만든다
+      target: ['#minecraft:enchantable/head_armor']
+      ingredient: minecraft:dried_kelp_block
+      ingredient-amount: 4
+      level-cost: 2
+      enchantments:
+        respiration:
+          levels: 1
+          max-level: 3
+
+    thorns:
+      name: "&c가시 덧대기"                  # 선인장을 갑옷에 박는다
+      target: ['#minecraft:enchantable/chest_armor']
+      ingredient: minecraft:cactus
+      ingredient-amount: 12
+      level-cost: 3
+      enchantments:
+        thorns:
+          levels: 1
+          max-level: 3
+
+    mending:
+      name: "&d경험의 수선"                  # 경험이 쇠를 메운다
+      target: ['#minecraft:enchantable/durability']
+      ingredient: minecraft:nether_star
+      ingredient-amount: 1
+      level-cost: 10
+      enchantments:
+        mending:
+          levels: 1
+          max-level: 1
+
 # 순위표. 데이터는 스코어보드 미러에서 읽으므로 오프라인 플레이어도 집계됩니다.
 leaderboard:
   size: 10            # /leaderboard 에 보여줄 인원
@@ -374,13 +540,23 @@ progress:
   ore-blocks: []
   log-blocks: []
 
-# 골드. 업적 보상으로 들어오고 대결에 걸 수 있습니다.
+# 골드. 업적·도감 보상과 몬스터 처치·레벨업으로 들어오고,
+# 경매장·길드·대결에서 쓰입니다.
 # 스코어보드(rpgcore.gold)에 저장되므로 /scoreboard 로도 읽고 쓸 수 있고,
 # 별도 경제 플러그인이 필요 없습니다.
+#
+# 수치는 "몬스터 1마리 = 6골드" 를 기준으로 잡혀 있습니다. 적극적으로 놀면
+# 시간당 대략 900골드, 여기에 레벨업 보상과 업적·도감 보상이 더해집니다.
+# 길드 창설 2,000 = 혼자서도 반나절, 길드원이 모으면 금방입니다.
 economy:
   starting-gold: 0
-  gold-per-mob-kill: 2
-  gold-per-level-up: 50
+  gold-per-mob-kill: 6
+  gold-per-level-up: 120
+  # LUCK 1포인트당 처치 보상이 2배가 될 확률(%). 상한을 두는 이유는,
+  # "항상 2배"에 닿는 순간 그건 운이 아니라 모두가 찍어야 하는 고정 배수가
+  # 되기 때문입니다.
+  luck-double-chance-per-point: 2.0
+  luck-double-chance-max: 60
   symbol: "G"              # 금액 뒤에 붙는 단위 표시
   allow-player-transfer: true   # /pay 로 플레이어끼리 주고받기
 
@@ -426,7 +602,7 @@ titles:
 guild:
   name-max-length: 16
   max-members: 20
-  create-cost: 1000            # 창설에 드는 골드. 0 이면 무료
+  create-cost: 2000            # 창설에 드는 골드. 0 이면 무료
   invite-timeout-seconds: 60
   # 공동 보관함 크기(줄). 6 = 큰 상자 한 개와 같은 54칸. 1~6 만 가능합니다.
   # 줄이면 넘치는 칸의 물건은 길드장 우편함으로 갑니다.
@@ -441,11 +617,11 @@ guild:
     max-radius: 96             # 투자로 넓힐 수 있는 한계
     # 이만큼의 골드를 투자할 때마다 반경이 1블록 늘어납니다. 0 이면 확장을 끕니다.
     # 기본값 기준 32 -> 96 까지 넓히는 데 32,000 골드가 듭니다.
-    invest-gold-per-block: 500
+    invest-gold-per-block: 250
     # 다른 영지와 이만큼은 더 떨어져야 합니다(두 반경 합에 더해서).
     # 0 이면 경계가 딱 붙어, 블록 하나를 두고 다투게 됩니다.
     gap-between-claims: 16
-    banner-cost: 2000          # 깃발 하나 값
+    banner-cost: 3000          # 깃발 하나 값
 
     # "블록을 부술 수 없다"를 실제로 지키는 항목들.
     # block-place 를 끄면 외부인이 용암을 붓거나 TNT 를 놓을 수 있고,
@@ -479,7 +655,7 @@ guild:
   # 금고가 판돈이기 때문입니다 - 안 그러면 준비 시간에 비워 버리면 그만입니다.
   # 같은 이유로 자기 깃발을 부수는 것도, 길드를 해체하는 것도 항복 처리됩니다.
   war:
-    declare-cost: 5000         # 선포하는 쪽 금고에서 나갑니다. 져도 돌려받지 않습니다
+    declare-cost: 2500         # 선포하는 쪽 금고에서 나갑니다. 져도 돌려받지 않습니다
     # 선포 후 이만큼은 깃발을 건드릴 수 없습니다. 0 이면 즉시 교전.
     # 0 으로 두면 "선포"와 "승리"가 같은 행동이 되어, 상대가 접속해 있지 않은
     # 시간을 노리는 것이 최적 전략이 됩니다.

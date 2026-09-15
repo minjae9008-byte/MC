@@ -13,6 +13,7 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Owns levelling, stat allocation and every derived value. Nothing here runs
@@ -28,17 +29,27 @@ public final class StatsService {
     private final RpgCorePlugin plugin;
 
     private final NamespacedKey strDamageKey;
+    private final NamespacedKey strKnockbackKey;
     private final NamespacedKey dexAttackSpeedKey;
+    private final NamespacedKey dexMiningKey;
+    private final NamespacedKey dexSweepKey;
+    private final NamespacedKey vitToughKey;
     private final NamespacedKey agiSpeedKey;
     private final NamespacedKey agiJumpKey;
+    private final NamespacedKey agiFallKey;
     private final NamespacedKey luckKey;
 
     public StatsService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.strDamageKey = new NamespacedKey(plugin, "str_damage");
+        this.strKnockbackKey = new NamespacedKey(plugin, "str_knockback");
         this.dexAttackSpeedKey = new NamespacedKey(plugin, "dex_attack_speed");
+        this.dexMiningKey = new NamespacedKey(plugin, "dex_mining");
+        this.dexSweepKey = new NamespacedKey(plugin, "dex_sweep");
+        this.vitToughKey = new NamespacedKey(plugin, "vit_knockback_resist");
         this.agiSpeedKey = new NamespacedKey(plugin, "agi_speed");
         this.agiJumpKey = new NamespacedKey(plugin, "agi_jump");
+        this.agiFallKey = new NamespacedKey(plugin, "agi_safe_fall");
         this.luckKey = new NamespacedKey(plugin, "luck_bonus");
     }
 
@@ -77,6 +88,33 @@ public final class StatsService {
     public int effectiveStat(PlayerData data, StatType type) {
         RpgJob job = plugin.jobs().byId(data.jobId());
         return data.stat(type) + (job == null ? 0 : job.statBonus(type));
+    }
+
+    /**
+     * The same points, after diminishing returns - and this is what every
+     * derived value is actually built from.
+     *
+     * Without it the only question a build ever asks is "how many points",
+     * never "which stat": each point is worth exactly as much as the last, so
+     * the right answer is always to pour everything into whichever stat is
+     * strongest, and every player ends up the same. Past the soft cap a point
+     * is worth a fraction of one below it, which makes a second stat cheaper
+     * than a deeper first one and turns levelling into a series of choices.
+     *
+     * The cap counts the job's bonus too, so picking a job that shares your
+     * specialisation gets you there sooner - which is the point of picking one.
+     */
+    public double scaledStat(PlayerData data, StatType type) {
+        return scale(effectiveStat(data, type));
+    }
+
+    /** The curve itself, exposed so the stats screen can explain it. */
+    public double scale(int points) {
+        int cap = plugin.rpgConfig().statSoftCap();
+        if (cap <= 0 || points <= cap) {
+            return points;
+        }
+        return cap + (points - cap) * plugin.rpgConfig().statBeyondCapPercent() / 100.0D;
     }
 
     public void addXp(Player player, int amount) {
@@ -152,6 +190,22 @@ public final class StatsService {
         return max > 0 && data.level() >= max;
     }
 
+    /**
+     * Rolls a LUCK payout for one kill.
+     *
+     * Capped, because a stat that can reach "always" stops being luck and
+     * becomes a flat multiplier everyone is obliged to buy.
+     */
+    public boolean rollLuck(Player player) {
+        PlayerData data = plugin.players().cached(player.getUniqueId());
+        if (data == null) {
+            return false;
+        }
+        double chance = Math.min(plugin.rpgConfig().luckKillMaxChance(),
+                scaledStat(data, StatType.LUCK) * plugin.rpgConfig().luckKillChancePerPoint());
+        return chance > 0 && ThreadLocalRandom.current().nextDouble() * 100.0D < chance;
+    }
+
     public void recalculate(Player player) {
         recalculate(player, plugin.players().get(player));
     }
@@ -172,28 +226,54 @@ public final class StatsService {
         // recalculate() throw.
         int maxHealth = Math.clamp((long) config.baseHp()
                 + (long) data.level() * config.hpPerLevel()
-                + (long) effectiveStat(data, StatType.VIT) * config.hpPerVit(), 1, MAX_ATTRIBUTE_HEALTH);
+                + Math.round(scaledStat(data, StatType.VIT) * config.hpPerVit()),
+                1, MAX_ATTRIBUTE_HEALTH);
         data.maxHealth(maxHealth);
         Attributes.setBase(player, Attributes.maxHealth(), maxHealth);
         if (player.getHealth() > maxHealth) {
             player.setHealth(maxHealth);
         }
 
+        // Each stat grants more than one thing on purpose. A stat that moves a
+        // single number is a number, not a choice: STR that only raised damage
+        // would be read as "the damage stat" and picked or skipped on that
+        // alone. With a second and third effect, every stat is worth something
+        // to some build, and the ones you skip cost you something real.
+        double str = scaledStat(data, StatType.STR);
+        double dex = scaledStat(data, StatType.DEX);
+        double vit = scaledStat(data, StatType.VIT);
+        double agi = scaledStat(data, StatType.AGI);
+        double luck = scaledStat(data, StatType.LUCK);
+
         Attributes.setModifier(player, Attributes.attackDamage(), strDamageKey,
-                effectiveStat(data, StatType.STR) * config.attackPerStr(), AttributeModifier.Operation.ADD_NUMBER);
+                str * config.attackPerStr(), AttributeModifier.Operation.ADD_NUMBER);
+        Attributes.setModifier(player, Attributes.attackKnockback(), strKnockbackKey,
+                str * config.knockbackPerStr(), AttributeModifier.Operation.ADD_NUMBER);
+
         Attributes.setModifier(player, Attributes.attackSpeed(), dexAttackSpeedKey,
-                effectiveStat(data, StatType.DEX) * config.attackSpeedPerDex(), AttributeModifier.Operation.ADD_NUMBER);
+                dex * config.attackSpeedPerDex(), AttributeModifier.Operation.ADD_NUMBER);
+        Attributes.setModifier(player, Attributes.blockBreakSpeed(), dexMiningKey,
+                dex * config.miningPerDex(), AttributeModifier.Operation.MULTIPLY_SCALAR_1);
+        Attributes.setModifier(player, Attributes.sweepingDamageRatio(), dexSweepKey,
+                dex * config.sweepPerDex(), AttributeModifier.Operation.ADD_NUMBER);
+
+        Attributes.setModifier(player, Attributes.knockbackResistance(), vitToughKey,
+                vit * config.knockbackResistPerVit(), AttributeModifier.Operation.ADD_NUMBER);
+
         Attributes.setModifier(player, Attributes.movementSpeed(), agiSpeedKey,
-                effectiveStat(data, StatType.AGI) * config.speedPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
+                agi * config.speedPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
         Attributes.setModifier(player, Attributes.jumpStrength(), agiJumpKey,
-                effectiveStat(data, StatType.AGI) * config.jumpPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
+                agi * config.jumpPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
+        Attributes.setModifier(player, Attributes.safeFallDistance(), agiFallKey,
+                agi * config.safeFallPerAgi(), AttributeModifier.Operation.ADD_NUMBER);
+
         Attributes.setModifier(player, Attributes.luck(), luckKey,
-                effectiveStat(data, StatType.LUCK) * config.luckPerLuck(), AttributeModifier.Operation.ADD_NUMBER);
+                luck * config.luckPerLuck(), AttributeModifier.Operation.ADD_NUMBER);
 
         applyJobAttributes(player, data);
 
         data.weightMax(config.weightBase()
-                + effectiveStat(data, StatType.STR) * config.weightPerStr()
+                + (int) Math.round(str * config.weightPerStr())
                 + jobWeightBonus(data));
         // Capacity changed, so the encumbrance tier may have changed with it;
         // and this runs on join/respawn/reload, where the gear penalty also
@@ -240,9 +320,14 @@ public final class StatsService {
      */
     public void clearModifiers(Player player) {
         Attributes.removeModifier(player, Attributes.attackDamage(), strDamageKey);
+        Attributes.removeModifier(player, Attributes.attackKnockback(), strKnockbackKey);
         Attributes.removeModifier(player, Attributes.attackSpeed(), dexAttackSpeedKey);
+        Attributes.removeModifier(player, Attributes.blockBreakSpeed(), dexMiningKey);
+        Attributes.removeModifier(player, Attributes.sweepingDamageRatio(), dexSweepKey);
+        Attributes.removeModifier(player, Attributes.knockbackResistance(), vitToughKey);
         Attributes.removeModifier(player, Attributes.movementSpeed(), agiSpeedKey);
         Attributes.removeModifier(player, Attributes.jumpStrength(), agiJumpKey);
+        Attributes.removeModifier(player, Attributes.safeFallDistance(), agiFallKey);
         Attributes.removeModifier(player, Attributes.luck(), luckKey);
         for (String id : plugin.jobs().managedAttributes()) {
             Attribute attribute = Attributes.byId(id);

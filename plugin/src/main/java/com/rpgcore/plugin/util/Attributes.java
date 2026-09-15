@@ -55,6 +55,24 @@ public final class Attributes {
         return resolve("armor_toughness", "generic.armor_toughness");
     }
 
+    public static Attribute knockbackResistance() {
+        return resolve("knockback_resistance", "generic.knockback_resistance");
+    }
+
+    public static Attribute attackKnockback() {
+        return resolve("attack_knockback", "generic.attack_knockback");
+    }
+
+    /** How much of a sweeping hit carries to the mobs beside the target. */
+    public static Attribute sweepingDamageRatio() {
+        return resolve("sweeping_damage_ratio", "player.sweeping_damage_ratio");
+    }
+
+    /** Blocks that can be fallen before it hurts. Added in 1.21.2. */
+    public static Attribute safeFallDistance() {
+        return resolve("safe_fall_distance", "generic.safe_fall_distance");
+    }
+
     /**
      * Mining speed. Added in 1.21.2; resolves to null on older servers, and
      * every helper here no-ops on a null attribute, so the tool-wear penalty
