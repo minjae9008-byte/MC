@@ -363,5 +363,6 @@ public final class StatsService {
         player.sendMessage(ChatColor.GOLD + "[RPGCore] " + ChatColor.YELLOW + "LEVEL UP! Lv." + data.level()
                 + (atMaxLevel(data) ? ChatColor.GOLD + " (최대)" : "")
                 + ChatColor.AQUA + "  (스탯 포인트 " + data.points() + "개 보유)");
+        plugin.notifier().levelUp(player, data);
     }
 }

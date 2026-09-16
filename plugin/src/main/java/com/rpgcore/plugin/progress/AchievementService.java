@@ -203,6 +203,9 @@ public final class AchievementService {
             plugin.stats().addXp(player, achievement.rewardXp());
         }
         announce(player, achievement);
+        // After announce(), so a Discord message never describes a title the
+        // player did not actually get - claimFirst() above can still refuse.
+        plugin.notifier().achievement(player, achievement);
         return true;
     }
 

@@ -11,6 +11,9 @@ import com.rpgcore.plugin.collection.CollectionService;
 import com.rpgcore.plugin.config.RpgConfig;
 import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.data.PlayerDataManager;
+import com.rpgcore.plugin.discord.DiscordListener;
+import com.rpgcore.plugin.discord.DiscordNotifier;
+import com.rpgcore.plugin.discord.DiscordService;
 import com.rpgcore.plugin.display.NameplateService;
 import com.rpgcore.plugin.gear.GearListener;
 import com.rpgcore.plugin.gear.GearService;
@@ -63,11 +66,15 @@ import com.rpgcore.plugin.weight.ItemWeightTable;
 import com.rpgcore.plugin.weight.WeightListener;
 import com.rpgcore.plugin.weight.WeightService;
 import org.bukkit.ChatColor;
+
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * RPGCore.
@@ -120,6 +127,9 @@ public final class RpgCorePlugin extends JavaPlugin {
     private HudTask hudTask;
     /** The single thread every file write goes through. */
     private SaveQueue saveQueue;
+    /** Delivery to the Discord webhook, and what the messages look like. */
+    private DiscordService discord;
+    private DiscordNotifier notifier;
 
     @Override
     public void onEnable() {
@@ -129,6 +139,9 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.saveQueue = new SaveQueue(this);
         this.rpgConfig = new RpgConfig(this);
         this.scoreboard = new RpgScoreboard();
+        // Early, so anything constructed below can report through it.
+        this.discord = new DiscordService(this);
+        this.notifier = new DiscordNotifier(this);
         this.players = new PlayerDataManager(this, scoreboard);
         this.players.createObjectives();
         this.stats = new StatsService(this);
@@ -196,6 +209,9 @@ public final class RpgCorePlugin extends JavaPlugin {
         // Registered unconditionally; the listener itself honours the toggle,
         // so features.proximity-chat responds to /rpgcore reload like the rest.
         getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
+        // Registered unconditionally like the rest; every handler checks its
+        // own toggle, so discord.enabled responds to /rpgcore reload.
+        getServer().getPluginManager().registerEvents(new DiscordListener(this), this);
 
         // Two light repeating tasks total: one tick pump for the weight/tree
         // queues, and the HUD on its own slower interval.
@@ -253,6 +269,12 @@ public final class RpgCorePlugin extends JavaPlugin {
             stats.recalculate(player);
             loadProgress(player);
         }
+
+        // On the first tick rather than here: at this point the server is
+        // still loading and has not accepted a connection, so announcing now
+        // would promise something that has not happened yet - and would be a
+        // lie if a later plugin fails and takes the startup down with it.
+        getServer().getScheduler().runTask(this, () -> notifier.serverStarted());
 
         getLogger().info("RPGCore plugin enabled.");
     }
@@ -323,6 +345,12 @@ public final class RpgCorePlugin extends JavaPlugin {
         if (saveQueue != null) {
             saveQueue.shutdown();
         }
+        // Last, and it blocks: the sender is a daemon thread, so a message
+        // that is only queued when the JVM exits is a message nobody sees.
+        // The wait is bounded by discord.shutdown-wait-ms.
+        if (discord != null) {
+            discord.shutdown(notifier == null ? null : notifier.serverStoppingEmbed());
+        }
         getLogger().info("RPGCore plugin disabled.");
     }
 
@@ -388,6 +416,9 @@ public final class RpgCorePlugin extends JavaPlugin {
                 // pushed into the claims that are already on the ground.
                 guilds.refreshRadii();
                 leaderboard.invalidate();
+                // A reload is how an operator fixes a mistyped webhook, so it
+                // is also where the one-warning-per-session mute is lifted.
+                discord.unmute();
                 for (Player player : getServer().getOnlinePlayers()) {
                     stats.recalculate(player);
                 }
@@ -568,6 +599,13 @@ public final class RpgCorePlugin extends JavaPlugin {
         line(sender, "골드", true, "처치 +" + rpgConfig.goldPerMobKill() + " / 레벨업 +"
                 + rpgConfig.goldPerLevel() + (rpgConfig.goldTransferAllowed() ? ", /pay 허용" : ", /pay 금지"));
 
+        // Reports whether the webhook is set, never what it is: the URL is a
+        // credential, and /rpgcore check is run in front of other people.
+        line(sender, "Discord", rpgConfig.discordEnabled(),
+                (rpgConfig.discordWebhookUrl().isBlank()
+                        ? "웹훅 주소가 비어 있음"
+                        : "웹훅 설정됨") + " · 보내는 알림 " + discordEventSummary());
+
         sender.sendMessage(ChatColor.GRAY + "레벨: 최대 "
                 + (rpgConfig.maxLevel() > 0 ? String.valueOf(rpgConfig.maxLevel()) : "무제한")
                 + ", 곡선 x" + rpgConfig.xpMultiplier()
@@ -575,6 +613,17 @@ public final class RpgCorePlugin extends JavaPlugin {
                 + " / Lv20 " + stats.xpNeedFor(19) + " XP)");
         sender.sendMessage(ChatColor.GRAY + "인챈트 한계: "
                 + (rpgConfig.enchantRespectVanilla() ? "바닐라 최대 레벨" : "최대 " + rpgConfig.enchantMaxLevel()));
+    }
+
+    /** Which relays are on, by their config names. Never includes the URL. */
+    private String discordEventSummary() {
+        List<String> on = new ArrayList<>();
+        for (String event : RpgConfig.discordEventNames()) {
+            if (rpgConfig.discordEvent(event)) {
+                on.add(event);
+            }
+        }
+        return on.isEmpty() ? "없음" : String.join(", ", on);
     }
 
     private void line(CommandSender sender, String label, boolean enabled, String detail) {
@@ -707,6 +756,14 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public RpgConfig rpgConfig() {
         return rpgConfig;
+    }
+
+    public DiscordService discord() {
+        return discord;
+    }
+
+    public DiscordNotifier notifier() {
+        return notifier;
     }
 
     public PlayerDataManager players() {

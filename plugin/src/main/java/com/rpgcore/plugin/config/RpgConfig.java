@@ -25,6 +25,14 @@ public final class RpgConfig {
     public static final String SETTINGS_FILE = "settings.yml";
     public static final String JOBS_FILE = "jobs.yml";
 
+    /**
+     * Every relayable event, which is also the list written into config.yml.
+     * Naming them here rather than reading whatever keys happen to be in the
+     * file means a typo switches nothing on by accident.
+     */
+    private static final List<String> DISCORD_EVENTS = List.of(
+            "server-start", "server-stop", "join", "quit", "death", "level-up", "achievement");
+
     private static final List<String> DISPLAY_SEGMENTS = List.of("party", "title", "level", "job");
     private static final List<String> DISPLAY_SURFACES = List.of("nameplate", "tablist");
     private static final Map<String, String> DISPLAY_LABELS =
@@ -182,6 +190,17 @@ public final class RpgConfig {
     private int duelCooldownSeconds;
     private boolean duelAnnounce;
 
+    // --- discord ---
+    private boolean discordEnabled;
+    private String discordWebhookUrl;
+    private String discordUsername;
+    private String discordAvatarUrl;
+    private long discordShutdownWaitMs;
+    private int discordLevelMinimum;
+    private int discordLevelStep;
+    private boolean discordAllAchievements;
+    private final Set<String> discordEvents = new HashSet<>();
+
     public RpgConfig(RpgCorePlugin plugin) {
         this.plugin = plugin;
         reload();
@@ -250,6 +269,8 @@ public final class RpgConfig {
 
         luckKillChancePerPoint = Math.max(0.0D, c.getDouble("economy.luck-double-chance-per-point", 2.0));
         luckKillMaxChance = Math.clamp(c.getInt("economy.luck-double-chance-max", 60), 0, 100);
+
+        loadDiscord(c);
 
         weightBase = c.getInt("weight.base-capacity", 100);
         weightPerStr = c.getInt("weight.capacity-per-str", 8);
@@ -974,5 +995,86 @@ public final class RpgConfig {
 
     public double tradeMaxDistance() {
         return tradeMaxDistance;
+    }
+
+    // ------------------------------------------------------------- discord
+
+    /**
+     * Reads the webhook block.
+     *
+     * The URL is a credential: anyone holding it can post into the channel as
+     * the server. It is never logged and never echoed by /rpgcore check, and
+     * the one warning below names the key rather than the value.
+     */
+    private void loadDiscord(FileConfiguration c) {
+        discordEnabled = c.getBoolean("discord.enabled", false);
+        discordWebhookUrl = c.getString("discord.webhook-url", "").trim();
+        discordUsername = c.getString("discord.username", "");
+        discordAvatarUrl = c.getString("discord.avatar-url",
+                "https://mc-heads.net/avatar/%uuid%/64").trim();
+        discordShutdownWaitMs = Math.clamp(
+                c.getLong("discord.shutdown-wait-ms", 3000L), 0L, 15_000L);
+        discordLevelMinimum = Math.max(0, c.getInt("discord.level-up.minimum-level", 10));
+        // 0 and 1 both mean "every level"; clamping here saves the caller a
+        // modulo by zero.
+        discordLevelStep = Math.max(1, c.getInt("discord.level-up.only-multiples-of", 5));
+        discordAllAchievements = c.getBoolean("discord.all-achievements", false);
+
+        discordEvents.clear();
+        for (String event : DISCORD_EVENTS) {
+            if (c.getBoolean("discord.events." + event, true)) {
+                discordEvents.add(event);
+            }
+        }
+
+        if (discordEnabled && discordWebhookUrl.isBlank()) {
+            plugin.getLogger().warning("discord.enabled 가 켜져 있지만 discord.webhook-url 이 비어 있어 "
+                    + "Discord 알림을 보내지 않습니다.");
+        } else if (discordEnabled && !discordWebhookUrl.startsWith("http")) {
+            plugin.getLogger().warning("discord.webhook-url 이 http(s):// 로 시작하지 않습니다. "
+                    + "Discord 채널 설정 > 연동 > 웹후크에서 'URL 복사'로 얻은 주소를 그대로 넣으세요.");
+        }
+    }
+
+    public boolean discordEnabled() {
+        return discordEnabled;
+    }
+
+    public String discordWebhookUrl() {
+        return discordWebhookUrl;
+    }
+
+    public String discordUsername() {
+        return discordUsername;
+    }
+
+    public String discordAvatarUrl() {
+        return discordAvatarUrl;
+    }
+
+    public long discordShutdownWaitMs() {
+        return discordShutdownWaitMs;
+    }
+
+    public int discordLevelMinimum() {
+        return discordLevelMinimum;
+    }
+
+    public int discordLevelStep() {
+        return discordLevelStep;
+    }
+
+    public boolean discordAllAchievements() {
+        return discordAllAchievements;
+    }
+
+    /** The relayable event names, in the order they appear in config.yml. */
+    public static List<String> discordEventNames() {
+        return DISCORD_EVENTS;
+    }
+
+    /** Whether one named event is relayed. Unknown names are never on. */
+    public boolean discordEvent(String event) {
+        return discordEvents.contains(event);
     }
 }
