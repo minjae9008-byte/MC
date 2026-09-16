@@ -150,7 +150,10 @@ public final class AchievementService {
         if (data == null) {
             return;
         }
-        data.counter(type, data.counter(type) + amount);
+        // Saturating, for the same reason gold saturates: these are ints on
+        // the scoreboard mirror, and an overflow would wrap negative, which
+        // PlayerData floors at zero - silently resetting a lifetime tally.
+        data.counter(type, (int) Math.min((long) data.counter(type) + amount, Integer.MAX_VALUE));
         plugin.players().flush(player, data);
         check(player, data, type);
     }

@@ -492,6 +492,10 @@ public final class AuctionService {
         for (AuctionListing listing : due) {
             close(listing);
         }
+        // The cache still points at a lot that has just been removed, so
+        // without this every later tick re-scans the whole book, finds
+        // nothing, and rebuilds the cache anyway.
+        refreshSoonestEnd();
         save();
     }
 

@@ -342,7 +342,11 @@ public final class RpgConfig {
         collectionTitle = c.getString("collection.title", "&8도감");
         titleMenuTitle = c.getString("titles.menu-title", "&8칭호");
         guiTitle = c.getString("gui.title", "&8캐릭터 정보");
-        guiSize = c.getInt("gui.size", 27);
+        // Rounded to a legal chest here rather than at each screen that opens
+        // one. Bukkit throws on a size that is not 9..54 in steps of nine, and
+        // that throw surfaces as a command failing for whoever typed it -
+        // clamping at the source means no caller can get it wrong.
+        guiSize = legalChestSize(c.getInt("gui.size", 27), 27);
         tradeTitle = c.getString("trade.title", "&8거래");
         menuTitle = c.getString("menu.title", "&8RPG 메뉴");
 
@@ -1066,6 +1070,15 @@ public final class RpgConfig {
 
     public boolean discordAllAchievements() {
         return discordAllAchievements;
+    }
+
+    /**
+     * The nearest legal chest size at or below the requested one: 9 to 54
+     * slots, in rows of nine.
+     */
+    private static int legalChestSize(int requested, int fallback) {
+        int wanted = requested <= 0 ? fallback : requested;
+        return Math.clamp(wanted / 9 * 9, 9, 54);
     }
 
     /** The relayable event names, in the order they appear in config.yml. */

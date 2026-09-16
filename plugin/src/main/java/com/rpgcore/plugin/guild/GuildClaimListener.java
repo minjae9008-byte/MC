@@ -144,20 +144,30 @@ public final class GuildClaimListener implements Listener {
      */
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
-        if (plugin.rpgConfig().guildProtectExplosions()) {
-            shieldClaimed(event.blockList());
-        } else {
-            unclaimDestroyedBanners(event.blockList());
-        }
+        handleBlast(event.blockList());
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent event) {
+        handleBlast(event.blockList());
+    }
+
+    /**
+     * Shield first, then deal with whatever is left standing in the list.
+     *
+     * The sweep for banners runs whether or not explosion protection is on.
+     * With it on, a banner on peaceful land has already been removed from the
+     * list by the shield, so the sweep finds nothing - but a banner on land
+     * whose guild is mid-war has not, because the shield is dropped during a
+     * war on purpose. That is the case this exists for: explosives are the
+     * obvious way to attack a flag, and before this they destroyed the block
+     * while leaving the claim behind and the war unresolved.
+     */
+    private void handleBlast(List<Block> blocks) {
         if (plugin.rpgConfig().guildProtectExplosions()) {
-            shieldClaimed(event.blockList());
-        } else {
-            unclaimDestroyedBanners(event.blockList());
+            shieldClaimed(blocks);
         }
+        unclaimDestroyedBanners(blocks);
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
@@ -182,17 +192,19 @@ public final class GuildClaimListener implements Listener {
 
     /**
      * A banner destroyed by something other than a player takes its claim with
-     * it. Without this the claim would outlive its flag: land still protected,
-     * still buffed, with nothing standing on it to say so or to break.
-     *
-     * Only reachable when explosion protection is switched off, since a banner
-     * is always inside its own claim and so is shielded along with it.
+     * it - and, if its guild was at war, the war with it. Without this the
+     * claim outlives its flag: land still protected, still buffed, with
+     * nothing standing on it to say so or to break.
      */
     private void unclaimDestroyedBanners(List<Block> blocks) {
         for (Block block : blocks) {
-            if (block.getType().name().endsWith("BANNER")) {
-                plugin.guilds().removeBannerAt(block.getWorld(),
-                        block.getX(), block.getY(), block.getZ());
+            if (!block.getType().name().endsWith("BANNER")) {
+                continue;
+            }
+            GuildClaim claim = plugin.guilds().claimAt(block.getWorld(), block.getX(), block.getZ());
+            if (claim != null && claim.isBannerAt(block.getWorld(),
+                    block.getX(), block.getY(), block.getZ())) {
+                plugin.guilds().handleBannerDestroyed(claim);
             }
         }
     }

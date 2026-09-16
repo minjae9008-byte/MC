@@ -1,5 +1,5 @@
 name: RPGCorePlugin
-version: '2.6.0'
+version: '2.6.1'
 main: com.rpgcore.plugin.RpgCorePlugin
 api-version: '26.2'
 author: RPGCore

@@ -49,6 +49,16 @@ public final class DiscordService {
     /** How long the sender waits for more events before posting what it has. */
     private static final long BATCH_WINDOW_MS = 400L;
     private static final int MAX_ATTEMPTS = 3;
+    /**
+     * How many times one batch may be told to slow down before it is dropped.
+     *
+     * Without a ceiling, "wait and try again" is an unbounded loop: a webhook
+     * that answers 429 forever - a Discord incident, or a channel someone else
+     * is also posting into hard - parks the sender thread for the life of the
+     * server, and every later notification queues up behind a message that is
+     * never going to land.
+     */
+    private static final int MAX_RATE_LIMIT_WAITS = 5;
 
     private final RpgCorePlugin plugin;
     private final BlockingQueue<Outbound> queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
@@ -104,10 +114,6 @@ public final class DiscordService {
     /** Lazily starts the sender, so a server with no webhook has no thread. */
     private void start() {
         if (running.compareAndSet(false, true)) {
-            this.http = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .followRedirects(HttpClient.Redirect.NEVER)
-                    .build();
             Thread thread = new Thread(this::loop, "RPGCore-discord");
             // Daemon: an unreachable Discord must never be the reason a
             // server cannot exit. Shutdown drains explicitly, with a deadline.
@@ -118,6 +124,13 @@ public final class DiscordService {
     }
 
     private void loop() {
+        // Built here rather than in start(): an HttpClient spins up its own
+        // selector thread and pool, and start() runs on whichever thread sent
+        // the first event - usually the main one, mid-tick.
+        this.http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
         List<Outbound> batch = new ArrayList<>(DiscordEmbed.MAX_EMBEDS_PER_MESSAGE);
         while (true) {
             batch.clear();
@@ -180,6 +193,7 @@ public final class DiscordService {
         String body = DiscordEmbed.toMessage(embeds, batch.get(0).username());
         String url = batch.get(0).url();
 
+        int rateLimitWaits = 0;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             HttpRequest request;
             try {
@@ -207,10 +221,15 @@ public final class DiscordService {
                 }
                 if (status == 429) {
                     // Rate limited. Discord says how long to wait; obey it
-                    // rather than guessing, and do not count it as an attempt -
-                    // being told to slow down is not a failure.
-                    long waitMs = retryAfterMillis(response);
-                    Thread.sleep(Math.min(waitMs, 30_000L));
+                    // rather than guessing, and do not spend a delivery
+                    // attempt on it - being told to slow down is not a
+                    // failure. Bounded separately so it cannot become a loop.
+                    if (++rateLimitWaits > MAX_RATE_LIMIT_WAITS) {
+                        warnOnce("Discord 가 계속 속도 제한을 걸어 알림 " + embeds.size()
+                                + "건을 버렸습니다. 알림이 너무 잦다면 config.yml 의 discord.events 를 줄이세요.");
+                        return;
+                    }
+                    Thread.sleep(Math.clamp(retryAfterMillis(response), 0L, 30_000L));
                     attempt--;
                     continue;
                 }

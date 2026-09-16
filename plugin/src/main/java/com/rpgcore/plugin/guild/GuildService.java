@@ -685,6 +685,41 @@ public final class GuildService {
      * Returns true when this settled a war, which tells the caller the claim
      * is already down and not to treat it as an ordinary break.
      */
+    /**
+     * A claim banner destroyed by something that is not a player: TNT, a
+     * creeper, fire.
+     *
+     * This matters most during a war, which is exactly when it can happen -
+     * the blast shield is dropped on purpose while a war is running, so
+     * explosives are the siege weapon the feature invites. Without this, the
+     * obvious way to attack a flag destroys the block, leaves the claim
+     * registered with nothing standing on it, and does not win the war.
+     *
+     * A war has two sides, so the winner is unambiguous even though nobody
+     * knows who lit the fuse: the flag that fell belongs to one of them.
+     */
+    public void handleBannerDestroyed(GuildClaim claim) {
+        Guild owner = byId.get(claim.guildId());
+        if (owner == null) {
+            claims.remove(claim);
+            return;
+        }
+        GuildWar war = warOf(owner.id());
+        owner.claim(null);
+        claims.remove(claim);
+
+        if (war != null && war.fighting(System.currentTimeMillis())) {
+            Guild enemy = byId.get(war.opponentOf(owner.id()));
+            if (enemy != null) {
+                winWar(war, enemy, owner, owner.name() + " 의 깃발이 폭발로 무너짐");
+                return;
+            }
+        }
+        broadcast(owner, ChatColor.YELLOW + "[영지] " + claim.describe()
+                + " 의 깃발이 파괴되어 영지가 사라졌습니다.");
+        save();
+    }
+
     public boolean handleBannerBreak(Player breaker, GuildClaim claim) {
         Guild owner = byId.get(claim.guildId());
         if (owner == null) {
