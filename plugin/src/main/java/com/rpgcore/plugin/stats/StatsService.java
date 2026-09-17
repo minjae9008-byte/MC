@@ -12,7 +12,10 @@ import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -33,6 +36,20 @@ public final class StatsService {
     private static final double VANILLA_BASE_HEALTH = 20.0D;
 
     private final RpgCorePlugin plugin;
+    /**
+     * Levels already handed to a player by the grant currently running.
+     *
+     * The ceiling has to span one whole grant, not one call, because this
+     * method re-enters itself: levelling checks achievements, an achievement
+     * pays XP, and paying XP comes back through here. Counting per call let a
+     * single command stack a fresh thousand levels per nested round - and the
+     * warning it printed said the grant had stopped, which was not true.
+     * Keyed per player because party XP fans one award out across members.
+     */
+    private final Map<UUID, int[]> levelsThisGrant = new HashMap<>();
+    /** Index into that array: levels granted, and whether the cap was reported. */
+    private static final int GRANTED = 0;
+    private static final int REPORTED = 1;
 
     private final NamespacedKey strDamageKey;
     private final NamespacedKey strKnockbackKey;
@@ -136,14 +153,26 @@ public final class StatsService {
         }
         data.xp((int) Math.min((long) data.xp() + amount, Integer.MAX_VALUE));
 
+        UUID uuid = player.getUniqueId();
+        int[] budget = levelsThisGrant.get(uuid);
+        boolean outermost = budget == null;
+        if (outermost) {
+            budget = new int[2];
+            levelsThisGrant.put(uuid, budget);
+        }
+        try {
+            addXpLevelling(player, data, budget);
+        } finally {
+            if (outermost) {
+                levelsThisGrant.remove(uuid);
+            }
+        }
+    }
+
+    /** The levelling half of {@link #addXp}, sharing one grant's budget. */
+    private void addXpLevelling(Player player, PlayerData data, int[] budget) {
         boolean levelled = false;
-        int gained = 0;
         while (data.xp() >= data.xpNeed() && data.xpNeed() > 0 && !atMaxLevel(data)) {
-            data.xp(data.xp() - data.xpNeed());
-            data.level(data.level() + 1);
-            data.points(data.points() + plugin.rpgConfig().pointsPerLevel());
-            data.xpNeed(xpNeedFor(data.level()));
-            levelled = true;
             // Bounded, because the loop's length is set by config an operator
             // controls. xp-base 1 with xp-growth 0 and no multiplier is a
             // legal "levels are cheap" setup in which every level costs one
@@ -151,14 +180,26 @@ public final class StatsService {
             // calling Math.pow each pass, with the main thread held throughout.
             // Stopping short leaves the rest of the XP banked for the next
             // grant rather than dropping it.
-            if (++gained >= MAX_LEVELS_PER_GRANT) {
-                plugin.getLogger().warning("Stopped after " + MAX_LEVELS_PER_GRANT
-                        + " levels in one grant for " + player.getName()
-                        + "; the remaining XP is banked. Check level.xp-base and"
-                        + " level.xp-growth in settings.yml - levelling this cheap"
-                        + " is almost never intended.");
+            //
+            // Checked before the level is handed out, not after, or every
+            // nested round would slip one more past the ceiling.
+            if (budget[GRANTED] >= MAX_LEVELS_PER_GRANT) {
+                if (budget[REPORTED] == 0) {
+                    budget[REPORTED] = 1;
+                    plugin.getLogger().warning("Stopped after " + MAX_LEVELS_PER_GRANT
+                            + " levels in one grant for " + player.getName()
+                            + "; the remaining XP is banked. Check level.xp-base and"
+                            + " level.xp-growth in settings.yml - levelling this cheap"
+                            + " is almost never intended.");
+                }
                 break;
             }
+            budget[GRANTED]++;
+            data.xp(data.xp() - data.xpNeed());
+            data.level(data.level() + 1);
+            data.points(data.points() + plugin.rpgConfig().pointsPerLevel());
+            data.xpNeed(xpNeedFor(data.level()));
+            levelled = true;
         }
         if (atMaxLevel(data)) {
             data.xp(0);
