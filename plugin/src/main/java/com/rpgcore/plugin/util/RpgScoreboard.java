@@ -121,12 +121,16 @@ public final class RpgScoreboard {
             Score old = obj.getScore(from);
             if (old.isScoreSet()) {
                 obj.getScore(to).setScore(old.getScore());
+                // Cleared one objective at a time, not with resetScores(entry).
+                // That clears the entry across EVERY objective on the server,
+                // including ones belonging to other plugins and to datapacks -
+                // so renaming would have this plugin quietly delete data it
+                // does not own. Anything of ours left under the old name would
+                // be inherited by whoever registers that name next, so it does
+                // have to go; just not anybody else's.
+                old.resetScore();
             }
         }
-        // resetScores clears the entry across every objective at once, which
-        // is exactly right: anything of ours left under the old name would be
-        // picked up by whoever registers that name next.
-        board.resetScores(from);
     }
 
     private Objective objective(String name) {

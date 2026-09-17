@@ -182,6 +182,23 @@ public final class MailboxService {
 
     private void add(UUID owner, Entry entry) {
         List<Entry> box = boxes.computeIfAbsent(owner, k -> new ArrayList<>());
+        // Gold is fungible, so it is merged rather than appended. Without
+        // this, an ordinary auction week - every outbid refund is one entry -
+        // walks a busy player's mailbox up to the cap, and the cap deletes
+        // whatever arrives next. Merging keeps the count proportional to the
+        // number of distinct things owed, not to how often they were owed.
+        if (entry.isGold()) {
+            for (int i = 0; i < box.size(); i++) {
+                Entry existing = box.get(i);
+                if (existing.isGold() && existing.note().equals(entry.note())) {
+                    box.set(i, new Entry(null,
+                            (int) Math.min((long) existing.gold() + entry.gold(), Integer.MAX_VALUE),
+                            existing.note()));
+                    save();
+                    return;
+                }
+            }
+        }
         if (box.size() >= MAX_PER_PLAYER) {
             plugin.getLogger().severe("Mailbox for " + owner + " is full (" + MAX_PER_PLAYER
                     + " entries); refusing to hold " + ChatColor.stripColor(entry.describe())
@@ -225,7 +242,10 @@ public final class MailboxService {
 
         List<Entry> kept = new ArrayList<>();
         int items = 0;
-        int gold = 0;
+        // Summed as a long: the entries are consumed whether or not the
+        // payment lands, so an int that wrapped negative here would make the
+        // refund a no-op and delete every coin in the mailbox.
+        long gold = 0L;
         for (Entry entry : box) {
             if (entry.isGold()) {
                 // Summed, then paid once below. Each refund writes the
@@ -241,7 +261,7 @@ public final class MailboxService {
         }
 
         if (gold > 0) {
-            plugin.economy().refund(player, gold);
+            plugin.economy().refund(player, (int) Math.min(gold, Integer.MAX_VALUE));
         }
         if (kept.isEmpty()) {
             boxes.remove(player.getUniqueId());
@@ -254,7 +274,8 @@ public final class MailboxService {
             player.sendMessage(ChatColor.AQUA + "[우편] 보관 중이던 "
                     + (items > 0 ? ChatColor.WHITE + "아이템 " + items + "개" + ChatColor.AQUA : "")
                     + (items > 0 && gold > 0 ? ChatColor.GRAY + " 와(과) " + ChatColor.AQUA : "")
-                    + (gold > 0 ? plugin.economy().format(gold) + ChatColor.AQUA : "")
+                    + (gold > 0 ? plugin.economy().format((int) Math.min(gold, Integer.MAX_VALUE))
+                            + ChatColor.AQUA : "")
                     + " 을(를) 받았습니다.");
         }
         if (!kept.isEmpty()) {

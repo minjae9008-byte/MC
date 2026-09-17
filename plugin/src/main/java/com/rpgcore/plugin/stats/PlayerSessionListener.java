@@ -5,6 +5,7 @@ import com.rpgcore.plugin.data.PlayerData;
 import com.rpgcore.plugin.progress.CounterType;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.ChatColor;
+import org.bukkit.GameMode;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -82,7 +83,12 @@ public final class PlayerSessionListener implements Listener {
             return;
         }
         Player killer = event.getEntity().getKiller();
-        if (killer == null) {
+        if (killer == null || killer.getGameMode() == GameMode.CREATIVE) {
+            // Creative is excluded here for the same reason it is excluded
+            // from mined blocks and caught fish: a goal that can be finished
+            // from the creative menu is not a goal. Without this, mob-kill
+            // achievements and the gold that comes with them were the one
+            // progression an operator could hand themselves for free.
             return;
         }
         // LUCK is the one stat with nothing to point at in vanilla - the luck
@@ -91,13 +97,24 @@ public final class PlayerSessionListener implements Listener {
         // reward investment. Here it buys a chance that a kill simply pays
         // twice, which is something a player can feel.
         boolean lucky = plugin.stats().rollLuck(killer);
-        int multiplier = lucky ? 2 : 1;
-        plugin.stats().awardXp(killer, plugin.rpgConfig().xpPerMobKill() * multiplier);
-        plugin.economy().give(killer, plugin.rpgConfig().goldPerMobKill() * multiplier);
+        plugin.stats().awardXp(killer, doubled(plugin.rpgConfig().xpPerMobKill(), lucky));
+        plugin.economy().give(killer, doubled(plugin.rpgConfig().goldPerMobKill(), lucky));
         plugin.achievements().bump(killer, CounterType.MOB_KILLS, 1);
         if (lucky) {
             killer.sendActionBar(LegacyComponentSerializer.legacyAmpersand()
                     .deserialize("&a✦ 행운! &f보상 2배"));
         }
+    }
+
+    /**
+     * Doubles a reward without wrapping.
+     *
+     * Both rewards are operator-set ints with no ceiling, so a plain {@code * 2}
+     * on a large one lands negative - and every consumer of these refuses
+     * anything at or below zero, which turns a lucky kill into the only kill
+     * that pays nothing at all.
+     */
+    private static int doubled(int amount, boolean lucky) {
+        return lucky ? (int) Math.min((long) amount * 2L, Integer.MAX_VALUE) : amount;
     }
 }

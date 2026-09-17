@@ -51,13 +51,26 @@ final class ClaimIndex {
         if (world == null) {
             return;
         }
+        boolean[] removed = {false};
         forEachChunk(claim, key -> {
             List<GuildClaim> bucket = world.get(key);
-            if (bucket != null && bucket.remove(claim) && bucket.isEmpty()) {
+            if (bucket == null) {
+                return;
+            }
+            if (bucket.remove(claim)) {
+                removed[0] = true;
+            }
+            if (bucket.isEmpty()) {
                 world.remove(key);
             }
         });
-        size--;
+        // Counted only when something actually came out. Several paths remove
+        // a claim - a broken banner, an explosion, a disband, the rolling
+        // validity check - and two of them reaching the same claim would
+        // otherwise walk this count below the number of claims that exist.
+        if (removed[0]) {
+            size--;
+        }
     }
 
     /** The claim covering these coordinates, or null. */

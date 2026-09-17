@@ -23,6 +23,12 @@ public final class StatsService {
 
     /** Vanilla's hard ceiling for the max_health attribute base value. */
     private static final int MAX_ATTRIBUTE_HEALTH = 1024;
+    /**
+     * How many levels one XP grant may hand out before it stops and banks the
+     * rest. A guard against a config that makes a level cost almost nothing,
+     * not a game rule - reaching it means the curve is wrong.
+     */
+    private static final int MAX_LEVELS_PER_GRANT = 1000;
     /** What max_health is worth on a server without this plugin: ten hearts. */
     private static final double VANILLA_BASE_HEALTH = 20.0D;
 
@@ -128,15 +134,31 @@ public final class StatsService {
             announceMaxLevel(player, data);
             return;
         }
-        data.xp(data.xp() + amount);
+        data.xp((int) Math.min((long) data.xp() + amount, Integer.MAX_VALUE));
 
         boolean levelled = false;
+        int gained = 0;
         while (data.xp() >= data.xpNeed() && data.xpNeed() > 0 && !atMaxLevel(data)) {
             data.xp(data.xp() - data.xpNeed());
             data.level(data.level() + 1);
             data.points(data.points() + plugin.rpgConfig().pointsPerLevel());
             data.xpNeed(xpNeedFor(data.level()));
             levelled = true;
+            // Bounded, because the loop's length is set by config an operator
+            // controls. xp-base 1 with xp-growth 0 and no multiplier is a
+            // legal "levels are cheap" setup in which every level costs one
+            // XP - and one large grant then spins this loop a billion times,
+            // calling Math.pow each pass, with the main thread held throughout.
+            // Stopping short leaves the rest of the XP banked for the next
+            // grant rather than dropping it.
+            if (++gained >= MAX_LEVELS_PER_GRANT) {
+                plugin.getLogger().warning("Stopped after " + MAX_LEVELS_PER_GRANT
+                        + " levels in one grant for " + player.getName()
+                        + "; the remaining XP is banked. Check level.xp-base and"
+                        + " level.xp-growth in settings.yml - levelling this cheap"
+                        + " is almost never intended.");
+                break;
+            }
         }
         if (atMaxLevel(data)) {
             data.xp(0);
