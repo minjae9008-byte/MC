@@ -50,7 +50,7 @@ public final class GuildService {
     public GuildService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.storage = new GuildStorage(plugin);
-        this.writer = new DeferredSave(plugin, plugin.saveQueue(), "guilds.yml",
+        this.writer = new DeferredSave(plugin, "guilds.yml",
                 () -> storage.build(byId.values(), wars, activeCooldowns()));
     }
 
@@ -134,8 +134,9 @@ public final class GuildService {
         writer.flushNow();
     }
 
-    public void flushIfDirty() {
-        writer.flushIfDirty();
+    /** The pending write for this store, or null if its file is up to date. */
+    public Runnable pendingWrite() {
+        return writer.pendingWrite();
     }
 
     public int count() {
@@ -522,7 +523,22 @@ public final class GuildService {
             player.sendMessage(ChatColor.RED + "[길드] 길드에 속해 있지 않습니다.");
             return;
         }
-        player.openInventory(vaultOf(guild));
+        Inventory vault = vaultOf(guild);
+        // Kept so the close can tell a deposit from a withdrawal. Cloned,
+        // because getContents() hands back live mirrors of the slots - they
+        // would follow every change and this would end up comparing the
+        // session against itself.
+        vaultOpenedWith.put(player.getUniqueId(), snapshotOf(vault));
+        player.openInventory(vault);
+    }
+
+    private static ItemStack[] snapshotOf(Inventory vault) {
+        ItemStack[] live = vault.getContents();
+        ItemStack[] copy = new ItemStack[live.length];
+        for (int slot = 0; slot < live.length; slot++) {
+            copy[slot] = live[slot] == null ? null : live[slot].clone();
+        }
+        return copy;
     }
 
     Inventory vaultOf(Guild guild) {
@@ -543,16 +559,55 @@ public final class GuildService {
         return vault;
     }
 
+    /**
+     * What each viewer's vault held when they opened it. The close needs it to
+     * know which way the items went, and it is dropped the moment it is used.
+     */
+    private final Map<UUID, ItemStack[]> vaultOpenedWith = new HashMap<>();
+
     /** Called when a viewer closes the vault; that is when it is written out. */
     public void handleVaultClosed(UUID guildId, Player viewer) {
-        if (!byId.containsKey(guildId)) {
+        ItemStack[] opened = viewer == null ? null : vaultOpenedWith.remove(viewer.getUniqueId());
+        Guild guild = byId.get(guildId);
+        if (guild == null) {
             return;
         }
         save();
-        // A vault session moves items both ways, so no ordering is safe for
-        // both; what matters is that the guild file and the player file stop
-        // disagreeing within milliseconds instead of minutes.
-        HandOver.takenFromPlayer(viewer, writer);
+
+        Inventory vault = guild.vaultOrNull();
+        if (viewer == null || vault == null || opened == null) {
+            // Nothing to compare against - a vault emptied by a disband, or a
+            // close with no player behind it. Treat it as the common case.
+            HandOver.takenFromPlayer(viewer, writer);
+            return;
+        }
+
+        ItemStack[] now = snapshotOf(vault);
+        VaultCommit plan = VaultCommit.plan(opened, now, vault.getSize());
+        switch (plan.order()) {
+            case STORE_THEN_PLAYER -> HandOver.givenToPlayer(viewer, writer);
+            case FLOOR_THEN_PLAYER_THEN_STORE -> HandOver.crossedBothWays(viewer, writer,
+                    () -> publishFloor(vault, plan.floor(), now));
+            default -> HandOver.takenFromPlayer(viewer, writer);
+        }
+    }
+
+    /**
+     * Writes the vault file holding only what this session did not move, then
+     * puts the real contents straight back.
+     *
+     * The swap and the write are one unbroken stretch of the main thread, so
+     * nothing else can read the vault while it is standing in for itself - and
+     * the restore is in a finally, because the one outcome worse than the
+     * window this closes is a vault that keeps the reduced contents.
+     */
+    private void publishFloor(Inventory vault, ItemStack[] floor, ItemStack[] real) {
+        try {
+            vault.setContents(floor);
+            writer.flushBlocking();
+        } finally {
+            vault.setContents(real);
+        }
     }
 
     private void closeVault(Player player) {

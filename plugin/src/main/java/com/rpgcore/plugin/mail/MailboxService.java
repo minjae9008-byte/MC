@@ -79,7 +79,7 @@ public final class MailboxService {
     public MailboxService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.file = new File(plugin.getDataFolder(), FILE);
-        this.writer = new DeferredSave(plugin, plugin.saveQueue(), FILE, this::build);
+        this.writer = new DeferredSave(plugin, FILE, this::build);
     }
 
     public void load() {
@@ -342,8 +342,9 @@ public final class MailboxService {
         writer.flushNow();
     }
 
-    public void flushIfDirty() {
-        writer.flushIfDirty();
+    /** The pending write for this store, or null if its file is up to date. */
+    public Runnable pendingWrite() {
+        return writer.pendingWrite();
     }
 
     private YamlConfiguration build() {

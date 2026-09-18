@@ -56,7 +56,7 @@ public final class AuctionService {
     public AuctionService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.storage = new AuctionStorage(plugin);
-        this.writer = new DeferredSave(plugin, plugin.saveQueue(), "auctions.yml",
+        this.writer = new DeferredSave(plugin, "auctions.yml",
                 () -> storage.build(listings.values()));
     }
 
@@ -88,8 +88,9 @@ public final class AuctionService {
         writer.flushNow();
     }
 
-    public void flushIfDirty() {
-        writer.flushIfDirty();
+    /** The pending write for this store, or null if its file is up to date. */
+    public Runnable pendingWrite() {
+        return writer.pendingWrite();
     }
 
     private void refreshSoonestEnd() {

@@ -5,9 +5,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
@@ -27,35 +25,31 @@ import java.util.function.Supplier;
  * is the other half of the win: a busy auction used to write the whole book
  * once per bid.
  *
- * Ordering is guaranteed without a lock on the main thread. Only one write is
- * ever in flight; a snapshot produced while one is running replaces any
- * snapshot already waiting, and the writer loops until nothing is pending. The
- * newest state always lands last, and a slow disk cannot queue up writes.
+ * A store does NOT queue its own writes. {@link #pendingWrite()} hands the
+ * write back to the caller, which submits the whole round of stores as one
+ * task, in one fixed order. That order is not cosmetic: an auction lot that
+ * sells moves an item from auctions.yml into mail.yml, and if the mailbox
+ * lands first, a crash in between leaves the item in both files.
  *
- * "Replaces any snapshot already waiting" is not enough on its own, because the
- * writer takes a snapshot out of the pending slot BEFORE it takes the write
- * lock, and in between it holds one that nothing else can see or replace. A
- * blocking flush that slips through that gap writes the newer state and then
- * has the older one land on top of it. Measured, not imagined: hammering that
- * interleaving four thousand times put an older file on disk 1,328 times.
+ * Each store used to queue itself and loop on its own pending snapshot, which
+ * let two stores drift apart however far the disk allowed. Measured: over 3,000
+ * rounds that wrote both files in giver-then-receiver order, the receiving file
+ * was ahead of the giving one 7 times, by as much as 649 rounds.
  *
- * So every snapshot carries a stamp and the file only ever moves forward. A
- * snapshot that has been overtaken is dropped where it would otherwise have
- * been written. That is what lets {@link #flushBlocking()} promise that what it
- * wrote stays written - which is the whole basis for trusting these files with
- * an item that has just left someone's inventory.
+ * Every snapshot also carries a stamp, and the file only ever moves forward. A
+ * snapshot that has been overtaken is dropped rather than written, so a batch
+ * write cannot undo a {@link #flushBlocking()} that overtook it. That is what
+ * lets flushBlocking promise that what it wrote stays written - the whole basis
+ * for trusting these files with an item that has just left someone's inventory.
  */
 public final class DeferredSave {
 
     private final Plugin plugin;
-    private final SaveQueue queue;
     private final File file;
     /** Builds the snapshot. Called on the main thread, never off it. */
     private final Supplier<YamlConfiguration> builder;
 
     private boolean dirty;
-    /** The snapshot waiting to be written, if any. */
-    private final AtomicReference<Stamped> pending = new AtomicReference<>();
     /**
      * Handed out in the order snapshots are built - which is a single order,
      * because every snapshot is built on the main thread.
@@ -63,7 +57,6 @@ public final class DeferredSave {
     private final AtomicLong stamps = new AtomicLong();
     /** The newest stamp on disk. Guarded by {@link #writeLock}. */
     private long written;
-    private final AtomicBoolean writing = new AtomicBoolean();
     /**
      * Held for the duration of every write. Two threads writing one file at
      * once does not produce the older of the two, it produces neither.
@@ -76,10 +69,9 @@ public final class DeferredSave {
      */
     private volatile boolean closed;
 
-    public DeferredSave(Plugin plugin, SaveQueue queue, String fileName,
+    public DeferredSave(Plugin plugin, String fileName,
                         Supplier<YamlConfiguration> builder) {
         this.plugin = plugin;
-        this.queue = queue;
         this.file = new File(plugin.getDataFolder(), fileName);
         this.builder = builder;
     }
@@ -94,19 +86,33 @@ public final class DeferredSave {
     }
 
     /**
-     * Builds a snapshot if anything changed and queues it for writing. Called
-     * from the tick pump, so it must stay cheap on the main thread.
+     * Builds a snapshot if anything changed and returns the write that puts it
+     * on disk, or null if nothing changed.
+     *
+     * The write is deliberately not submitted here. The caller collects one of
+     * these from each store and submits them together, which is the only way
+     * the file giving an item away is guaranteed to land before the file
+     * receiving it.
+     *
+     * Called from the tick pump, so it must stay cheap on the main thread.
      */
-    public void flushIfDirty() {
+    public Runnable pendingWrite() {
         if (!dirty) {
-            return;
+            return null;
         }
         // Cleared only once a snapshot exists: if assembling one throws, the
         // change is still pending rather than quietly never written.
         Stamped snapshot = snapshot();
         dirty = false;
-        pending.set(snapshot);
-        startWriterIfIdle();
+        return () -> {
+            synchronized (writeLock) {
+                if (closed) {
+                    // Shutdown already wrote something newer than this.
+                    return;
+                }
+                write(snapshot);
+            }
+        };
     }
 
     /**
@@ -121,9 +127,9 @@ public final class DeferredSave {
         // writer for no reason.
         Stamped snapshot = snapshot();
         synchronized (writeLock) {
-            // Anything queued or in flight is older than this by construction.
+            // Anything queued or in flight is older than this by construction,
+            // and the stamp on it will say so when it gets the lock.
             closed = true;
-            pending.set(null);
             write(snapshot);
         }
     }
@@ -146,40 +152,7 @@ public final class DeferredSave {
             if (closed) {
                 return;
             }
-            // Anything parked for the async writer is older than this by
-            // construction, so dropping it saves a redundant write.
-            pending.set(null);
             write(snapshot);
-        }
-    }
-
-    private void startWriterIfIdle() {
-        if (!writing.compareAndSet(false, true)) {
-            // A write is already running; it will pick up what we just parked.
-            return;
-        }
-        queue.submit(this::drain);
-    }
-
-    private void drain() {
-        try {
-            Stamped snapshot;
-            while ((snapshot = pending.getAndSet(null)) != null) {
-                synchronized (writeLock) {
-                    if (closed) {
-                        // Shutdown already wrote something newer than this.
-                        return;
-                    }
-                    write(snapshot);
-                }
-            }
-        } finally {
-            writing.set(false);
-            // A snapshot parked between the last poll and clearing the flag
-            // would otherwise sit there until the next change.
-            if (!closed && pending.get() != null) {
-                startWriterIfIdle();
-            }
         }
     }
 

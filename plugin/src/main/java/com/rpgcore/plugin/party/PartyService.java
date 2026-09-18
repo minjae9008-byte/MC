@@ -35,7 +35,7 @@ public final class PartyService {
     public PartyService(RpgCorePlugin plugin) {
         this.plugin = plugin;
         this.storage = new PartyStorage(plugin);
-        this.writer = new DeferredSave(plugin, plugin.saveQueue(), "parties.yml",
+        this.writer = new DeferredSave(plugin, "parties.yml",
                 () -> storage.build(byId.values()));
     }
 
@@ -61,8 +61,9 @@ public final class PartyService {
         writer.flushNow();
     }
 
-    public void flushIfDirty() {
-        writer.flushIfDirty();
+    /** The pending write for this store, or null if its file is up to date. */
+    public Runnable pendingWrite() {
+        return writer.pendingWrite();
     }
 
     public int count() {

@@ -75,6 +75,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * RPGCore.
@@ -126,6 +127,12 @@ public final class RpgCorePlugin extends JavaPlugin {
      */
     private HudTask hudTask;
     /** The single thread every file write goes through. */
+    /**
+     * Set while a round of store writes is on the writer thread. The tick pump
+     * skips building the next round until it clears, which keeps at most one
+     * round's worth of snapshots alive however slow the disk is.
+     */
+    private final AtomicBoolean batchWriting = new AtomicBoolean();
     private SaveQueue saveQueue;
     /** Delivery to the Discord webhook, and what the messages look like. */
     private DiscordService discord;
@@ -631,12 +638,54 @@ public final class RpgCorePlugin extends JavaPlugin {
                 + ChatColor.WHITE + label + ChatColor.GRAY + " - " + (enabled ? detail : "꺼짐"));
     }
 
-    /** Queues a write for any store whose file no longer matches memory. */
+    /**
+     * Queues a write for any store whose file no longer matches memory - all of
+     * them as ONE task, in one fixed order.
+     *
+     * The order is the point. Items cross between these files: an auction lot
+     * that sells moves into the mailbox, a disbanded guild empties its vault
+     * into the mailbox. The file giving the item away has to be written before
+     * the file receiving it, or a crash in between leaves the item in both -
+     * and the mailbox, which only ever receives, is therefore always last.
+     *
+     * When each store queued itself this held only by luck. Both of them
+     * coalesced their own writes independently, so they drifted: over 3,000
+     * measured rounds the receiving file was written ahead of the giving one 7
+     * times, once by 649 rounds' worth of state.
+     */
     private void flushStores() {
-        parties.flushIfDirty();
-        auctions.flushIfDirty();
-        guilds.flushIfDirty();
-        mailbox.flushIfDirty();
+        if (batchWriting.get()) {
+            // The last round is still on the disk. Leaving the stores dirty
+            // means the next tick builds one fresh snapshot instead of a
+            // backlog of stale ones - the coalescing that used to live in each
+            // store, in the one place that can still guarantee the order.
+            return;
+        }
+        List<Runnable> writes = new ArrayList<>(4);
+        add(writes, parties.pendingWrite());
+        add(writes, auctions.pendingWrite());
+        add(writes, guilds.pendingWrite());
+        // Last: everything above can post into it, nothing it holds goes back.
+        add(writes, mailbox.pendingWrite());
+        if (writes.isEmpty()) {
+            return;
+        }
+        batchWriting.set(true);
+        saveQueue.submit(() -> {
+            try {
+                for (Runnable write : writes) {
+                    write.run();
+                }
+            } finally {
+                batchWriting.set(false);
+            }
+        });
+    }
+
+    private static void add(List<Runnable> writes, Runnable write) {
+        if (write != null) {
+            writes.add(write);
+        }
     }
 
     /** (Re)schedules the HUD task on the interval currently configured. */

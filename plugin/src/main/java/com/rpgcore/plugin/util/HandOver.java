@@ -66,4 +66,27 @@ public final class HandOver {
             player.saveData();
         }
     }
+
+    /**
+     * Items went both ways at once - a guild vault session, where the same
+     * player deposited some things and took others out.
+     *
+     * Neither of the two orders above works here: whichever file is written
+     * first is the giver for one item and the receiver for another. So the
+     * store is written three times' worth of ordering instead of one, with a
+     * middle state that claims neither side's moving items.
+     *
+     * @param publishFloor writes the store WITHOUT what this session moved,
+     *                     which is what makes the player write safe in both
+     *                     directions
+     */
+    public static void crossedBothWays(Player player, DeferredSave store, Runnable publishFloor) {
+        publishFloor.run();
+        if (player != null && player.isOnline()) {
+            player.saveData();
+        }
+        if (store != null) {
+            store.flushBlocking();
+        }
+    }
 }
