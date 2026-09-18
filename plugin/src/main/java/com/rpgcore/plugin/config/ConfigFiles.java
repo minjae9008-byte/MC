@@ -72,7 +72,10 @@ public final class ConfigFiles {
 
     public static void save(Plugin plugin, FileConfiguration config, String name) {
         try {
-            config.save(new File(plugin.getDataFolder(), name));
+            // Atomically, so a crash mid-write cannot leave a truncated file.
+            // records.yml is small but it is the only record of who took a
+            // server-first achievement, and settings.yml is the operator's own.
+            com.rpgcore.plugin.util.AtomicYaml.save(config, new File(plugin.getDataFolder(), name));
         } catch (IOException e) {
             plugin.getLogger().warning("Could not write " + name + ": " + e.getMessage());
         }

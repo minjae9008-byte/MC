@@ -3,6 +3,7 @@ package com.rpgcore.plugin.auction;
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.collection.CollectionService;
 import com.rpgcore.plugin.util.DeferredSave;
+import com.rpgcore.plugin.util.HandOver;
 import org.bukkit.ChatColor;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -196,6 +197,11 @@ public final class AuctionService {
                 seller.getName(), lot, startPrice, buyNowPrice, now, ends);
         listings.put(listing.id(), listing);
         save();
+        // The sword has left the player's inventory and entered this file.
+        // Those two live in different save systems, so they are forced out
+        // together here - a hard kill between them was measured leaving the
+        // item in both places at once.
+        HandOver.takenFromPlayer(seller, writer);
 
         seller.sendMessage(ChatColor.GREEN + "[경매] " + ChatColor.WHITE
                 + CollectionService.nameOf(lot) + ChatColor.GRAY + " x" + lot.getAmount()

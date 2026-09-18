@@ -2,6 +2,7 @@ package com.rpgcore.plugin.guild;
 
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.util.DeferredSave;
+import com.rpgcore.plugin.util.HandOver;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -543,10 +544,15 @@ public final class GuildService {
     }
 
     /** Called when a viewer closes the vault; that is when it is written out. */
-    public void handleVaultClosed(UUID guildId) {
-        if (byId.containsKey(guildId)) {
-            save();
+    public void handleVaultClosed(UUID guildId, Player viewer) {
+        if (!byId.containsKey(guildId)) {
+            return;
         }
+        save();
+        // A vault session moves items both ways, so no ordering is safe for
+        // both; what matters is that the guild file and the player file stop
+        // disagreeing within milliseconds instead of minutes.
+        HandOver.takenFromPlayer(viewer, writer);
     }
 
     private void closeVault(Player player) {

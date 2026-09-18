@@ -26,7 +26,8 @@ public final class GuildVaultListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onClose(InventoryCloseEvent event) {
         if (event.getInventory().getHolder() instanceof GuildVaultHolder holder) {
-            plugin.guilds().handleVaultClosed(holder.guildId());
+            plugin.guilds().handleVaultClosed(holder.guildId(),
+                    event.getPlayer() instanceof org.bukkit.entity.Player p ? p : null);
         }
     }
 }

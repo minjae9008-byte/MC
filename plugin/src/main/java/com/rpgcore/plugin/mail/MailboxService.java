@@ -2,6 +2,7 @@ package com.rpgcore.plugin.mail;
 
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.util.DeferredSave;
+import com.rpgcore.plugin.util.HandOver;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -269,6 +270,12 @@ public final class MailboxService {
             boxes.put(player.getUniqueId(), kept);
         }
         save();
+        // Items just crossed from this file into an inventory. Written out
+        // together, store first, so a crash in between loses the delivery
+        // rather than handing it over twice.
+        if (items > 0) {
+            HandOver.givenToPlayer(player, writer);
+        }
 
         if (items > 0 || gold > 0) {
             player.sendMessage(ChatColor.AQUA + "[우편] 보관 중이던 "
