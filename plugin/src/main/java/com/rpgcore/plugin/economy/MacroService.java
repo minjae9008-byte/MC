@@ -150,6 +150,12 @@ public final class MacroService {
         if (plugin.rpgConfig().marketEnabled()) {
             market.dayTick(day);
         }
+        // Companies run after the market has repriced and before the bank
+        // accrues: they sell into today's prices, and the wages and dividends
+        // they pay are in players' hands before interest is worked out.
+        if (plugin.rpgConfig().companyEnabled()) {
+            plugin.corps().dailyClose(day);
+        }
         if (plugin.rpgConfig().bankEnabled()) {
             bank.dailyClose(day);
         }
@@ -684,6 +690,18 @@ public final class MacroService {
                 + ChatColor.GRAY + " · 예대율 " + String.format(Locale.ROOT, "%.0f%%", bank.loanToDepositPercent())
                 + " · 연체율 " + String.format(Locale.ROOT, "%.1f%%", bank.delinquencyPercent())
                 + " · 자본 " + String.format(Locale.ROOT, "%,d", bank.equity()));
+        if (plugin.rpgConfig().companyEnabled()) {
+            long corporateCap = 0;
+            long corporateProfit = 0;
+            for (com.rpgcore.plugin.corp.Company company : plugin.corps().all()) {
+                corporateCap += Math.round(plugin.corps().marketCap(company));
+                corporateProfit += company.lastProfit();
+            }
+            to.sendMessage(ChatColor.WHITE + " 기업 " + ChatColor.YELLOW
+                    + plugin.corps().count() + "개" + ChatColor.GRAY + " · 시가총액 "
+                    + String.format(Locale.ROOT, "%,d", corporateCap)
+                    + " · 어제 합산 이익 " + String.format(Locale.ROOT, "%,d", corporateProfit));
+        }
         to.sendMessage(ChatColor.WHITE + " 발권 누적 " + ChatColor.YELLOW
                 + String.format(Locale.ROOT, "%,d", printedTotal) + ChatColor.GRAY
                 + " · 세금·수수료 누적 " + String.format(Locale.ROOT, "%,d", market.taxTake() + feeTake));

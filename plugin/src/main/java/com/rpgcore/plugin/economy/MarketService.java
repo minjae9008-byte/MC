@@ -211,6 +211,23 @@ public final class MarketService {
         return treasury;
     }
 
+    /**
+     * Puts gold into the national treasury - a tax or a fee that has left
+     * circulation.
+     *
+     * It lands here rather than vanishing because the treasury is what the
+     * market buys players' goods with. A fee that simply disappeared would be
+     * a slow leak draining the one purse the economy needs solvent.
+     */
+    public void creditTreasury(long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        treasury += amount;
+        taxTake += amount;
+        save();
+    }
+
     public long printed() {
         return printed;
     }
@@ -452,6 +469,175 @@ public final class MarketService {
         return held <= 0 ? sell(player, item, 1) : sell(player, item, held);
     }
 
+    /** What a trade with no player on the other side actually moved. */
+    public record Fill(int units, long gold) {
+    }
+
+    /**
+     * Sells into the market on behalf of a company.
+     *
+     * Same price curve, same purse and shelf limits as a player's sale - a
+     * company is not allowed a better deal than a person, or every player
+     * would route their goods through a shell company. The difference is only
+     * that nobody is holding the items: they come out of a warehouse number.
+     *
+     * @return what was actually sold and the net gold, after tax
+     */
+    public Fill sellFor(MarketItem item, long units) {
+        if (!enabled() || item == null || units <= 0) {
+            return new Fill(0, 0);
+        }
+        // Filled in chunks rather than one order. max-units-per-order exists
+        // to stop one player emptying a warehouse with one click; a factory's
+        // whole day of output is not that, and capping it there silently
+        // stranded everything a company produced above the limit.
+        long sold = 0;
+        long gold = 0;
+        while (sold < units) {
+            int want = (int) Math.min(units - sold, config.maxUnitsPerOrder());
+            Quote quote = quoteSell(item, want);
+            if (!quote.ok() || quote.units() <= 0) {
+                break;
+            }
+            item.stock(item.stock() + quote.units());
+            item.countSold(quote.units());
+            item.recompute(config);
+            treasury -= quote.total();
+            taxTake += quote.tax();
+            recordTrade(quote.gross());
+            sold += quote.units();
+            gold += quote.total();
+            // A short fill means the shelf or the purse stopped it, and the
+            // next chunk would stop the same way.
+            if (quote.units() < want) {
+                break;
+            }
+        }
+        if (sold <= 0) {
+            return new Fill(0, 0);
+        }
+        save();
+        return new Fill((int) Math.min(Integer.MAX_VALUE, sold), gold);
+    }
+
+    /**
+     * Buys out of the market on behalf of a company or a building site,
+     * stopping at whatever the budget reaches.
+     *
+     * The budget matters: a factory short of iron should buy what it can
+     * afford and run at reduced output, not refuse to run because it could
+     * not afford the whole order.
+     *
+     * @return what was actually bought and the gold it cost, including tax
+     */
+    public Fill buyFor(MarketItem item, long units, long budget) {
+        if (!enabled() || item == null || units <= 0 || budget <= 0) {
+            return new Fill(0, 0);
+        }
+        long bought = 0;
+        long spent = 0;
+        while (bought < units && spent < budget) {
+            int want = (int) Math.min(units - bought, config.maxUnitsPerOrder());
+            Quote quote = quoteBuy(item, want);
+            if (!quote.ok()) {
+                break;
+            }
+            // Walk this chunk back down until it fits what is left of the
+            // budget rather than refusing outright: a factory that can afford
+            // half its inputs should run at half output.
+            while (quote.total() > budget - spent && quote.units() > 1) {
+                quote = quoteBuy(item, quote.units() / 2);
+                if (!quote.ok()) {
+                    break;
+                }
+            }
+            if (!quote.ok() || quote.total() > budget - spent) {
+                break;
+            }
+            item.stock(item.stock() - quote.units());
+            item.countBought(quote.units());
+            item.recompute(config);
+            treasury += quote.total();
+            taxTake += quote.tax();
+            recordTrade(quote.gross());
+            bought += quote.units();
+            spent += quote.total();
+            if (quote.units() < want) {
+                break;
+            }
+        }
+        if (bought <= 0) {
+            return new Fill(0, 0);
+        }
+        save();
+        return new Fill((int) Math.min(Integer.MAX_VALUE, bought), spent);
+    }
+
+    /**
+     * The number of samples a bulk order takes off the price curve.
+     *
+     * A construction order can be fifty thousand cobblestone, and pricing
+     * that one unit at a time is fifty thousand calls to pow() on the main
+     * thread - repeated for every material, every time a menu draws an
+     * estimate. Sampling the curve in even steps costs a fixed 512 instead,
+     * and the difference in the total is a rounding error on an order that
+     * size. Estimating and charging use the same stepping, so a player is
+     * never quoted one price and charged another.
+     */
+    private static final int BULK_SAMPLES = 512;
+
+    /** What a large purchase would cost, without moving anything. */
+    public long bulkAskCost(MarketItem item, long units) {
+        if (!enabled() || item == null || units <= 0) {
+            return 0;
+        }
+        long affordable = Math.min(units, (long) Math.floor(item.stock()));
+        if (affordable <= 0) {
+            return 0;
+        }
+        double gross = 0;
+        long step = Math.max(1, affordable / BULK_SAMPLES);
+        long done = 0;
+        while (done < affordable) {
+            long chunk = Math.min(step, affordable - done);
+            gross += item.askAt(item.stock() - done, config) * chunk;
+            done += chunk;
+        }
+        long grossGold = Math.max(1, Math.round(Math.ceil(gross)));
+        return grossGold + Math.round(grossGold * config.salesTaxPercent() / 100.0);
+    }
+
+    /**
+     * Buys a large quantity, taking it off the shelf as it goes.
+     *
+     * Unlike {@link #buyFor} this is not capped by the per-order limit: the
+     * limit exists to stop one player emptying a warehouse in a single click,
+     * and a construction site that has already been priced and paid for is
+     * not that. It still cannot buy stock that is not there.
+     */
+    public Fill buyBulk(MarketItem item, long units, long budget) {
+        if (!enabled() || item == null || units <= 0) {
+            return new Fill(0, 0);
+        }
+        long take = Math.min(units, (long) Math.floor(item.stock()));
+        if (take <= 0) {
+            return new Fill(0, 0);
+        }
+        long cost = bulkAskCost(item, take);
+        if (cost > budget) {
+            return new Fill(0, 0);
+        }
+        item.stock(item.stock() - take);
+        item.countBought(take);
+        item.recompute(config);
+        long tax = Math.round(cost * config.salesTaxPercent() / (100.0 + config.salesTaxPercent()));
+        treasury += cost;
+        taxTake += tax;
+        recordTrade(cost - tax);
+        save();
+        return new Fill((int) Math.min(Integer.MAX_VALUE, take), cost);
+    }
+
     private boolean guard(Player player) {
         if (!enabled()) {
             player.sendMessage(ChatColor.RED + "[시장] 이 서버에서는 시장을 쓸 수 없습니다.");
@@ -512,6 +698,11 @@ public final class MarketService {
             }
         }
         return total;
+    }
+
+    /** Takes plain stacks out of a player's inventory, for another system. */
+    public boolean removePlainFor(Player player, Material material, int units) {
+        return removePlain(player, material, units);
     }
 
     private boolean removePlain(Player player, Material material, int units) {

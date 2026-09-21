@@ -33,8 +33,8 @@ public final class MainMenu {
     /** What a button does when it is clicked. */
     public enum Action {
         STATS, JOBS, TITLES, COLLECTION, ACHIEVEMENTS, LEADERBOARD,
-        PARTY, GUILD, GUILD_VAULT, TRADE_HELP, DUEL_HELP, AUCTION, MAILBOX,
-        MARKET, BANK, ECONOMY, CLOSE
+        PARTY, TRADE_HELP, DUEL_HELP, AUCTION, MAILBOX,
+        MARKET, BANK, ECONOMY, COMPANY, STOCKS, BLUEPRINT, CLOSE
     }
 
     private static final int SIZE = 45;
@@ -103,11 +103,11 @@ public final class MainMenu {
         button(inv, holder, 24, Action.ECONOMY, market || bankOn, Material.CLOCK,
                 "&e경제 지표", "물가 · 금리 · 통화량 · 경기", economyLine());
 
-        boolean guilds = plugin.rpgConfig().guildEnabled();
-        button(inv, holder, 28, Action.GUILD, guilds, Material.GREEN_BANNER,
-                "&a길드", "길드와 영지", guildLine(player));
-        button(inv, holder, 29, Action.GUILD_VAULT, guilds, Material.SHULKER_BOX,
-                "&a길드 보관함", "길드원이 함께 쓰는 상자", vaultLine(player));
+        boolean corps = plugin.rpgConfig().companyEnabled();
+        button(inv, holder, 28, Action.COMPANY, corps, Material.WRITABLE_BOOK,
+                "&6기업", "공장을 돌려 물건을 만들고 팝니다", companyLine(player));
+        button(inv, holder, 29, Action.STOCKS, corps, Material.EMERALD,
+                "&a거래소", "남의 회사에 투자하고 배당을 받습니다", stocksLine(player));
         button(inv, holder, 30, Action.AUCTION, plugin.rpgConfig().auctionEnabled(), Material.GOLD_BLOCK,
                 "&6경매장", "골드로 물건을 사고팝니다",
                 "&7진행 중 " + plugin.auctions().count() + "건");
@@ -118,6 +118,8 @@ public final class MainMenu {
                 "&b거래", "다른 플레이어와 직접 교환합니다", "&7/trade <플레이어>");
         button(inv, holder, 34, Action.DUEL_HELP, plugin.rpgConfig().duelEnabled(), Material.IRON_AXE,
                 "&b대결", "걸고 싸우는 1:1", "&7/duel <플레이어> [골드|hand]");
+        button(inv, holder, 26, Action.BLUEPRINT, plugin.rpgConfig().blueprintEnabled(),
+                Material.FILLED_MAP, "&b청사진", "구역을 떠서 자동으로 짓습니다", blueprintLine(player));
 
         button(inv, holder, 40, Action.CLOSE, true, Material.RED_STAINED_GLASS_PANE, "&c닫기", null, null);
 
@@ -222,17 +224,35 @@ public final class MainMenu {
         return worn == null ? "&8착용 중인 칭호 없음" : "&7착용 중: " + worn.display();
     }
 
-    private String guildLine(Player player) {
-        var guild = plugin.guilds().guildOf(player);
-        return guild == null
-                ? "&8길드 없음 - /guild create <이름>"
-                : "&7" + guild.name() + " (" + guild.size() + "명, 금고 " + guild.gold() + ")";
+    private String companyLine(Player player) {
+        if (!plugin.rpgConfig().companyEnabled()) {
+            return null;
+        }
+        var company = plugin.corps().employerOf(player);
+        return company == null
+                ? "&8회사 없음 - /company create <이름>"
+                : "&7" + company.name() + " · 현금 " + company.cash()
+                        + " · 공장 " + company.factories().size() + "개";
     }
 
-    private String vaultLine(Player player) {
-        return plugin.guilds().guildOf(player) == null
-                ? "&8길드에 들어가야 쓸 수 있습니다"
-                : "&7" + plugin.rpgConfig().guildVaultRows() * 9 + "칸";
+    private String stocksLine(Player player) {
+        if (!plugin.rpgConfig().companyEnabled()) {
+            return null;
+        }
+        var holdings = plugin.corps().portfolioOf(player.getUniqueId());
+        return holdings.isEmpty()
+                ? "&7상장 " + plugin.corps().count() + "개 · 아직 투자 없음"
+                : "&7보유 " + holdings.size() + "종목";
+    }
+
+    private String blueprintLine(Player player) {
+        if (!plugin.rpgConfig().blueprintEnabled()) {
+            return null;
+        }
+        var sites = plugin.blueprints().sitesOf(player.getUniqueId());
+        return sites.isEmpty()
+                ? "&7저장된 청사진 " + plugin.blueprints().count() + "개"
+                : "&e공사 중 " + sites.get(0).percent() + "%";
     }
 
     private String partyLine(Player player) {

@@ -1,0 +1,139 @@
+# ==========================================================================
+#  RPGCore - 기업 (공장 · 생산 · 주식)
+# ==========================================================================
+#  기업은 시장의 "공급 쪽"입니다. 공장이 매 경제일마다 물건을 만들어
+#  창고에 쌓고, 정책에 따라 시장에 내다 팔아 매출을 냅니다. 그 물량이
+#  시장 재고를 늘리므로 값이 내려가고, 청사진 건설이 자재를 사 가면
+#  값이 올라갑니다. 경제 지표(GDP·물가)가 그걸 전부 집계합니다.
+#
+#  읽는 순서:
+#    1) company   - 창업 비용, 임금, 인원 한도 같은 기본 규칙
+#    2) shares    - 주식 발행과 가치 평가, 배당, 인수
+#    3) factories - 공장 종류. 원료가 필요한 공장은 공급망이 생깁니다
+#    4) seed      - 서버를 열 때 미리 깔아 두는 기초 기업들
+#
+#  지금 어떤 기업이 있는지는 /stocks (거래소) 로 봅니다.
+# ==========================================================================
+
+company:
+  name-max-length: 18
+  max-employees: 20
+  create-cost: 25000          # 창업 자본금. 회사 현금으로 들어갑니다(소각 아님)
+  create-cost-to-treasury: 5000  # 그중 이만큼은 등록세로 국고에 들어갑니다
+  invite-timeout-seconds: 60
+
+  # 직원 한 명당 매 경제일에 나가는 임금. 회사 현금에서 나와 그 사람 지갑으로
+  # 들어갑니다. 현금이 모자라면 체불되고, 체불이 쌓이면 직원이 자동 퇴사합니다.
+  # 0 으로 두면 임금 제도를 끕니다.
+  wage-per-employee: 300
+  ceo-wage-multiplier: 2.0
+  # 체불 이 일수를 넘기면 직원이 회사를 떠납니다.
+  unpaid-days-before-quit: 3
+
+  # 창고에 쌓인 물건 중 매일 시장에 내다 파는 비율의 기본값(회사마다 바꿀 수 있음).
+  default-sell-percent: 100
+  # 원료가 모자랄 때 시장에서 사 오는지. 끄면 창고에 있는 만큼만 만듭니다.
+  default-auto-buy-inputs: true
+  # 창고 한 품목의 최대 보관량. 넘치면 생산이 멈춥니다.
+  warehouse-cap-per-item: 200000
+
+  # 현금이 이 밑으로 내려가고 자산도 없으면 도산 처리됩니다.
+  # 도산하면 공장이 매각되어 현금이 되고, 남은 것은 주주에게 나눠집니다.
+  bankruptcy-debt-limit: -50000
+
+shares:
+  # 창업 시 발행되는 주식 수. 전부 창업자가 가집니다.
+  founder-shares: 10000
+  # 주가 = 기업가치 / 발행주식수.
+  # 기업가치 = 장부가(현금 + 창고 + 공장) 와 수익가치(연이익 x PER) 의 가중평균
+  book-weight-percent: 50
+  earnings-multiple: 8        # PER. 이익이 이만큼의 배수로 값어치를 인정받습니다
+  # 거래가 주가를 밉니다. 사면 오르고 팔면 내리며, 매일 1.0 으로 되돌아옵니다.
+  trade-impact-percent: 12    # 발행주식수의 1% 를 사면 이만큼 오릅니다
+  sentiment-reversion-percent: 25
+  min-price: 1
+
+  # 매수/매도 호가 차이와 거래세. 시장과 같은 이유로 0 이면 무위험 차익이 됩니다.
+  spread-percent: 4
+  trade-tax-percent: 2
+
+  # 회사는 자기 주식(자사주)을 팔아 자금을 조달하고, 되사서 유동성을 공급합니다.
+  # 되사기에 하루에 쓸 수 있는 현금 비율. 이걸 다 쓰면 그날은 더 못 삽니다.
+  buyback-cash-percent-per-day: 25
+  # 자사주가 떨어지면 신주를 발행해 채웁니다(기초 기업은 자동, 플레이어 기업은
+  # /company issue 로 직접). 발행하면 기존 주주 지분이 희석됩니다.
+  npc-auto-issue: true
+
+  # 배당: 그날 이익 중 이 비율을 주주에게 나눠 줍니다(자사주 제외).
+  default-dividend-percent: 40
+  min-dividend-per-share: 1   # 주당 배당이 이 밑이면 그날은 건너뜁니다
+
+  # 인수(M&A). 인수자는 아직 갖지 못한 주식 전부를 현재가 + 프리미엄에 사들입니다.
+  # 기초 기업은 언제든 인수할 수 있고, 플레이어 기업은 대표가 수락해야 합니다.
+  # (이미 과반을 들고 있으면 수락 없이 진행됩니다.)
+  min-takeover-premium-percent: 10
+  max-takeover-premium-percent: 200
+  offer-timeout-seconds: 300
+
+# ==========================================================================
+#  공장
+# ==========================================================================
+#  per-day   레벨 1일 때 하루 생산량
+#  inputs    산출물 1개당 필요한 원료. 창고에서 먼저 쓰고, 모자라면
+#            (자동 조달이 켜져 있으면) 시장에서 사 옵니다
+#  build     건설비 / upkeep 매 경제일 유지비
+#  레벨을 올리면 생산량은 x1.6, 다음 레벨 건설비는 x1.8 이 됩니다.
+factories:
+  # ---- 채취 ----
+  quarry:        { name: "채석장",     icon: minecraft:stone_pickaxe, output: minecraft:cobblestone, per-day: 6000, build: 12000, upkeep: 500 }
+  sand-pit:      { name: "채사장",     icon: minecraft:sand,          output: minecraft:sand,        per-day: 2200, build: 12000, upkeep: 500 }
+  coal-mine:     { name: "탄광",       icon: minecraft:coal,          output: minecraft:coal,        per-day: 900,  build: 26000, upkeep: 900 }
+  iron-mine:     { name: "철광산",     icon: minecraft:raw_iron,      output: minecraft:raw_iron,    per-day: 700,  build: 29000, upkeep: 1000 }
+  copper-mine:   { name: "구리광산",   icon: minecraft:raw_copper,    output: minecraft:raw_copper,  per-day: 800,  build: 21000, upkeep: 700 }
+  gold-mine:     { name: "금광",       icon: minecraft:raw_gold,      output: minecraft:raw_gold,    per-day: 300,  build: 40000, upkeep: 1500 }
+  gem-mine:      { name: "보석광산",   icon: minecraft:diamond,       output: minecraft:diamond,     per-day: 60,   build: 65000, upkeep: 2300 }
+  quartz-mine:   { name: "석영광산",   icon: minecraft:quartz,        output: minecraft:quartz,      per-day: 800,  build: 21000, upkeep: 700 }
+  lumber-camp:   { name: "벌목장",     icon: minecraft:oak_log,       output: minecraft:oak_log,     per-day: 1800, build: 21000, upkeep: 800 }
+  farm:          { name: "밀 농장",    icon: minecraft:wheat,         output: minecraft:wheat,       per-day: 1300, build: 23000, upkeep: 800 }
+  potato-farm:   { name: "감자 농장",  icon: minecraft:potato,        output: minecraft:potato,      per-day: 1400, build: 19000, upkeep: 700 }
+  cane-farm:     { name: "사탕수수밭", icon: minecraft:sugar_cane,    output: minecraft:sugar_cane,  per-day: 1600, build: 18000, upkeep: 600 }
+  ranch:         { name: "목장",       icon: minecraft:leather,       output: minecraft:leather,     per-day: 380,  build: 26000, upkeep: 900 }
+  butchery:      { name: "도축장",     icon: minecraft:cooked_beef,   output: minecraft:cooked_beef, per-day: 260,  build: 30000, upkeep: 1100 }
+  fishery:       { name: "어장",       icon: minecraft:cod,           output: minecraft:cod,         per-day: 420,  build: 19000, upkeep: 700 }
+  nether-post:   { name: "네더 전초기지", icon: minecraft:blaze_rod,  output: minecraft:blaze_rod,   per-day: 180,  build: 63000, upkeep: 2300 }
+
+  # ---- 가공 (원료가 필요합니다) ----
+  smelter:       { name: "제련소",     icon: minecraft:blast_furnace, output: minecraft:iron_ingot,   per-day: 1200, build: 24000, upkeep: 900, inputs: { "minecraft:raw_iron": 1.0, "minecraft:coal": 0.12 } }
+  copper-smelter: { name: "구리 제련소", icon: minecraft:copper_ingot, output: minecraft:copper_ingot, per-day: 1500, build: 19000, upkeep: 700, inputs: { "minecraft:raw_copper": 1.0, "minecraft:coal": 0.12 } }
+  gold-smelter:  { name: "금 제련소",  icon: minecraft:gold_ingot,    output: minecraft:gold_ingot,   per-day: 400, build: 21000, upkeep: 700, inputs: { "minecraft:raw_gold": 1.0, "minecraft:coal": 0.12 } }
+  bakery:        { name: "제빵소",     icon: minecraft:bread,         output: minecraft:bread,        per-day: 900, build: 37000, upkeep: 1400,  inputs: { "minecraft:wheat": 1.5 } }
+  sawmill:       { name: "제재소",     icon: minecraft:stick,         output: minecraft:stick,        per-day: 6000, build: 8000, upkeep: 200, inputs: { "minecraft:oak_log": 0.2 } }
+  paper-mill:    { name: "제지소",     icon: minecraft:paper,         output: minecraft:paper,        per-day: 1600, build: 16000, upkeep: 600,  inputs: { "minecraft:sugar_cane": 1.2 } }
+  glassworks:    { name: "유리 공장",  icon: minecraft:glass,         output: minecraft:glass,        per-day: 2600, build: 10000, upkeep: 400, inputs: { "minecraft:sand": 1.0, "minecraft:coal": 0.12 } }
+  charcoal-kiln: { name: "숯가마",     icon: minecraft:charcoal,      output: minecraft:charcoal,     per-day: 1100, build: 28000, upkeep: 1000,  inputs: { "minecraft:oak_log": 1.0 } }
+  netherite-forge: { name: "네더라이트 공방", icon: minecraft:netherite_ingot, output: minecraft:netherite_ingot, per-day: 6, build: 71000, upkeep: 2600, inputs: { "minecraft:netherite_scrap": 4.0, "minecraft:gold_ingot": 4.0 } }
+
+upgrade:
+  output-multiplier: 1.6      # 레벨당 생산량 배수
+  cost-multiplier: 1.8        # 레벨당 건설비 배수
+  upkeep-multiplier: 1.45     # 레벨당 유지비 배수
+  max-level: 5
+
+# ==========================================================================
+#  기초 기업
+# ==========================================================================
+#  서버를 처음 열 때 만들어지는 회사들입니다. 대표가 없고(NPC), 주식은 전부
+#  자사주로 들고 있으므로 플레이어가 언제든 사서 주주가 될 수 있습니다.
+#  배당을 받을 수도, 지분을 모아 인수할 수도 있습니다.
+#  cash 는 초기 운영 자금이며 이 골드는 통화량에 포함되지 않습니다(기업 자금).
+seed:
+  enabled: true
+  companies:
+    - { name: "대한광업",   ticker: DHMC, cash: 400000, shares: 10000, factories: { iron-mine: 2, coal-mine: 1 } }
+    - { name: "한빛제철",   ticker: HBST, cash: 500000, shares: 10000, factories: { smelter: 2 } }
+    - { name: "푸른농장",   ticker: BLFM, cash: 300000, shares: 10000, factories: { farm: 1, potato-farm: 1, bakery: 1 } }
+    - { name: "백두목재",   ticker: BDWD, cash: 300000, shares: 10000, factories: { lumber-camp: 2, sawmill: 1 } }
+    - { name: "동해수산",   ticker: DHFS, cash: 250000, shares: 10000, factories: { fishery: 2 } }
+    - { name: "금성정련",   ticker: GSRF, cash: 450000, shares: 10000, factories: { gold-mine: 1, gold-smelter: 1 } }
+    - { name: "남해건자재", ticker: NHBM, cash: 350000, shares: 10000, factories: { quarry: 1, sand-pit: 1, glassworks: 1 } }
+    - { name: "흑암보석",   ticker: HABG, cash: 600000, shares: 10000, factories: { gem-mine: 1, quartz-mine: 1 } }

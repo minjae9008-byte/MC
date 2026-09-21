@@ -214,6 +214,7 @@ public final class EconomyMenu {
         inv.setItem(30, tile(Material.TNT, "&d최근 시황", shockLore(market)));
         inv.setItem(31, tile(Material.BELL, "&b통화정책 이력", policyLore(macro)));
         inv.setItem(32, tile(Material.BREAD, "&f물가바스켓", basketLore(market)));
+        inv.setItem(33, tile(Material.WRITABLE_BOOK, "&6기업", corporateLore()));
 
         button(inv, holder, 45, Action.BACK, Material.ARROW, "&c뒤로",
                 List.of(ChatColor.GRAY + "/menu 로 돌아갑니다"));
@@ -261,6 +262,52 @@ public final class EconomyMenu {
         for (MacroService.PolicyNote note : macro.policyLog()) {
             lore.add(ChatColor.GRAY + " " + note.day() + "일차 " + ChatColor.WHITE
                     + BankService.percent(note.rate()) + ChatColor.DARK_GRAY + " - " + note.reason());
+        }
+        return lore;
+    }
+
+    /** What the corporate sector did, from the same numbers the exchange uses. */
+    private List<String> corporateLore() {
+        List<String> lore = new ArrayList<>();
+        if (!plugin.rpgConfig().companyEnabled()) {
+            lore.add(ChatColor.DARK_GRAY + "이 서버에서는 꺼져 있습니다.");
+            return lore;
+        }
+        var corps = plugin.corps();
+        long cap = 0;
+        long profit = 0;
+        long cash = 0;
+        int factories = 0;
+        for (var company : corps.all()) {
+            cap += Math.round(corps.marketCap(company));
+            profit += company.lastProfit();
+            cash += company.cash();
+            factories += company.factories().size();
+        }
+        lore.add(ChatColor.GRAY + "상장 " + ChatColor.WHITE + corps.count() + "개"
+                + ChatColor.GRAY + " (공모 " + corps.countNpc() + ")");
+        lore.add(ChatColor.GRAY + "시가총액 " + ChatColor.YELLOW + comma(cap));
+        lore.add(ChatColor.GRAY + "보유 현금 " + ChatColor.WHITE + comma(cash)
+                + ChatColor.DARK_GRAY + " (통화량에는 안 들어갑니다)");
+        lore.add(ChatColor.GRAY + "공장 " + ChatColor.WHITE + factories + "개"
+                + ChatColor.GRAY + " · 어제 합산 이익 "
+                + (profit >= 0 ? ChatColor.GREEN : ChatColor.RED) + comma(profit));
+        lore.add("");
+        lore.add(ChatColor.DARK_GRAY + "기업이 만든 물건은 시장 재고가 되어 값을 내리고,");
+        lore.add(ChatColor.DARK_GRAY + "청사진 공사는 그 재고를 사 가서 값을 올립니다.");
+        List<String> top = new ArrayList<>();
+        for (var company : corps.listed()) {
+            if (top.size() >= 5) {
+                break;
+            }
+            top.add(ChatColor.GRAY + " " + company.ticker() + " "
+                    + MarketService.money(company.sharePrice())
+                    + ChatColor.DARK_GRAY + " 시총 " + comma(Math.round(corps.marketCap(company))));
+        }
+        if (!top.isEmpty()) {
+            lore.add("");
+            lore.add(ChatColor.GRAY + "시총 상위:");
+            lore.addAll(top);
         }
         return lore;
     }

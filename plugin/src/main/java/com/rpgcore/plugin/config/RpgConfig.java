@@ -68,9 +68,21 @@ public final class RpgConfig {
     private boolean collectionEnabled;
     private boolean duelEnabled;
     private boolean auctionEnabled;
-    private boolean guildEnabled;
     private boolean marketEnabled;
     private boolean bankEnabled;
+    private boolean companyEnabled;
+    private boolean blueprintEnabled;
+
+    private int blueprintMaxBlocks;
+    private int blueprintMaxDimension;
+    private int blueprintMaxPerPlayer;
+    private int blueprintBlocksPerSecond;
+    private double blueprintMarginPercent;
+    private double blueprintImportMarkupPercent;
+    private int blueprintFallbackPrice;
+    private boolean blueprintConsumeStock;
+    private int blueprintRushCostPerBlock;
+    private org.bukkit.Material blueprintWand;
 
     // --- config.yml ---
     private int baseHp;
@@ -158,30 +170,6 @@ public final class RpgConfig {
     private int auctionBidIncrementPercent;
     private int auctionAntiSnipeSeconds;
     private boolean auctionAnnounce;
-    private int guildNameMaxLength;
-    private int guildMaxMembers;
-    private int guildCreateCost;
-    private int guildInviteSeconds;
-    private int guildVaultRows;
-    private String guildVaultTitle;
-    private String guildChatPrefix;
-    private int guildClaimRadius;
-    private int guildClaimGap;
-    private int guildMaxRadius;
-    private int guildInvestPerBlock;
-    private int guildWarCost;
-    private int guildWarPrepMinutes;
-    private int guildWarDurationMinutes;
-    private int guildWarCooldownMinutes;
-    private int guildWarPrizePercent;
-    private int guildBannerCost;
-    private boolean guildProtectPlace;
-    private boolean guildProtectBuckets;
-    private boolean guildProtectExplosions;
-    private int guildBuffSpeed;
-    private int guildBuffHaste;
-    private int guildBuffJump;
-    private int guildGrowthBonusStages;
 
     private int duelRequestSeconds;
     private double duelMaxDistance;
@@ -251,7 +239,22 @@ public final class RpgConfig {
         auctionEnabled = settings.getBoolean("features.auction", true);
         marketEnabled = settings.getBoolean("features.market", true);
         bankEnabled = settings.getBoolean("features.bank", true);
-        guildEnabled = settings.getBoolean("features.guilds", true);
+        companyEnabled = settings.getBoolean("features.companies", true);
+        blueprintEnabled = settings.getBoolean("features.blueprints", true);
+
+        blueprintMaxBlocks = Math.clamp(c.getInt("blueprint.max-blocks", 50_000), 1, 2_000_000);
+        blueprintMaxDimension = Math.clamp(c.getInt("blueprint.max-dimension", 128), 1, 512);
+        blueprintMaxPerPlayer = Math.clamp(c.getInt("blueprint.max-per-player", 10), 1, 200);
+        blueprintBlocksPerSecond = Math.clamp(c.getInt("blueprint.blocks-per-second", 40), 1, 4000);
+        blueprintMarginPercent = Math.clamp(c.getDouble("blueprint.margin-percent", 20), 0, 500);
+        blueprintImportMarkupPercent =
+                Math.clamp(c.getDouble("blueprint.import-markup-percent", 50), 0, 1000);
+        blueprintFallbackPrice = Math.max(0, c.getInt("blueprint.fallback-price", 3));
+        blueprintConsumeStock = c.getBoolean("blueprint.consume-market-stock", true);
+        blueprintRushCostPerBlock = Math.max(0, c.getInt("blueprint.rush-cost-per-block", 4));
+        org.bukkit.Material wand = org.bukkit.Material
+                .matchMaterial(c.getString("blueprint.wand", "minecraft:golden_hoe"));
+        blueprintWand = wand == null || !wand.isItem() ? org.bukkit.Material.GOLDEN_HOE : wand;
 
         baseHp = c.getInt("stats.base-hp", 20);
         hpPerLevel = c.getInt("stats.hp-per-level", 1);
@@ -367,42 +370,6 @@ public final class RpgConfig {
         auctionBidIncrementPercent = Math.clamp(c.getInt("auction.bid-increment-percent", 5), 1, 100);
         auctionAntiSnipeSeconds = Math.clamp(c.getInt("auction.anti-snipe-seconds", 60), 0, 3600);
         auctionAnnounce = c.getBoolean("auction.announce-new-lots", true);
-
-        guildNameMaxLength = Math.clamp(c.getInt("guild.name-max-length", 16), 1, 32);
-        guildMaxMembers = Math.clamp(c.getInt("guild.max-members", 20), 1, 200);
-        guildCreateCost = Math.max(0, c.getInt("guild.create-cost", 2000));
-        guildInviteSeconds = Math.max(5, c.getInt("guild.invite-timeout-seconds", 60));
-        // Rows, not slots: a value that is not a legal chest height would
-        // throw on createInventory, which is a crash rather than a setting.
-        guildVaultRows = Math.clamp(c.getInt("guild.vault-rows", 6), 1, 6);
-        guildVaultTitle = c.getString("guild.vault-title", "&8%guild% 보관함");
-        guildChatPrefix = c.getString("guild.chat-prefix", "&2[%guild%] ");
-
-        guildClaimRadius = Math.clamp(c.getInt("guild.claim.radius", 32), 4, 256);
-        guildClaimGap = Math.max(0, c.getInt("guild.claim.gap-between-claims", 16));
-        // The ceiling is never below the base, or investing would shrink the
-        // borders it is supposed to widen.
-        guildMaxRadius = Math.clamp(c.getInt("guild.claim.max-radius", 96),
-                guildClaimRadius, 512);
-        guildInvestPerBlock = Math.max(0, c.getInt("guild.claim.invest-gold-per-block", 250));
-        guildBannerCost = Math.max(0, c.getInt("guild.claim.banner-cost", 3000));
-        guildProtectPlace = c.getBoolean("guild.claim.protect.block-place", true);
-        guildProtectBuckets = c.getBoolean("guild.claim.protect.buckets", true);
-        guildProtectExplosions = c.getBoolean("guild.claim.protect.explosions", true);
-
-        // Levels, not amplifiers: "speed 1" in config is Speed I in game.
-        guildBuffSpeed = Math.clamp(c.getInt("guild.claim.buffs.speed", 1), 0, 5);
-        guildBuffHaste = Math.clamp(c.getInt("guild.claim.buffs.haste", 1), 0, 5);
-        guildBuffJump = Math.clamp(c.getInt("guild.claim.buffs.jump", 1), 0, 5);
-        guildGrowthBonusStages = Math.clamp(c.getInt("guild.claim.crop-growth-bonus-stages", 1), 0, 7);
-
-        guildWarCost = Math.max(0, c.getInt("guild.war.declare-cost", 2500));
-        guildWarPrepMinutes = Math.clamp(c.getInt("guild.war.preparation-minutes", 10), 0, 1440);
-        // At least a minute of fighting: a zero-length war would be declared
-        // and lost in the same tick, before anyone could reach the border.
-        guildWarDurationMinutes = Math.clamp(c.getInt("guild.war.duration-minutes", 60), 1, 10080);
-        guildWarCooldownMinutes = Math.clamp(c.getInt("guild.war.cooldown-minutes", 1440), 0, 20160);
-        guildWarPrizePercent = Math.clamp(c.getInt("guild.war.prize-percent", 100), 0, 100);
 
         duelRequestSeconds = Math.max(5, c.getInt("duel.request-timeout-seconds", 60));
         duelMaxDistance = Math.max(0, c.getDouble("duel.max-distance", 32));
@@ -618,6 +585,54 @@ public final class RpgConfig {
         return bankEnabled;
     }
 
+    public boolean companyEnabled() {
+        return companyEnabled;
+    }
+
+    public boolean blueprintEnabled() {
+        return blueprintEnabled;
+    }
+
+    public int blueprintMaxBlocks() {
+        return blueprintMaxBlocks;
+    }
+
+    public int blueprintMaxDimension() {
+        return blueprintMaxDimension;
+    }
+
+    public int blueprintMaxPerPlayer() {
+        return blueprintMaxPerPlayer;
+    }
+
+    public int blueprintBlocksPerSecond() {
+        return blueprintBlocksPerSecond;
+    }
+
+    public double blueprintMarginPercent() {
+        return blueprintMarginPercent;
+    }
+
+    public double blueprintImportMarkupPercent() {
+        return blueprintImportMarkupPercent;
+    }
+
+    public int blueprintFallbackPrice() {
+        return blueprintFallbackPrice;
+    }
+
+    public boolean blueprintConsumeStock() {
+        return blueprintConsumeStock;
+    }
+
+    public int blueprintRushCostPerBlock() {
+        return blueprintRushCostPerBlock;
+    }
+
+    public org.bukkit.Material blueprintWand() {
+        return blueprintWand;
+    }
+
     public String auctionTitle() {
         return auctionTitle;
     }
@@ -656,106 +671,6 @@ public final class RpgConfig {
 
     public boolean auctionAnnounce() {
         return auctionAnnounce;
-    }
-
-    public boolean guildEnabled() {
-        return guildEnabled;
-    }
-
-    public int guildNameMaxLength() {
-        return guildNameMaxLength;
-    }
-
-    public int guildMaxMembers() {
-        return guildMaxMembers;
-    }
-
-    public int guildCreateCost() {
-        return guildCreateCost;
-    }
-
-    public int guildInviteSeconds() {
-        return guildInviteSeconds;
-    }
-
-    public int guildVaultRows() {
-        return guildVaultRows;
-    }
-
-    public String guildVaultTitle() {
-        return guildVaultTitle;
-    }
-
-    public String guildChatPrefix() {
-        return guildChatPrefix;
-    }
-
-    public int guildClaimRadius() {
-        return guildClaimRadius;
-    }
-
-    public int guildClaimGap() {
-        return guildClaimGap;
-    }
-
-    public int guildMaxRadius() {
-        return guildMaxRadius;
-    }
-
-    public int guildInvestPerBlock() {
-        return guildInvestPerBlock;
-    }
-
-    public int guildWarCost() {
-        return guildWarCost;
-    }
-
-    public int guildWarPrepMinutes() {
-        return guildWarPrepMinutes;
-    }
-
-    public int guildWarDurationMinutes() {
-        return guildWarDurationMinutes;
-    }
-
-    public int guildWarCooldownMinutes() {
-        return guildWarCooldownMinutes;
-    }
-
-    public int guildWarPrizePercent() {
-        return guildWarPrizePercent;
-    }
-
-    public int guildBannerCost() {
-        return guildBannerCost;
-    }
-
-    public boolean guildProtectPlace() {
-        return guildProtectPlace;
-    }
-
-    public boolean guildProtectBuckets() {
-        return guildProtectBuckets;
-    }
-
-    public boolean guildProtectExplosions() {
-        return guildProtectExplosions;
-    }
-
-    public int guildBuffSpeed() {
-        return guildBuffSpeed;
-    }
-
-    public int guildBuffHaste() {
-        return guildBuffHaste;
-    }
-
-    public int guildBuffJump() {
-        return guildBuffJump;
-    }
-
-    public int guildGrowthBonusStages() {
-        return guildGrowthBonusStages;
     }
 
     public int duelRequestSeconds() {

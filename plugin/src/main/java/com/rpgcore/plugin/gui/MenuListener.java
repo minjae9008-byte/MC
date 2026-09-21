@@ -2,7 +2,12 @@ package com.rpgcore.plugin.gui;
 
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.auction.AuctionMenu;
+import com.rpgcore.plugin.blueprint.Blueprint;
+import com.rpgcore.plugin.blueprint.BlueprintMenu;
 import com.rpgcore.plugin.collection.CollectionMenu;
+import com.rpgcore.plugin.corp.Company;
+import com.rpgcore.plugin.corp.CompanyMenu;
+import com.rpgcore.plugin.corp.StockMenu;
 import com.rpgcore.plugin.economy.BankMenu;
 import com.rpgcore.plugin.economy.EconomyMenu;
 import com.rpgcore.plugin.economy.MarketItem;
@@ -105,6 +110,21 @@ public final class MenuListener implements Listener {
             return;
         }
 
+        if (holder instanceof CompanyMenu.Holder menu) {
+            companyClick(player, menu, event);
+            return;
+        }
+
+        if (holder instanceof StockMenu.Holder menu) {
+            stockClick(player, menu, event);
+            return;
+        }
+
+        if (holder instanceof BlueprintMenu.Holder menu) {
+            blueprintClick(player, menu, event);
+            return;
+        }
+
         if (holder instanceof EconomyMenu.Holder menu) {
             EconomyMenu.Action action = menu.actionAt(event.getRawSlot());
             if (action == null) {
@@ -179,8 +199,9 @@ public final class MenuListener implements Listener {
             case MARKET -> later(player, () -> plugin.marketMenu().open(player));
             case BANK -> later(player, () -> plugin.bankMenu().open(player));
             case ECONOMY -> later(player, () -> plugin.economyMenu().open(player));
-            case GUILD -> chat(player, "guild info");
-            case GUILD_VAULT -> later(player, () -> plugin.guilds().openVault(player));
+            case COMPANY -> later(player, () -> plugin.companyMenu().open(player));
+            case STOCKS -> later(player, () -> plugin.stockMenu().open(player));
+            case BLUEPRINT -> later(player, () -> plugin.blueprintMenu().open(player));
             case MAILBOX -> {
                 if (plugin.mailbox().pending(player.getUniqueId()) == 0) {
                     player.sendMessage(org.bukkit.ChatColor.GRAY + "[우편] 받을 것이 없습니다.");
@@ -429,6 +450,193 @@ public final class MenuListener implements Listener {
             }
         }
         later(player, () -> plugin.bankMenu().open(player));
+    }
+
+    /**
+     * A click in the company screen.
+     *
+     * The money buttons take their amount from the button pressed, like the
+     * bank's; the factory and warehouse rows act on the thing clicked. A
+     * factory is sold with shift and right together on purpose - it is the
+     * one action here that destroys something expensive.
+     */
+    private void companyClick(Player player, CompanyMenu.Holder menu, InventoryClickEvent event) {
+        int slot = event.getRawSlot();
+        var corps = plugin.corps();
+        boolean shift = event.isShiftClick();
+        boolean right = event.isRightClick();
+
+        Integer factory = menu.factoryAt(slot);
+        if (factory != null) {
+            if (shift && right) {
+                corps.sellFactory(player, factory);
+            } else if (event.isLeftClick()) {
+                corps.upgradeFactory(player, factory);
+            }
+            redrawCompany(player, menu);
+            return;
+        }
+        String build = menu.buildAt(slot);
+        if (build != null) {
+            corps.buildFactory(player, build);
+            later(player, () -> plugin.companyMenu().open(player, CompanyMenu.View.FACTORY_SHOP));
+            return;
+        }
+        org.bukkit.Material stock = menu.warehouseAt(slot);
+        if (stock != null) {
+            corps.sellStock(player, stock, Long.MAX_VALUE);
+            redrawCompany(player, menu);
+            return;
+        }
+
+        CompanyMenu.Action action = menu.actionAt(slot);
+        if (action == null) {
+            return;
+        }
+        Company company = corps.employerOf(player);
+        switch (action) {
+            case DEPOSIT -> corps.deposit(player, shift ? 10_000 : (right ? 100_000 : 1_000));
+            case WITHDRAW -> corps.withdraw(player, shift ? 10_000 : (right ? 100_000 : 1_000));
+            case SUPPLY -> corps.supply(player, shift);
+            case ISSUE -> corps.issueShares(player, shift ? 10_000 : 1_000);
+            case SELL_POLICY -> {
+                if (company != null && company.manages(player.getUniqueId())) {
+                    company.sellPercent(company.sellPercent() + (right ? -10 : 10));
+                    corps.save();
+                }
+            }
+            case DIVIDEND_POLICY -> {
+                if (company != null && company.manages(player.getUniqueId())) {
+                    company.dividendPercent(company.dividendPercent() + (right ? -10 : 10));
+                    corps.save();
+                }
+            }
+            case AUTO_BUY -> {
+                if (company != null && company.manages(player.getUniqueId())) {
+                    company.autoBuyInputs(!company.autoBuyInputs());
+                    corps.save();
+                }
+            }
+            case FACTORY_SHOP -> {
+                later(player, () -> plugin.companyMenu().open(player, CompanyMenu.View.FACTORY_SHOP));
+                return;
+            }
+            case BACK_TO_OVERVIEW -> {
+                later(player, () -> plugin.companyMenu().open(player, CompanyMenu.View.OVERVIEW));
+                return;
+            }
+            case STOCKS -> {
+                later(player, () -> plugin.stockMenu().open(player));
+                return;
+            }
+            case BLUEPRINTS -> {
+                later(player, () -> plugin.blueprintMenu().open(player));
+                return;
+            }
+            case BACK -> {
+                later(player, () -> plugin.mainMenu().open(player));
+                return;
+            }
+            case CLOSE -> {
+                later(player, player::closeInventory);
+                return;
+            }
+        }
+        redrawCompany(player, menu);
+    }
+
+    private void redrawCompany(Player player, CompanyMenu.Holder menu) {
+        later(player, () -> plugin.companyMenu().open(player, menu.view()));
+    }
+
+    /** A click on the exchange. Left buys, right sells, shift is ten times. */
+    private void stockClick(Player player, StockMenu.Holder menu, InventoryClickEvent event) {
+        int slot = event.getRawSlot();
+        StockMenu.Action action = menu.actionAt(slot);
+        if (action != null) {
+            switch (action) {
+                case COMPANY -> later(player, () -> plugin.companyMenu().open(player));
+                case BACK -> later(player, () -> plugin.mainMenu().open(player));
+                case CLOSE -> later(player, player::closeInventory);
+                case PORTFOLIO -> {
+                    // The card is read-only; its numbers are already on it.
+                }
+            }
+            return;
+        }
+        java.util.UUID id = menu.companyAt(slot);
+        if (id == null) {
+            return;
+        }
+        Company company = plugin.corps().byId(id);
+        if (company == null) {
+            return;
+        }
+        if (event.isLeftClick()) {
+            plugin.corps().buyShares(player, company, event.isShiftClick() ? 100 : 10);
+        } else if (event.isRightClick()) {
+            plugin.corps().sellShares(player, company, event.isShiftClick()
+                    ? company.sharesOf(player.getUniqueId()) : 10);
+        } else {
+            return;
+        }
+        later(player, () -> plugin.stockMenu().open(player, menu.page()));
+    }
+
+    /**
+     * A click in the blueprint library.
+     *
+     * Left click prints the bill of materials; building needs shift and right
+     * together, because it spends six figures and drops a building on the
+     * spot the player is standing.
+     */
+    private void blueprintClick(Player player, BlueprintMenu.Holder menu, InventoryClickEvent event) {
+        int slot = event.getRawSlot();
+        BlueprintMenu.Action action = menu.actionAt(slot);
+        if (action != null) {
+            switch (action) {
+                case WAND -> later(player, () -> {
+                    player.getInventory().addItem(plugin.blueprintListener().wand());
+                    player.sendMessage(org.bukkit.ChatColor.GREEN
+                            + "[청사진] 설계 지팡이를 드렸습니다.");
+                });
+                case BACK -> later(player, () -> plugin.mainMenu().open(player));
+                case CLOSE -> later(player, player::closeInventory);
+                case SELECTION, SITE -> {
+                    // Read-only cards.
+                }
+            }
+            return;
+        }
+        java.util.UUID id = menu.blueprintAt(slot);
+        if (id == null) {
+            return;
+        }
+        Blueprint blueprint = null;
+        for (Blueprint candidate : plugin.blueprints().all()) {
+            if (candidate.id().equals(id)) {
+                blueprint = candidate;
+                break;
+            }
+        }
+        if (blueprint == null) {
+            return;
+        }
+        if (event.isShiftClick() && event.isRightClick()) {
+            Blueprint chosen = blueprint;
+            later(player, () -> {
+                player.closeInventory();
+                plugin.blueprints().build(player, chosen, player.getLocation(), false);
+            });
+            return;
+        }
+        if (event.isLeftClick()) {
+            Blueprint chosen = blueprint;
+            later(player, () -> {
+                player.closeInventory();
+                player.performCommand("blueprint cost " + chosen.name());
+            });
+        }
     }
 
     @EventHandler
