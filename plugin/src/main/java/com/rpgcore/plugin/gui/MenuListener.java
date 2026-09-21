@@ -3,6 +3,10 @@ package com.rpgcore.plugin.gui;
 import com.rpgcore.plugin.RpgCorePlugin;
 import com.rpgcore.plugin.auction.AuctionMenu;
 import com.rpgcore.plugin.collection.CollectionMenu;
+import com.rpgcore.plugin.economy.BankMenu;
+import com.rpgcore.plugin.economy.EconomyMenu;
+import com.rpgcore.plugin.economy.MarketItem;
+import com.rpgcore.plugin.economy.MarketMenu;
 import com.rpgcore.plugin.menu.MainMenu;
 import com.rpgcore.plugin.job.JobMenu;
 import com.rpgcore.plugin.progress.TitleMenu;
@@ -91,6 +95,31 @@ public final class MenuListener implements Listener {
             return;
         }
 
+        if (holder instanceof MarketMenu.Holder menu) {
+            marketClick(player, menu, event);
+            return;
+        }
+
+        if (holder instanceof BankMenu.Holder menu) {
+            bankClick(player, menu, event);
+            return;
+        }
+
+        if (holder instanceof EconomyMenu.Holder menu) {
+            EconomyMenu.Action action = menu.actionAt(event.getRawSlot());
+            if (action == null) {
+                return;
+            }
+            switch (action) {
+                case REFRESH -> later(player, () -> plugin.economyMenu().open(player));
+                case MARKET -> later(player, () -> plugin.marketMenu().open(player));
+                case BANK -> later(player, () -> plugin.bankMenu().open(player));
+                case BACK -> later(player, () -> plugin.mainMenu().open(player));
+                case CLOSE -> later(player, player::closeInventory);
+            }
+            return;
+        }
+
         if (holder instanceof CollectionMenu.Holder menu) {
             int slot = event.getRawSlot();
             if (slot == menu.backSlot()) {
@@ -147,6 +176,9 @@ public final class MenuListener implements Listener {
             case TITLES -> later(player, () -> plugin.titleMenu().open(player));
             case COLLECTION -> later(player, () -> plugin.collectionMenu().open(player));
             case AUCTION -> later(player, () -> plugin.auctionMenu().open(player));
+            case MARKET -> later(player, () -> plugin.marketMenu().open(player));
+            case BANK -> later(player, () -> plugin.bankMenu().open(player));
+            case ECONOMY -> later(player, () -> plugin.economyMenu().open(player));
             case GUILD -> chat(player, "guild info");
             case GUILD_VAULT -> later(player, () -> plugin.guilds().openVault(player));
             case MAILBOX -> {
@@ -241,6 +273,162 @@ public final class MenuListener implements Listener {
             plugin.auctions().bid(player, lotId);
         }
         later(player, () -> plugin.auctionMenu().open(player, menu.view(), menu.page()));
+    }
+
+    /**
+     * A click in the market.
+     *
+     * Which button was pressed decides the amount, and the trade happens on
+     * the spot: a price can move between one tick and the next, so a
+     * confirmation step would be confirming a price that no longer exists.
+     * The screen is redrawn afterwards, which is where the player sees what
+     * their own order did to the price.
+     */
+    private void marketClick(Player player, MarketMenu.Holder menu, InventoryClickEvent event) {
+        int slot = event.getRawSlot();
+        if (slot == menu.backSlot()) {
+            later(player, () -> plugin.mainMenu().open(player));
+            return;
+        }
+        if (slot == menu.sortSlot()) {
+            later(player, () -> plugin.marketMenu()
+                    .open(player, menu.category(), 0, menu.sort().next()));
+            return;
+        }
+        if (slot == menu.previousSlot()) {
+            later(player, () -> plugin.marketMenu()
+                    .open(player, menu.category(), menu.page() - 1, menu.sort()));
+            return;
+        }
+        if (slot == menu.nextSlot()) {
+            later(player, () -> plugin.marketMenu()
+                    .open(player, menu.category(), menu.page() + 1, menu.sort()));
+            return;
+        }
+        if (slot == menu.bankSlot()) {
+            later(player, () -> plugin.bankMenu().open(player));
+            return;
+        }
+        if (slot == menu.dashboardSlot()) {
+            later(player, () -> plugin.economyMenu().open(player));
+            return;
+        }
+        if (slot == menu.sellHandSlot()) {
+            plugin.market().sellHand(player);
+            redrawMarket(player, menu);
+            return;
+        }
+
+        String tab = menu.tabAt(slot);
+        if (tab != null) {
+            later(player, () -> plugin.marketMenu().open(player, tab, 0, menu.sort()));
+            return;
+        }
+
+        String id = menu.goodAt(slot);
+        if (id == null) {
+            return;
+        }
+        MarketItem item = plugin.market().byId(id);
+        if (item == null) {
+            return;
+        }
+        if (event.isLeftClick()) {
+            plugin.market().buy(player, item,
+                    event.isShiftClick() ? item.material().getMaxStackSize() : 1);
+        } else if (event.isRightClick()) {
+            if (event.isShiftClick()) {
+                plugin.market().sellAll(player, item);
+            } else {
+                plugin.market().sell(player, item, 1);
+            }
+        } else {
+            return;
+        }
+        redrawMarket(player, menu);
+    }
+
+    private void redrawMarket(Player player, MarketMenu.Holder menu) {
+        later(player, () -> plugin.marketMenu()
+                .open(player, menu.category(), menu.page(), menu.sort()));
+    }
+
+    /**
+     * A click at the bank counter.
+     *
+     * The amounts are per-button rather than typed, for the same reason the
+     * market's are: there is nowhere to type in a chest window, and Bedrock
+     * players cannot be given one.
+     */
+    private void bankClick(Player player, BankMenu.Holder menu, InventoryClickEvent event) {
+        int slot = event.getRawSlot();
+
+        Integer deposit = menu.depositAt(slot);
+        if (deposit != null) {
+            plugin.bank().closeTerm(player, deposit);
+            later(player, () -> plugin.bankMenu().open(player));
+            return;
+        }
+        Integer loan = menu.loanAt(slot);
+        if (loan != null) {
+            plugin.bank().repayLoan(player, loan);
+            later(player, () -> plugin.bankMenu().open(player));
+            return;
+        }
+
+        BankMenu.Action action = menu.actionAt(slot);
+        if (action == null) {
+            return;
+        }
+        var bank = plugin.bank();
+        var account = bank.account(player);
+        boolean shift = event.isShiftClick();
+        boolean right = event.isRightClick();
+        switch (action) {
+            case DEPOSIT -> bank.deposit(player, shift
+                    ? (right ? plugin.economy().balance(player) : 1000)
+                    : (right ? 10000 : 100));
+            case WITHDRAW -> bank.withdraw(player, shift
+                    ? (right ? account.checking() : 1000)
+                    : (right ? 10000 : 100));
+            case TERM -> {
+                long amount = shift ? (right ? account.checking() : 10000) : (right ? 10000 : 1000);
+                bank.openTerm(player, amount, right ? 30 : 7);
+            }
+            case BORROW -> {
+                long room = bank.borrowable(account);
+                long amount = shift ? room : room / 4;
+                if (amount <= 0) {
+                    player.sendMessage(org.bukkit.ChatColor.RED
+                            + "[은행] 지금 빌릴 수 있는 돈이 없습니다.");
+                } else {
+                    bank.borrow(player, amount, right ? 30 : 7);
+                }
+            }
+            case REPAY -> bank.repay(player, shift
+                    ? account.totalDebt() : (right ? 10000 : 1000));
+            case RATES, HEALTH -> {
+                // Both are read-only cards; the numbers are already on them.
+                return;
+            }
+            case MARKET -> {
+                later(player, () -> plugin.marketMenu().open(player));
+                return;
+            }
+            case DASHBOARD -> {
+                later(player, () -> plugin.economyMenu().open(player));
+                return;
+            }
+            case BACK -> {
+                later(player, () -> plugin.mainMenu().open(player));
+                return;
+            }
+            case CLOSE -> {
+                later(player, player::closeInventory);
+                return;
+            }
+        }
+        later(player, () -> plugin.bankMenu().open(player));
     }
 
     @EventHandler

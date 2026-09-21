@@ -33,7 +33,8 @@ public final class MainMenu {
     /** What a button does when it is clicked. */
     public enum Action {
         STATS, JOBS, TITLES, COLLECTION, ACHIEVEMENTS, LEADERBOARD,
-        PARTY, GUILD, GUILD_VAULT, TRADE_HELP, DUEL_HELP, AUCTION, MAILBOX, CLOSE
+        PARTY, GUILD, GUILD_VAULT, TRADE_HELP, DUEL_HELP, AUCTION, MAILBOX,
+        MARKET, BANK, ECONOMY, CLOSE
     }
 
     private static final int SIZE = 45;
@@ -92,6 +93,15 @@ public final class MainMenu {
                 "&b순위표", "서버 순위를 봅니다", null);
         button(inv, holder, 16, Action.PARTY, plugin.rpgConfig().partyEnabled(), Material.WHITE_BANNER,
                 "&b파티", "파티를 만들고 관리합니다", partyLine(player));
+
+        boolean market = plugin.rpgConfig().marketEnabled();
+        boolean bankOn = plugin.rpgConfig().bankEnabled();
+        button(inv, holder, 20, Action.MARKET, market, Material.EMERALD_BLOCK,
+                "&a시장", "수요와 공급으로 값이 움직입니다", marketLine());
+        button(inv, holder, 22, Action.BANK, bankOn, Material.GOLD_INGOT,
+                "&6은행", "예금 · 정기예금 · 대출", bankLine(player));
+        button(inv, holder, 24, Action.ECONOMY, market || bankOn, Material.CLOCK,
+                "&e경제 지표", "물가 · 금리 · 통화량 · 경기", economyLine());
 
         boolean guilds = plugin.rpgConfig().guildEnabled();
         button(inv, holder, 28, Action.GUILD, guilds, Material.GREEN_BANNER,
@@ -173,6 +183,33 @@ public final class MainMenu {
         return pending > 0
                 ? "&e받을 것이 " + pending + "개 있습니다"
                 : "&8비어 있습니다";
+    }
+
+    /** Today's headline number, so the button is worth looking at. */
+    private String marketLine() {
+        if (!plugin.rpgConfig().marketEnabled()) {
+            return null;
+        }
+        return "&7" + plugin.market().size() + "종 · 물가 "
+                + String.format(java.util.Locale.ROOT, "%.0f", plugin.macro().cpi());
+    }
+
+    private String bankLine(Player player) {
+        if (!plugin.rpgConfig().bankEnabled()) {
+            return null;
+        }
+        var account = plugin.bank().peek(player.getUniqueId());
+        if (account == null || account.totalDeposits() + account.totalDebt() == 0) {
+            return "&7예금 금리 " + com.rpgcore.plugin.economy.BankService
+                    .percent(plugin.bank().depositRate());
+        }
+        return "&7예금 " + account.totalDeposits()
+                + (account.totalDebt() > 0 ? " &c· 채무 " + account.totalDebt() : "");
+    }
+
+    private String economyLine() {
+        return "&7" + plugin.macro().day() + "일차 · 금리 "
+                + com.rpgcore.plugin.economy.BankService.percent(plugin.macro().policyRate());
     }
 
     private String jobLine(Player player) {

@@ -21,7 +21,10 @@ import com.rpgcore.plugin.gear.RangedListener;
 import com.rpgcore.plugin.command.AchievementCommand;
 import com.rpgcore.plugin.command.AuctionCommand;
 import com.rpgcore.plugin.command.CollectionCommand;
+import com.rpgcore.plugin.command.BankCommand;
 import com.rpgcore.plugin.command.DuelCommand;
+import com.rpgcore.plugin.command.EconomyCommand;
+import com.rpgcore.plugin.command.MarketCommand;
 import com.rpgcore.plugin.command.GoldCommand;
 import com.rpgcore.plugin.command.GuildCommand;
 import com.rpgcore.plugin.command.JobCommand;
@@ -33,6 +36,13 @@ import com.rpgcore.plugin.command.PayCommand;
 import com.rpgcore.plugin.command.TitleCommand;
 import com.rpgcore.plugin.command.TradeCommand;
 import com.rpgcore.plugin.duel.DuelListener;
+import com.rpgcore.plugin.economy.BankMenu;
+import com.rpgcore.plugin.economy.BankService;
+import com.rpgcore.plugin.economy.EconomyConfig;
+import com.rpgcore.plugin.economy.EconomyMenu;
+import com.rpgcore.plugin.economy.MacroService;
+import com.rpgcore.plugin.economy.MarketMenu;
+import com.rpgcore.plugin.economy.MarketService;
 import com.rpgcore.plugin.duel.DuelService;
 import com.rpgcore.plugin.guild.GuildClaimListener;
 import com.rpgcore.plugin.guild.GuildVaultListener;
@@ -116,6 +126,13 @@ public final class RpgCorePlugin extends JavaPlugin {
     private MailboxService mailbox;
     private AuctionService auctions;
     private GuildService guilds;
+    private EconomyConfig economyConfig;
+    private MarketService market;
+    private BankService bank;
+    private MacroService macro;
+    private MarketMenu marketMenu;
+    private BankMenu bankMenu;
+    private EconomyMenu economyMenu;
     private GuildClaimListener claimListener;
     private AuctionMenu auctionMenu;
     private MainMenu mainMenu;
@@ -189,6 +206,18 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.guilds = new GuildService(this);
         this.guilds.load();
 
+        // The economy is built in the order it depends on itself: the
+        // catalogue, then the market that prices it, then the bank that lends
+        // against it, and last the central bank that measures both and sets
+        // the rate they run on.
+        this.economyConfig = new EconomyConfig(this);
+        this.market = new MarketService(this, economyConfig);
+        this.market.load();
+        this.bank = new BankService(this, economyConfig);
+        this.bank.load();
+        this.macro = new MacroService(this, economyConfig, market, bank);
+        this.macro.load();
+
         this.nameplates = new NameplateService(this);
 
         this.statsMenu = new StatsMenu(this);
@@ -196,6 +225,9 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.titleMenu = new TitleMenu(this);
         this.collectionMenu = new CollectionMenu(this);
         this.auctionMenu = new AuctionMenu(this);
+        this.marketMenu = new MarketMenu(this);
+        this.bankMenu = new BankMenu(this);
+        this.economyMenu = new EconomyMenu(this);
         this.mainMenu = new MainMenu(this);
 
         getServer().getPluginManager().registerEvents(new PlayerSessionListener(this), this);
@@ -233,6 +265,9 @@ public final class RpgCorePlugin extends JavaPlugin {
                 duels.tick();
                 auctions.tick();
                 guilds.tickWars();
+                // One long comparison until the economic day actually turns;
+                // the whole economy moves on that one call.
+                macro.tick();
                 // Everything that changed since the last pass is written out
                 // together, once, off the main thread. All four stores flush
                 // in the same tick on purpose: an auction lot and the mailbox
@@ -261,6 +296,9 @@ public final class RpgCorePlugin extends JavaPlugin {
         registerCommand("duel", new DuelCommand(this));
         registerCommand("gold", new GoldCommand(this));
         registerCommand("pay", new PayCommand(this));
+        registerCommand("market", new MarketCommand(this));
+        registerCommand("bank", new BankCommand(this));
+        registerCommand("economy", new EconomyCommand(this));
 
         new VoiceChatHook(this).check();
 
@@ -316,6 +354,17 @@ public final class RpgCorePlugin extends JavaPlugin {
         // before the process goes away.
         if (guilds != null) {
             guilds.saveNow();
+        }
+        // The market holds no items, but the bank holds deposits - gold that
+        // has already left players' balances and exists nowhere else.
+        if (market != null) {
+            market.saveNow();
+        }
+        if (bank != null) {
+            bank.saveNow();
+        }
+        if (macro != null) {
+            macro.saveNow();
         }
         if (players != null) {
             for (Player player : getServer().getOnlinePlayers()) {
@@ -406,6 +455,12 @@ public final class RpgCorePlugin extends JavaPlugin {
                 treeFell.load();
                 anvil.load();
                 jobs.load();
+                // The catalogue can gain or lose goods and change the wage,
+                // so base prices and supply levels are re-derived; live stock
+                // is kept, because a reload reprices the world rather than
+                // emptying its warehouses.
+                economyConfig.reload();
+                market.applyConfig();
                 // Both declare their titles, so the registry is rebuilt from
                 // scratch rather than accumulating renamed duplicates.
                 titles.clear();
@@ -605,6 +660,24 @@ public final class RpgCorePlugin extends JavaPlugin {
                 + rpgConfig.auctionTaxPercent() + "%, 1인 " + rpgConfig.auctionMaxListings() + "개");
         line(sender, "골드", true, "처치 +" + rpgConfig.goldPerMobKill() + " / 레벨업 +"
                 + rpgConfig.goldPerLevel() + (rpgConfig.goldTransferAllowed() ? ", /pay 허용" : ", /pay 금지"));
+        line(sender, "시장", rpgConfig.marketEnabled(), market.size() + "품목 / "
+                + economyConfig.categories().size() + "분류, 시급 " + (int) economyConfig.hourlyWage()
+                + " 기준 · 초기공급 " + economyConfig.initialSupplyHours() + "시간 x "
+                + economyConfig.referencePlayers() + "명 · 스프레드 "
+                + (int) economyConfig.spreadPercent() + "% / 거래세 "
+                + (int) economyConfig.salesTaxPercent() + "% · 금고 " + market.treasury());
+        line(sender, "은행", rpgConfig.bankEnabled(), bank.accountCount() + "계좌, 예금 "
+                + bank.totalDeposits() + " / 대출 " + bank.totalLoans() + " · 지급준비율 "
+                + (int) economyConfig.reserveRatioPercent() + "% · 대출여력 "
+                + bank.lendingCapacity() + " · 연체율 "
+                + String.format(java.util.Locale.ROOT, "%.1f%%", bank.delinquencyPercent()));
+        line(sender, "중앙은행", rpgConfig.marketEnabled() || rpgConfig.bankEnabled(),
+                macro.day() + "일차 (하루 " + economyConfig.dayMinutes() + "분, 1년 "
+                        + economyConfig.daysPerYear() + "일) · 물가 "
+                        + String.format(java.util.Locale.ROOT, "%.1f", macro.cpi()) + " ("
+                        + MacroService.signed(macro.inflation()) + ", 목표 "
+                        + economyConfig.inflationTargetPercent() + "%) · 정책금리 "
+                        + com.rpgcore.plugin.economy.BankService.percent(macro.policyRate()));
 
         // Reports whether the webhook is set, never what it is: the URL is a
         // credential, and /rpgcore check is run in front of other people.
@@ -661,10 +734,15 @@ public final class RpgCorePlugin extends JavaPlugin {
             // store, in the one place that can still guarantee the order.
             return;
         }
-        List<Runnable> writes = new ArrayList<>(4);
+        List<Runnable> writes = new ArrayList<>(6);
         add(writes, parties.pendingWrite());
         add(writes, auctions.pendingWrite());
         add(writes, guilds.pendingWrite());
+        // The market gives gold to the bank's borrowers and takes it from its
+        // depositors, so it is written first for the same reason as above.
+        add(writes, market.pendingWrite());
+        add(writes, bank.pendingWrite());
+        add(writes, macro.pendingWrite());
         // Last: everything above can post into it, nothing it holds goes back.
         add(writes, mailbox.pendingWrite());
         if (writes.isEmpty()) {
@@ -720,6 +798,9 @@ public final class RpgCorePlugin extends JavaPlugin {
                 || holder instanceof CollectionMenu.Holder
                 || holder instanceof MainMenu.Holder
                 || holder instanceof AuctionMenu.Holder
+                || holder instanceof MarketMenu.Holder
+                || holder instanceof BankMenu.Holder
+                || holder instanceof EconomyMenu.Holder
                 || holder instanceof com.rpgcore.plugin.trade.TradeSession;
     }
 
@@ -765,6 +846,34 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public AuctionService auctions() {
         return auctions;
+    }
+
+    public EconomyConfig economyConfig() {
+        return economyConfig;
+    }
+
+    public MarketService market() {
+        return market;
+    }
+
+    public BankService bank() {
+        return bank;
+    }
+
+    public MacroService macro() {
+        return macro;
+    }
+
+    public MarketMenu marketMenu() {
+        return marketMenu;
+    }
+
+    public BankMenu bankMenu() {
+        return bankMenu;
+    }
+
+    public EconomyMenu economyMenu() {
+        return economyMenu;
     }
 
     public GuildService guilds() {
@@ -813,6 +922,17 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public DiscordNotifier notifier() {
         return notifier;
+    }
+
+    /**
+     * The scoreboard mirror.
+     *
+     * Exposed for the money supply, which has to count every wallet on the
+     * server - including offline players - and has to count them now rather
+     * than from the leaderboard's few-second cache.
+     */
+    public RpgScoreboard scoreboard() {
+        return scoreboard;
     }
 
     public PlayerDataManager players() {

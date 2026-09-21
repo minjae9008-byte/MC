@@ -103,6 +103,36 @@ public final class WeightLore {
         return true;
     }
 
+    /**
+     * True when nothing on this stack's tooltip came from anywhere but here.
+     *
+     * The market needs this. It only buys plain commodities - a stack with a
+     * name or lore on it is somebody's kept item, not a tradable unit - but
+     * this class writes a weight line onto every carried stack, so "has lore"
+     * on its own would mean the market refused to buy anything at all.
+     */
+    public boolean onlyOwnLore(ItemStack stack) {
+        if (stack == null) {
+            return false;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null || !meta.hasLore()) {
+            return true;
+        }
+        String previous = stack.getPersistentDataContainer().get(markerKey, PersistentDataType.STRING);
+        if (previous == null) {
+            return false;
+        }
+        List<Component> lore = meta.lore();
+        if (lore == null || lore.size() != 1) {
+            return false;
+        }
+        // Compared as plain text for the same reason apply() does: the line
+        // may have been re-serialised on its way through the client.
+        String plain = PLAIN.serialize(LEGACY.deserialize(previous));
+        return plain.equals(PLAIN.serialize(lore.get(0)));
+    }
+
     private String render(ItemStack stack) {
         return lines.computeIfAbsent(stack.getType(), material ->
                 plugin.rpgConfig().weightLoreFormat()

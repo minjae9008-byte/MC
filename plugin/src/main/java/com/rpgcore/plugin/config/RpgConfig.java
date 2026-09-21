@@ -69,6 +69,8 @@ public final class RpgConfig {
     private boolean duelEnabled;
     private boolean auctionEnabled;
     private boolean guildEnabled;
+    private boolean marketEnabled;
+    private boolean bankEnabled;
 
     // --- config.yml ---
     private int baseHp;
@@ -247,6 +249,8 @@ public final class RpgConfig {
         collectionEnabled = settings.getBoolean("features.collection", true);
         duelEnabled = settings.getBoolean("features.duels", true);
         auctionEnabled = settings.getBoolean("features.auction", true);
+        marketEnabled = settings.getBoolean("features.market", true);
+        bankEnabled = settings.getBoolean("features.bank", true);
         guildEnabled = settings.getBoolean("features.guilds", true);
 
         baseHp = c.getInt("stats.base-hp", 20);
@@ -604,6 +608,14 @@ public final class RpgConfig {
 
     public boolean auctionEnabled() {
         return auctionEnabled;
+    }
+
+    public boolean marketEnabled() {
+        return marketEnabled;
+    }
+
+    public boolean bankEnabled() {
+        return bankEnabled;
     }
 
     public String auctionTitle() {

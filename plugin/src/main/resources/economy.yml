@@ -1,0 +1,369 @@
+# ==========================================================================
+#  RPGCore - 경제 (시장 · 은행 · 거시지표)
+# ==========================================================================
+#  이 파일 하나가 서버 경제 전부입니다. 기능을 켜고 끄는 것은
+#  settings.yml 의 features.market / features.bank 입니다.
+#
+#  읽는 순서는 이렇습니다.
+#    1) clock     - "경제일"이 몇 분인지. 모든 이자와 지표가 이 단위로 움직입니다.
+#    2) market    - 가격이 어떻게 정해지는지 (초기 공급, 수요·공급, 변동성)
+#    3) bank      - 예금·대출·신용등급
+#    4) macro     - 중앙은행(정책금리, 공개시장운영)과 지표
+#    5) items     - 품목표. 여기 적은 "시간당 채굴량"에서 기준가와 초기 공급이
+#                   둘 다 계산되어 나옵니다.
+#
+#  지금 경제가 어떤 상태인지는 /economy (지표판) 또는 /economy report 로 봅니다.
+# ==========================================================================
+
+# ==========================================================================
+#  1) 경제 시계
+# ==========================================================================
+#  경제일(經濟日)이 이 경제의 하루입니다. 하루가 지날 때마다:
+#    재고 회복 -> 가격 재계산 -> 지표 집계 -> 정책금리 조정 -> 이자 정산
+#  이 순서로 한 번에 돌아갑니다. 서버가 꺼져 있는 동안은 시간이 가지 않습니다.
+#  (실시간으로 이자를 굴리면 한 달 쉰 사람이 파산해서 돌아옵니다.)
+clock:
+  day-minutes: 20     # 경제일 1일 = 실시간 20분 (마인크래프트 하루와 같음)
+  days-per-year: 12   # 경제년 1년 = 12경제일 = 실시간 4시간
+  # 모든 이자율은 "연이율"로 적습니다. 하루치는 연이율 / days-per-year 입니다.
+  # days-per-year 를 줄이면 1년이 짧아져 이자가 빨리 붙습니다.
+
+# ==========================================================================
+#  2) 시장
+# ==========================================================================
+market:
+  title: "&8시장"
+
+  # ---- 기준가: 노동가치설 ----
+  # 아이템의 기준가 = (시간당 임금 / 시간당 채굴량) x 수요계수
+  #
+  # 한 시간을 캐면 무엇을 캐든 대체로 같은 값어치를 번다는 뜻입니다.
+  # 그래서 품목표에는 가격을 적지 않습니다. "한 시간에 몇 개나 캐지는가"만
+  # 적으면 가격은 거기서 나옵니다 - 다이아 18개/시간, 석탄 420개/시간이면
+  # 다이아는 자동으로 석탄의 23배가 됩니다.
+  hourly-wage: 1200
+
+  # ---- 초기 공급: 채굴 속도 x 시간 x 인원 ----
+  # 기준재고(=균형 공급량) = 시간당 채굴량 x initial-supply-hours x reference-players
+  #
+  # 이것도 채굴 속도에서 나옵니다. 흔한 것은 처음부터 산더미로 깔려 있고
+  # 귀한 것은 몇 개 없습니다. 서버 규모가 다르면 reference-players 만 바꾸면
+  # 모든 품목의 공급이 같은 비율로 따라갑니다.
+  initial-supply-hours: 24
+  reference-players: 10
+
+  # ---- 가격 = 기준가 x (기준재고 / 현재재고) ^ (1 / 수요탄력성) ----
+  # 재고가 기준의 절반이면 값이 오르고, 두 배면 내립니다. 얼마나 크게
+  # 움직이는지는 품목의 수요탄력성이 정합니다(품목표의 elasticity).
+  #
+  #   탄력성 0.5 (필수품, 밀·빵) -> 지수 2.0  : 조금만 모자라도 값이 폭등
+  #   탄력성 1.0 (보통)          -> 지수 1.0  : 재고 반토막이면 값 두 배
+  #   탄력성 2.0 (사치품)        -> 지수 0.5  : 없으면 그냥 안 삽니다
+  #
+  # 필수품이 더 심하게 요동치는 것이 맞습니다. 빵값이 두 배가 되어도
+  # 사람은 빵을 먹지만, 다이아 값이 두 배면 그냥 안 삽니다.
+  min-price-ratio: 0.2    # 기준가의 20% 밑으로는 안 내려감
+  max-price-ratio: 8.0    # 기준가의 8배 위로는 안 올라감
+  max-stock-multiple: 20  # 재고가 기준의 20배가 되면 매입을 멈춥니다(공급 과잉)
+
+  # ---- 호가와 세금 ----
+  # 살 때는 중간값보다 비싸게, 팔 때는 싸게 삽니다. 그 차이가 스프레드입니다.
+  # 이게 0 이면 시장에서 사서 시장에 되파는 무한 반복이 무위험 차익이 됩니다.
+  spread-percent: 6
+  sales-tax-percent: 5    # 거래세. 살 때 붙고 팔 때 떼며, 전액 국고로 갑니다.
+  max-units-per-order: 2048
+
+  # ---- 계속되는 생산 ----
+  # 아무도 팔지 않아도 재고는 기준치로 천천히 돌아옵니다. 세상에서 계속
+  # 캐고 있다는 뜻이고, 이 회복 속도 역시 채굴 속도에 비례합니다.
+  restock-percent-per-day: 25
+  # 플레이어가 실제로 블록을 캐면 그만큼 공급이 늘어납니다. 0 이면 끕니다.
+  # (시장에 내다 팔지 않아도 세상에 물건이 늘어난 것은 사실이므로)
+  production-weight: 1.0
+
+  # ---- 변동성 ----
+  # 하루치 무작위 등락(랜덤워크). 0 이면 가격이 재고에만 반응합니다.
+  # 1년이 12일뿐이라 이 값이 크면 물가지수가 요동쳐서 금리가 따라 춤춥니다.
+  volatility-percent: 2
+  # 심리는 1.0 으로 되돌아옵니다. 이게 없으면 한 번 뜬 값이 영원히 떠 있습니다.
+  sentiment-reversion-percent: 25
+
+  # ---- 충격 ----
+  # 가끔 한 품목에 공급/수요 충격이 옵니다. 광산 붕괴, 유행, 흉작 같은 것.
+  shock:
+    enabled: true
+    chance-percent-per-day: 35
+    min-magnitude-percent: 15
+    max-magnitude-percent: 45
+    decay-percent-per-day: 30   # 충격은 하루에 이만큼씩 풀립니다
+
+  # ---- 시장의 지갑 ----
+  # 시장은 무한정 사주지 않습니다. 이 금고에서 돈을 내어 매입하고,
+  # 판매 대금과 세금이 여기 쌓입니다. 바닥나면 매입이 멈추고,
+  # 중앙은행이 발권해서 채웁니다(= 통화 증발 -> 인플레이션).
+  treasury-start: 3000000
+  treasury-floor: 50000       # 이 밑으로 떨어지면 중앙은행이 발권합니다
+  treasury-refill: 500000     # 한 번에 발권하는 금액
+
+  history-points: 24          # 그래프에 남기는 일수
+  announce-shocks: true       # 충격을 전체 공지
+  daily-report: true          # 경제일마다 한 줄 시황 공지
+
+# ==========================================================================
+#  3) 은행
+# ==========================================================================
+bank:
+  title: "&8은행"
+
+  # 지급준비율. 예금 중 이만큼은 반드시 금고에 남겨야 하고, 나머지만
+  # 대출로 나갑니다. 낮추면 대출이 잘 나가지만 뱅크런에 약해집니다.
+  # 통화승수 = 1 / 지급준비율 이므로, 20% 면 예금 1골드가 최대 5골드까지
+  # 불어납니다. /economy 의 "통화승수"가 그 결과입니다.
+  reserve-ratio-percent: 20
+
+  # 예금 금리 = 정책금리 - 예대마진, 대출 금리 = 정책금리 + 예대마진 + 신용가산
+  # 둘의 차이(예대마진 x2)가 은행의 수입입니다.
+  deposit-margin-percent: 1.5
+  loan-margin-percent: 3.0
+
+  # 정기예금: 묶어두는 기간이 길수록 금리가 더 붙습니다(기간 프리미엄).
+  # 단, 정기예금 금리는 어떤 경우에도 "가장 싼 대출 금리 - 0.5%" 를 넘지 않습니다.
+  # 넘게 두면 최대한 빌려서 예금에 넣는 것이 무위험 차익이 되어 버립니다.
+  term-premium-per-day-percent: 0.2
+  term-min-days: 1
+  term-max-days: 30
+  early-withdrawal-penalty-percent: 50   # 중도해지하면 이자의 절반을 못 받습니다
+
+  # 중앙은행 상시 대출 창구(스탠딩 퍼실리티).
+  # 은행은 예금에서 지급준비금을 뺀 만큼만 빌려줄 수 있지만, 모자라면 여기서
+  # 끌어다 씁니다. 이게 없으면 서버를 새로 연 날에는 예금이 없어서 대출 자체가
+  # 불가능합니다. 끌어다 쓴 돈은 새로 찍은 돈이므로 통화량이 늘고(=물가 압력),
+  # 정책금리만큼 이자를 물며, 여유가 생기는 대로 자동으로 갚습니다.
+  central-bank-facility: 200000
+
+  # 은행 자본이 이만큼 마이너스가 되면 중앙은행이 발권해서 메웁니다.
+  # 0 으로 두면 이자 몇 골드 차이로 매일 구제금융 공지가 뜹니다.
+  bailout-threshold: 2000
+
+  # 대출
+  loan-min: 100
+  loan-max-days: 30
+  loan-default-days: 30            # 연체 이 일수를 넘기면 채무불이행 처리
+  overdue-extra-percent: 15        # 연체 시 붙는 가산금리
+  overdue-credit-drop-per-day: 12  # 연체 하루에 깎이는 신용점수
+  origination-fee-percent: 1       # 취급 수수료. 국고로 갑니다.
+  max-loans: 3                     # 동시에 굴릴 수 있는 대출 건수
+
+  # 신용도로 한도가 정해집니다. 한도 = (기본 + 레벨당 x 레벨 + 예금 x 비율) x 등급배수
+  # 그리고 총부채가 DTI 상한을 넘으면 더 빌릴 수 없습니다.
+  limit-base: 2000
+  limit-per-level: 400
+  limit-deposit-percent: 80
+  dti-percent: 250                 # 총부채 <= 상환능력 x 250%
+
+  # 신용점수 300~1000. 시작은 600(보통).
+  credit-start: 600
+  credit-on-repay: 18              # 제때 갚으면 오름
+  credit-on-default: -180          # 떼먹으면 크게 깎임
+  credit-recovery-per-day: 2       # 빚이 없으면 하루에 이만큼 회복
+  # 등급 경계와 배수 / 가산금리(%). 위에서부터 먼저 맞는 것이 적용됩니다.
+  grades:
+    - { name: "A+", min-score: 900, limit-multiplier: 3.0, risk-premium: 0.0 }
+    - { name: "A",  min-score: 800, limit-multiplier: 2.2, risk-premium: 1.0 }
+    - { name: "B",  min-score: 700, limit-multiplier: 1.6, risk-premium: 2.5 }
+    - { name: "C",  min-score: 600, limit-multiplier: 1.0, risk-premium: 4.5 }
+    - { name: "D",  min-score: 450, limit-multiplier: 0.5, risk-premium: 8.0 }
+    - { name: "F",  min-score: 0,   limit-multiplier: 0.0, risk-premium: 20.0 }
+
+  # 연체를 갚지 않으면: 예금에서 먼저 상계하고, 그래도 남으면 시장 판매
+  # 대금에서 이 비율만큼 압류합니다.
+  garnish-percent: 30
+
+# ==========================================================================
+#  4) 중앙은행과 거시지표
+# ==========================================================================
+macro:
+  # 물가안정목표제. 중앙은행은 물가상승률을 이 값 근처로 되돌리려 합니다.
+  inflation-target-percent: 2.0
+  neutral-rate-percent: 3.0     # 실질 중립금리 r*
+
+  # 테일러 준칙:
+  #   정책금리 = 중립금리 + 물가상승률
+  #             + a x (물가상승률 - 목표) + b x 산출갭
+  # 물가가 목표보다 높으면 금리를 올려 대출을 줄이고, 낮으면 내려 풉니다.
+  taylor-inflation-weight: 0.5
+  # 산출갭 쪽은 일부러 작게 둡니다. 서버가 작을수록 하루 거래액이 들쭉날쭉해서
+  # 이 값이 크면 금리가 매일 춤춥니다. (산출갭 자체도 최근 3일 평균을 쓰고
+  # ±20% 로 잘라낸 뒤 평활합니다.)
+  taylor-output-weight: 0.25
+  rate-floor-percent: 0.5
+  rate-ceiling-percent: 40.0
+  # 하루에 이 이상은 못 움직입니다. 실제 중앙은행도 한 번에 0.25~0.5%p 씩
+  # 움직입니다. 0.25%p 미만의 조정은 아예 하지 않습니다(불감대).
+  rate-move-max-percent: 1.0
+
+  # 공개시장운영: 물가가 목표 밴드를 벗어나면 중앙은행이 직접 시장에서
+  # 바스켓 품목을 사고팝니다. 팔면 공급이 늘어 물가가 내리고 시중 돈이
+  # 흡수되며, 사면 반대입니다.
+  open-market-operations: true
+  omo-band-percent: 5.0         # 목표에서 이만큼 벗어나면 개입
+  # 물가상승률은 이 일수만큼 자료가 쌓여야 계산합니다. 하루치로 연율을 내면
+  # 2% 짜리 등락이 연 27% 로 뻥튀기되고, 금리가 그걸 쫓아 매일 춤춥니다.
+  inflation-min-days: 3
+  # 계산된 물가상승률을 이 비율만큼만 반영합니다(지수평활). 작을수록 둔감합니다.
+  inflation-smoothing-percent: 40
+  omo-max-share-percent: 4.0    # 한 번에 기준재고의 최대 몇 %까지 건드리는지
+
+  # 화폐수량설 MV = PQ.
+  # 통화량(M2)이 생산보다 빨리 늘면 그 차이만큼 물가 수준이 올라갑니다.
+  # 이게 없으면 통화량은 화면에 뜨는 숫자일 뿐이고, 몬스터를 잡아 새로 생긴
+  # 골드가 물가에 아무 영향을 주지 않습니다. 반대로 대출을 갚거나 세금을
+  # 내면 돈이 사라지므로 물가 압력도 줄어듭니다.
+  #
+  # 100 이면 통화 증가분이 전부 물가로, 0 이면 전혀 가지 않습니다(= 유통속도가
+  # 다 흡수). 기본 60 은 그 중간입니다.
+  money-pass-through-percent: 60
+  # 하루에 물가 수준이 움직일 수 있는 최대폭. 한 사람이 재산을 현금화했다고
+  # 물가가 폭발하지는 않게 잘라줍니다.
+  max-price-drift-percent: 3.0
+
+  gdp-smoothing-percent: 20     # 잠재성장률(추세 GDP) 평활 계수
+  broadcast-policy-change: true # 금리를 바꾸면 공지
+
+# ==========================================================================
+#  5) 품목표
+# ==========================================================================
+#  per-hour   한 사람이 한 시간에 현실적으로 얻는 개수.
+#             기준가와 초기 공급이 둘 다 여기서 계산됩니다. 값을 반으로 줄이면
+#             가격은 두 배가 되고 공급은 절반이 됩니다.
+#  demand     수요계수(한계효용). 같은 품이라도 쓸모가 많으면 비쌉니다.
+#  elasticity 수요의 가격탄력성. 작을수록 필수품이고 값이 심하게 요동칩니다.
+#  basket     소비자물가지수(CPI) 바스켓 가중치. 0 이면 물가 계산에서 빠집니다.
+#             "장바구니"이므로 실제로 많이 쓰는 것에만 가중치를 줍니다.
+#
+#  이 서버 버전에 없는 아이템은 경고 한 줄을 남기고 건너뜁니다.
+items:
+  # ---- 광물 · 금속 ----
+  cobblestone:           { category: mineral, per-hour: 3000, demand: 0.6, elasticity: 1.8, basket: 1 }
+  stone:                 { category: mineral, per-hour: 1200, demand: 0.8, elasticity: 1.6, basket: 1 }
+  deepslate:             { category: mineral, per-hour: 900,  demand: 0.7, elasticity: 1.6, basket: 0 }
+  coal:                  { category: mineral, per-hour: 420,  demand: 1.1, elasticity: 1.0, basket: 2 }
+  charcoal:              { category: mineral, per-hour: 300,  demand: 0.9, elasticity: 1.2, basket: 0 }
+  raw_iron:              { category: mineral, per-hour: 320,  demand: 1.2, elasticity: 0.9, basket: 2 }
+  iron_ingot:            { category: mineral, per-hour: 240,  demand: 1.4, elasticity: 0.8, basket: 3 }
+  raw_copper:            { category: mineral, per-hour: 380,  demand: 0.9, elasticity: 1.1, basket: 1 }
+  copper_ingot:          { category: mineral, per-hour: 300,  demand: 1.0, elasticity: 1.0, basket: 1 }
+  raw_gold:              { category: mineral, per-hour: 95,   demand: 1.2, elasticity: 1.0, basket: 1 }
+  gold_ingot:            { category: mineral, per-hour: 80,   demand: 1.3, elasticity: 0.9, basket: 2 }
+  gold_nugget:           { category: mineral, per-hour: 700,  demand: 0.9, elasticity: 1.0, basket: 0 }
+  iron_nugget:           { category: mineral, per-hour: 900,  demand: 0.7, elasticity: 1.1, basket: 0 }
+  redstone:              { category: mineral, per-hour: 460,  demand: 1.1, elasticity: 1.1, basket: 1 }
+  lapis_lazuli:          { category: mineral, per-hour: 210,  demand: 1.0, elasticity: 1.2, basket: 1 }
+  diamond:               { category: mineral, per-hour: 18,   demand: 1.8, elasticity: 1.3, basket: 3 }
+  emerald:               { category: mineral, per-hour: 11,   demand: 1.5, elasticity: 1.6, basket: 1 }
+  quartz:                { category: mineral, per-hour: 380,  demand: 0.9, elasticity: 1.3, basket: 0 }
+  amethyst_shard:        { category: mineral, per-hour: 130,  demand: 1.0, elasticity: 1.4, basket: 0 }
+  obsidian:              { category: mineral, per-hour: 55,   demand: 1.3, elasticity: 0.9, basket: 1 }
+  glowstone_dust:        { category: mineral, per-hour: 220,  demand: 1.0, elasticity: 1.1, basket: 0 }
+
+  # ---- 자재 · 건축 ----
+  sand:                  { category: material, per-hour: 1100, demand: 0.6, elasticity: 1.5, basket: 1 }
+  gravel:                { category: material, per-hour: 900,  demand: 0.5, elasticity: 1.5, basket: 0 }
+  dirt:                  { category: material, per-hour: 2000, demand: 0.3, elasticity: 2.0, basket: 0 }
+  clay_ball:             { category: material, per-hour: 420,  demand: 0.7, elasticity: 1.3, basket: 0 }
+  glass:                 { category: material, per-hour: 800,  demand: 0.8, elasticity: 1.2, basket: 0 }
+  netherrack:            { category: material, per-hour: 1600, demand: 0.4, elasticity: 1.8, basket: 0 }
+  end_stone:             { category: material, per-hour: 700,  demand: 0.7, elasticity: 1.4, basket: 0 }
+  flint:                 { category: material, per-hour: 260,  demand: 0.7, elasticity: 1.2, basket: 0 }
+  stick:                 { category: material, per-hour: 1800, demand: 0.5, elasticity: 1.5, basket: 0 }
+  paper:                 { category: material, per-hour: 420,  demand: 0.8, elasticity: 1.2, basket: 0 }
+  book:                  { category: material, per-hour: 110,  demand: 1.2, elasticity: 1.0, basket: 0 }
+  bamboo:                { category: material, per-hour: 1400, demand: 0.5, elasticity: 1.4, basket: 0 }
+
+  # ---- 목재 ----
+  oak_log:               { category: wood, per-hour: 900, demand: 1.00, elasticity: 1.1, basket: 2 }
+  spruce_log:            { category: wood, per-hour: 900, demand: 0.95, elasticity: 1.1, basket: 1 }
+  birch_log:             { category: wood, per-hour: 850, demand: 0.95, elasticity: 1.1, basket: 1 }
+  jungle_log:            { category: wood, per-hour: 700, demand: 0.90, elasticity: 1.2, basket: 0 }
+  acacia_log:            { category: wood, per-hour: 700, demand: 0.90, elasticity: 1.2, basket: 0 }
+  dark_oak_log:          { category: wood, per-hour: 650, demand: 1.00, elasticity: 1.2, basket: 0 }
+  cherry_log:            { category: wood, per-hour: 600, demand: 1.10, elasticity: 1.3, basket: 0 }
+  mangrove_log:          { category: wood, per-hour: 600, demand: 0.90, elasticity: 1.3, basket: 0 }
+
+  # ---- 농산물 · 식량 ----
+  wheat:                 { category: farm, per-hour: 620, demand: 1.0, elasticity: 0.6, basket: 3 }
+  bread:                 { category: farm, per-hour: 200, demand: 1.2, elasticity: 0.5, basket: 3 }
+  carrot:                { category: farm, per-hour: 680, demand: 0.9, elasticity: 0.6, basket: 2 }
+  potato:                { category: farm, per-hour: 700, demand: 0.9, elasticity: 0.6, basket: 2 }
+  baked_potato:          { category: farm, per-hour: 420, demand: 1.0, elasticity: 0.6, basket: 1 }
+  beetroot:              { category: farm, per-hour: 480, demand: 0.8, elasticity: 0.8, basket: 0 }
+  sugar_cane:            { category: farm, per-hour: 780, demand: 0.8, elasticity: 0.9, basket: 1 }
+  sugar:                 { category: farm, per-hour: 600, demand: 0.8, elasticity: 0.9, basket: 0 }
+  melon_slice:           { category: farm, per-hour: 950, demand: 0.6, elasticity: 1.0, basket: 0 }
+  pumpkin:               { category: farm, per-hour: 300, demand: 0.9, elasticity: 1.0, basket: 0 }
+  apple:                 { category: farm, per-hour: 85,  demand: 1.2, elasticity: 0.8, basket: 1 }
+  sweet_berries:         { category: farm, per-hour: 420, demand: 0.7, elasticity: 1.0, basket: 0 }
+  cocoa_beans:           { category: farm, per-hour: 320, demand: 0.8, elasticity: 1.2, basket: 0 }
+  nether_wart:           { category: farm, per-hour: 480, demand: 1.1, elasticity: 1.0, basket: 0 }
+  brown_mushroom:        { category: farm, per-hour: 380, demand: 0.8, elasticity: 1.1, basket: 0 }
+  red_mushroom:          { category: farm, per-hour: 380, demand: 0.8, elasticity: 1.1, basket: 0 }
+  kelp:                  { category: farm, per-hour: 900, demand: 0.5, elasticity: 1.3, basket: 0 }
+  cooked_beef:           { category: farm, per-hour: 140, demand: 1.4, elasticity: 0.5, basket: 3 }
+  cooked_porkchop:       { category: farm, per-hour: 150, demand: 1.3, elasticity: 0.5, basket: 2 }
+  cooked_chicken:        { category: farm, per-hour: 180, demand: 1.2, elasticity: 0.5, basket: 1 }
+  cod:                   { category: farm, per-hour: 210, demand: 0.9, elasticity: 0.7, basket: 1 }
+  salmon:                { category: farm, per-hour: 170, demand: 1.0, elasticity: 0.7, basket: 1 }
+  egg:                   { category: farm, per-hour: 190, demand: 0.8, elasticity: 0.9, basket: 0 }
+  honey_bottle:          { category: farm, per-hour: 70,  demand: 1.1, elasticity: 1.0, basket: 0 }
+  golden_carrot:         { category: farm, per-hour: 45,  demand: 1.6, elasticity: 0.8, basket: 1 }
+  milk_bucket:           { category: farm, per-hour: 60,  demand: 1.1, elasticity: 0.9, basket: 0 }
+
+  # ---- 몬스터 드랍 ----
+  rotten_flesh:          { category: drop, per-hour: 320, demand: 0.3, elasticity: 2.0, basket: 0 }
+  bone:                  { category: drop, per-hour: 280, demand: 1.0, elasticity: 0.9, basket: 1 }
+  bone_meal:             { category: drop, per-hour: 840, demand: 0.8, elasticity: 1.0, basket: 0 }
+  string:                { category: drop, per-hour: 260, demand: 1.0, elasticity: 1.0, basket: 1 }
+  spider_eye:            { category: drop, per-hour: 160, demand: 0.6, elasticity: 1.4, basket: 0 }
+  gunpowder:             { category: drop, per-hour: 130, demand: 1.4, elasticity: 0.8, basket: 1 }
+  slime_ball:            { category: drop, per-hour: 95,  demand: 1.2, elasticity: 1.0, basket: 0 }
+  ender_pearl:           { category: drop, per-hour: 42,  demand: 1.7, elasticity: 0.8, basket: 1 }
+  blaze_rod:             { category: drop, per-hour: 55,  demand: 1.8, elasticity: 0.7, basket: 1 }
+  blaze_powder:          { category: drop, per-hour: 110, demand: 1.5, elasticity: 0.8, basket: 0 }
+  ghast_tear:            { category: drop, per-hour: 11,  demand: 1.8, elasticity: 1.1, basket: 0 }
+  magma_cream:           { category: drop, per-hour: 65,  demand: 1.3, elasticity: 1.0, basket: 0 }
+  phantom_membrane:      { category: drop, per-hour: 18,  demand: 1.5, elasticity: 1.2, basket: 0 }
+  prismarine_shard:      { category: drop, per-hour: 85,  demand: 1.0, elasticity: 1.2, basket: 0 }
+  prismarine_crystals:   { category: drop, per-hour: 60,  demand: 1.1, elasticity: 1.2, basket: 0 }
+  ink_sac:               { category: drop, per-hour: 150, demand: 0.7, elasticity: 1.3, basket: 0 }
+  glow_ink_sac:          { category: drop, per-hour: 55,  demand: 1.2, elasticity: 1.3, basket: 0 }
+  leather:               { category: drop, per-hour: 190, demand: 1.2, elasticity: 0.9, basket: 1 }
+  feather:               { category: drop, per-hour: 240, demand: 0.8, elasticity: 1.1, basket: 0 }
+  rabbit_hide:           { category: drop, per-hour: 110, demand: 0.7, elasticity: 1.3, basket: 0 }
+  rabbit_foot:           { category: drop, per-hour: 30,  demand: 1.3, elasticity: 1.3, basket: 0 }
+  arrow:                 { category: drop, per-hour: 450, demand: 0.9, elasticity: 0.9, basket: 1 }
+  ender_eye:             { category: drop, per-hour: 20,  demand: 1.6, elasticity: 0.9, basket: 0 }
+  experience_bottle:     { category: drop, per-hour: 35,  demand: 1.7, elasticity: 0.9, basket: 0 }
+
+  # ---- 희귀 ----
+  golden_apple:          { category: rare, per-hour: 6,   demand: 2.0, elasticity: 0.9, basket: 1 }
+  ancient_debris:        { category: rare, per-hour: 2.5, demand: 2.2, elasticity: 1.5, basket: 0 }
+  netherite_scrap:       { category: rare, per-hour: 2.5, demand: 2.2, elasticity: 1.5, basket: 0 }
+  netherite_ingot:       { category: rare, per-hour: 0.6, demand: 2.5, elasticity: 1.7, basket: 0 }
+  shulker_shell:         { category: rare, per-hour: 7,   demand: 2.2, elasticity: 1.2, basket: 0 }
+  wither_skeleton_skull: { category: rare, per-hour: 3.5, demand: 2.4, elasticity: 1.4, basket: 0 }
+  nether_star:           { category: rare, per-hour: 0.4, demand: 3.0, elasticity: 1.6, basket: 0 }
+  dragon_breath:         { category: rare, per-hour: 2.5, demand: 1.8, elasticity: 1.5, basket: 0 }
+  totem_of_undying:      { category: rare, per-hour: 4,   demand: 2.6, elasticity: 1.0, basket: 0 }
+  nautilus_shell:        { category: rare, per-hour: 10,  demand: 1.6, elasticity: 1.2, basket: 0 }
+  heart_of_the_sea:      { category: rare, per-hour: 1.2, demand: 2.4, elasticity: 1.4, basket: 0 }
+  echo_shard:            { category: rare, per-hour: 3,   demand: 2.0, elasticity: 1.4, basket: 0 }
+  amethyst_block:        { category: rare, per-hour: 32,  demand: 1.2, elasticity: 1.4, basket: 0 }
+
+# 분류 이름. 여기 없는 분류는 아이디 그대로 표시됩니다.
+categories:
+  mineral:  { name: "광물 · 금속", icon: minecraft:iron_ingot }
+  material: { name: "자재 · 건축", icon: minecraft:bricks }
+  wood:     { name: "목재",        icon: minecraft:oak_log }
+  farm:     { name: "농산물 · 식량", icon: minecraft:wheat }
+  drop:     { name: "몬스터 드랍", icon: minecraft:bone }
+  rare:     { name: "희귀품",      icon: minecraft:netherite_ingot }
