@@ -104,6 +104,20 @@ public final class MacroService {
     private long printedTotal;
     private long feeTake;
 
+    /** Share of the people actually playing who are not on a payroll. */
+    private double unemployment;
+    private int workforce;
+    private int employed;
+    /**
+     * A composite of every listed company, indexed to 1,000 on the day the
+     * exchange first had a value. The divisor is fixed then and kept, which
+     * is what makes the number comparable across days - recomputing it would
+     * turn every new listing into a jump that means nothing.
+     */
+    private double stockIndex = 1000;
+    private double stockIndexDivisor;
+    private final Deque<Double> stockHistory = new ArrayDeque<>();
+
     private final List<PolicyNote> policyLog = new ArrayList<>();
 
     public MacroService(RpgCorePlugin plugin, EconomyConfig config,
@@ -212,7 +226,49 @@ public final class MacroService {
         outputGap = outputGap * (1 - config.gdpSmoothing()) + raw * config.gdpSmoothing();
 
         measureMoney();
+        measureLabour();
+        measureStockIndex();
         applyQuantityTheory();
+    }
+
+    /**
+     * Unemployment, measured over the people who are actually here.
+     *
+     * Counted against online players rather than every account the server has
+     * ever seen: someone who played once in March is not unemployed, they are
+     * gone, and including them would peg the figure at ninety-something
+     * percent forever and tell nobody anything.
+     */
+    private void measureLabour() {
+        int force = 0;
+        int jobs = 0;
+        for (org.bukkit.entity.Player player : plugin.getServer().getOnlinePlayers()) {
+            force++;
+            if (plugin.corps() != null && plugin.corps().employerOf(player) != null) {
+                jobs++;
+            }
+        }
+        workforce = force;
+        employed = jobs;
+        unemployment = force == 0 ? 0 : (force - jobs) * 100.0 / force;
+    }
+
+    private void measureStockIndex() {
+        if (plugin.corps() == null) {
+            return;
+        }
+        double cap = 0;
+        for (com.rpgcore.plugin.corp.Company company : plugin.corps().all()) {
+            cap += plugin.corps().marketCap(company);
+        }
+        if (stockIndexDivisor <= 0 && cap > 0) {
+            stockIndexDivisor = cap / 1000.0;
+        }
+        stockIndex = stockIndexDivisor <= 0 ? 1000 : cap / stockIndexDivisor;
+        stockHistory.addLast(stockIndex);
+        while (stockHistory.size() > Math.max(config.daysPerYear() * 2, 24)) {
+            stockHistory.removeFirst();
+        }
     }
 
     /**
@@ -582,6 +638,26 @@ public final class MacroService {
         return gini;
     }
 
+    public double unemployment() {
+        return unemployment;
+    }
+
+    public int workforce() {
+        return workforce;
+    }
+
+    public int employed() {
+        return employed;
+    }
+
+    public double stockIndex() {
+        return stockIndex;
+    }
+
+    public List<Double> stockHistory() {
+        return new ArrayList<>(stockHistory);
+    }
+
     public double outputGap() {
         return outputGap;
     }
@@ -676,6 +752,13 @@ public final class MacroService {
         to.sendMessage(ChatColor.WHITE + " 생산(GDP) " + ChatColor.YELLOW
                 + String.format(Locale.ROOT, "%,d", gdpToday) + ChatColor.GRAY
                 + "/일 · 산출갭 " + signed(outputGap) + " · 경기 " + cycleColour() + cyclePhase());
+        to.sendMessage(ChatColor.WHITE + " 고용 " + ChatColor.YELLOW + employed + " / " + workforce
+                + "명" + ChatColor.GRAY + " · 실업률 "
+                + String.format(Locale.ROOT, "%.0f%%", unemployment)
+                + ChatColor.DARK_GRAY + " (접속자 기준)");
+        to.sendMessage(ChatColor.WHITE + " 주가지수 " + ChatColor.YELLOW
+                + String.format(Locale.ROOT, "%,.0f", stockIndex)
+                + ChatColor.DARK_GRAY + " (첫날 1,000)");
         to.sendMessage(ChatColor.WHITE + " 화폐유통속도 " + ChatColor.YELLOW
                 + String.format(Locale.ROOT, "%.2f", velocity) + ChatColor.GRAY
                 + " · 지니계수 " + String.format(Locale.ROOT, "%.3f", gini)
@@ -730,6 +813,12 @@ public final class MacroService {
         feeTake = yaml.getLong("fees", 0);
         lifetimeTrade = yaml.getLong("lifetime-trade", 0);
         previousM2 = yaml.getLong("previous-m2", 0);
+        stockIndexDivisor = yaml.getDouble("stock-index-divisor", 0);
+        for (Object point : yaml.getList("stock-history", List.of())) {
+            if (point instanceof Number number) {
+                stockHistory.addLast(number.doubleValue());
+            }
+        }
         for (Object point : yaml.getList("cpi-history", List.of())) {
             if (point instanceof Number number) {
                 cpiHistory.addLast(number.doubleValue());
@@ -783,6 +872,12 @@ public final class MacroService {
         yaml.set("fees", feeTake);
         yaml.set("lifetime-trade", lifetimeTrade);
         yaml.set("previous-m2", previousM2);
+        yaml.set("stock-index-divisor", round(stockIndexDivisor));
+        List<Double> stockPoints = new ArrayList<>();
+        for (double point : stockHistory) {
+            stockPoints.add(round(point));
+        }
+        yaml.set("stock-history", stockPoints);
         List<Double> cpiPoints = new ArrayList<>();
         for (double point : cpiHistory) {
             cpiPoints.add(round(point));

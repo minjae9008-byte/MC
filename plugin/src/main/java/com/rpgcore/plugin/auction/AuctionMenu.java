@@ -202,6 +202,16 @@ public final class AuctionMenu {
             lore.add(ChatColor.GRAY + "즉시구매: " + plugin.economy().format(lot.buyNowPrice()));
         }
         lore.add(ChatColor.GRAY + "남은 시간: " + ChatColor.WHITE + lot.remaining(now));
+        // What the market says the same goods are worth, so a bidder can tell
+        // a bargain from a fleecing without leaving the screen.
+        var reference = plugin.market().byMaterial(lot.item().getType());
+        if (reference != null) {
+            long marketValue = Math.round(reference.bid(plugin.economyConfig())
+                    * lot.item().getAmount());
+            lore.add(ChatColor.DARK_GRAY + "시장 시세: "
+                    + com.rpgcore.plugin.economy.MarketService.money(reference.mid())
+                    + " x" + lot.item().getAmount() + " = 약 " + marketValue);
+        }
         lore.add("");
 
         boolean mine = lot.seller().equals(viewer.getUniqueId());

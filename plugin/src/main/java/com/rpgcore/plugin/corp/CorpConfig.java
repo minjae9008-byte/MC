@@ -54,7 +54,22 @@ public final class CorpConfig {
     private int defaultSellPercent;
     private boolean defaultAutoBuyInputs;
     private long warehouseCap;
-    private long bankruptcyDebtLimit;
+    private double corporateTaxPercent;
+    private double debtRatioLimitPercent;
+    private int capitalErosionDays;
+    private long cashFloor;
+    private double watchlistPricePenalty;
+    private boolean announceInsolvency;
+
+    private boolean stateEnabled;
+    private double shortageThresholdPercent;
+    private int shortageDays;
+    private int statePerDay;
+    private int stateMaxTotal;
+    private long stateStartupCapital;
+    private double surplusThresholdPercent;
+    private int privatiseDays;
+    private boolean announceState;
 
     private long founderShares;
     private double bookWeight;
@@ -62,12 +77,14 @@ public final class CorpConfig {
     private double tradeImpactPercent;
     private double shareReversionPercent;
     private double minSharePrice;
+    private double minFloatPercent;
+    private double maxImpactPercent;
     private double shareSpreadPercent;
     private double shareTaxPercent;
     private double buybackCashPercent;
     private boolean npcAutoIssue;
     private int defaultDividendPercent;
-    private long minDividendPerShare;
+    private long minDividendPool;
     private double minTakeoverPremium;
     private double maxTakeoverPremium;
     private int offerTimeoutSeconds;
@@ -101,7 +118,26 @@ public final class CorpConfig {
         defaultSellPercent = Math.clamp(c.getInt("company.default-sell-percent", 100), 0, 100);
         defaultAutoBuyInputs = c.getBoolean("company.default-auto-buy-inputs", true);
         warehouseCap = Math.max(1, c.getLong("company.warehouse-cap-per-item", 200_000));
-        bankruptcyDebtLimit = Math.min(0, c.getLong("company.bankruptcy-debt-limit", -50_000));
+        corporateTaxPercent = Math.clamp(c.getDouble("company.corporate-tax-percent", 15), 0.0, 90.0);
+
+        debtRatioLimitPercent = Math.max(10.0, c.getDouble("insolvency.debt-ratio-limit-percent", 400));
+        capitalErosionDays = Math.clamp(c.getInt("insolvency.capital-erosion-days", 3), 1, 60);
+        cashFloor = Math.min(0, c.getLong("insolvency.cash-floor", -50_000));
+        watchlistPricePenalty = Math.clamp(
+                c.getDouble("insolvency.watchlist-price-penalty-percent", 25), 0.0, 90.0);
+        announceInsolvency = c.getBoolean("insolvency.announce", true);
+
+        stateEnabled = c.getBoolean("state-enterprise.enabled", true);
+        shortageThresholdPercent = Math.clamp(
+                c.getDouble("state-enterprise.shortage-threshold-percent", 40), 1.0, 99.0);
+        shortageDays = Math.clamp(c.getInt("state-enterprise.shortage-days", 3), 1, 90);
+        statePerDay = Math.clamp(c.getInt("state-enterprise.max-per-day", 1), 1, 10);
+        stateMaxTotal = Math.clamp(c.getInt("state-enterprise.max-total", 8), 0, 100);
+        stateStartupCapital = Math.max(0, c.getLong("state-enterprise.startup-capital", 250_000));
+        surplusThresholdPercent = Math.max(shortageThresholdPercent + 10,
+                c.getDouble("state-enterprise.surplus-threshold-percent", 130));
+        privatiseDays = Math.clamp(c.getInt("state-enterprise.privatise-days", 5), 1, 90);
+        announceState = c.getBoolean("state-enterprise.announce", true);
 
         founderShares = Math.clamp(c.getLong("shares.founder-shares", 10_000), 100, 100_000_000L);
         bookWeight = Math.clamp(c.getDouble("shares.book-weight-percent", 50), 0, 100) / 100.0;
@@ -109,6 +145,8 @@ public final class CorpConfig {
         tradeImpactPercent = Math.clamp(c.getDouble("shares.trade-impact-percent", 12), 0.0, 100.0);
         shareReversionPercent = Math.clamp(c.getDouble("shares.sentiment-reversion-percent", 25), 0.0, 100.0);
         minSharePrice = Math.max(1, c.getDouble("shares.min-price", 1));
+        minFloatPercent = Math.clamp(c.getDouble("shares.min-float-percent", 10), 1, 90);
+        maxImpactPercent = Math.clamp(c.getDouble("shares.max-impact-percent", 100), 1, 500);
         // Never zero, for the same reason the goods market's spread is never
         // zero: buying and selling at one price is a free money loop.
         shareSpreadPercent = Math.clamp(c.getDouble("shares.spread-percent", 4), 1.0, 50.0);
@@ -116,7 +154,7 @@ public final class CorpConfig {
         buybackCashPercent = Math.clamp(c.getDouble("shares.buyback-cash-percent-per-day", 25), 0.0, 100.0);
         npcAutoIssue = c.getBoolean("shares.npc-auto-issue", true);
         defaultDividendPercent = Math.clamp(c.getInt("shares.default-dividend-percent", 40), 0, 100);
-        minDividendPerShare = Math.max(0, c.getLong("shares.min-dividend-per-share", 1));
+        minDividendPool = Math.max(1, c.getLong("shares.min-dividend-pool", 50));
         minTakeoverPremium = Math.clamp(c.getDouble("shares.min-takeover-premium-percent", 10), 0.0, 500.0);
         maxTakeoverPremium = Math.max(minTakeoverPremium,
                 c.getDouble("shares.max-takeover-premium-percent", 200));
@@ -274,8 +312,64 @@ public final class CorpConfig {
         return warehouseCap;
     }
 
-    public long bankruptcyDebtLimit() {
-        return bankruptcyDebtLimit;
+    public double corporateTaxPercent() {
+        return corporateTaxPercent;
+    }
+
+    public double debtRatioLimitPercent() {
+        return debtRatioLimitPercent;
+    }
+
+    public int capitalErosionDays() {
+        return capitalErosionDays;
+    }
+
+    public long cashFloor() {
+        return cashFloor;
+    }
+
+    public double watchlistPricePenalty() {
+        return watchlistPricePenalty;
+    }
+
+    public boolean announceInsolvency() {
+        return announceInsolvency;
+    }
+
+    public boolean stateEnabled() {
+        return stateEnabled;
+    }
+
+    public double shortageThresholdPercent() {
+        return shortageThresholdPercent;
+    }
+
+    public int shortageDays() {
+        return shortageDays;
+    }
+
+    public int statePerDay() {
+        return statePerDay;
+    }
+
+    public int stateMaxTotal() {
+        return stateMaxTotal;
+    }
+
+    public long stateStartupCapital() {
+        return stateStartupCapital;
+    }
+
+    public double surplusThresholdPercent() {
+        return surplusThresholdPercent;
+    }
+
+    public int privatiseDays() {
+        return privatiseDays;
+    }
+
+    public boolean announceState() {
+        return announceState;
     }
 
     public long founderShares() {
@@ -296,6 +390,14 @@ public final class CorpConfig {
 
     public double shareReversionPercent() {
         return shareReversionPercent;
+    }
+
+    public double minFloatPercent() {
+        return minFloatPercent;
+    }
+
+    public double maxImpactPercent() {
+        return maxImpactPercent;
     }
 
     public double minSharePrice() {
@@ -322,8 +424,8 @@ public final class CorpConfig {
         return defaultDividendPercent;
     }
 
-    public long minDividendPerShare() {
-        return minDividendPerShare;
+    public long minDividendPool() {
+        return minDividendPool;
     }
 
     public double minTakeoverPremium() {

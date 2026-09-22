@@ -672,10 +672,21 @@ public final class RpgCorePlugin extends JavaPlugin {
                 + "골드, " + rpgConfig.duelCountdownSeconds() + "초 카운트다운, 제한 "
                 + rpgConfig.duelMaxSeconds() + "초, 진행 중 " + duels.count() + "건");
         line(sender, "기업", rpgConfig.companyEnabled(), corps.count() + "개 ("
-                + corps.countNpc() + "개 공모), 공장 종류 " + corpConfig.factories().size()
-                + ", 창업비 " + corpConfig.createCost() + ", 일당 "
-                + corpConfig.wagePerEmployee() + ", 지급 배당 "
-                + corpConfig.defaultDividendPercent() + "%");
+                + corps.countNpc() + "개 공모 / " + corps.countState() + "개 공기업), 공장 "
+                + corpConfig.factories().size() + "종, 창업비 " + corpConfig.createCost()
+                + ", 일당 " + corpConfig.wagePerEmployee() + ", 배당 "
+                + corpConfig.defaultDividendPercent() + "%, 법인세 "
+                + (int) corpConfig.corporateTaxPercent() + "%");
+        line(sender, "부실·파산", rpgConfig.companyEnabled(), "부채비율 한계 "
+                + (int) corpConfig.debtRatioLimitPercent() + "%, 자본잠식 "
+                + corpConfig.capitalErosionDays() + "일이면 파산 (청산 시 은행이 우선)");
+        line(sender, "공기업", rpgConfig.companyEnabled() && corpConfig.stateEnabled(),
+                "재고 " + (int) corpConfig.shortageThresholdPercent() + "% 미만이 "
+                        + corpConfig.shortageDays() + "일 이어지면 설립 (최대 "
+                        + corpConfig.stateMaxTotal() + "개, 자본금 "
+                        + corpConfig.stateStartupCapital() + "), 재고 "
+                        + (int) corpConfig.surplusThresholdPercent() + "% 초과 "
+                        + corpConfig.privatiseDays() + "일이면 민영화");
         line(sender, "청사진", rpgConfig.blueprintEnabled(), blueprints.count() + "장, 공사 중 "
                 + blueprints.sites().size() + "곳 · 최대 " + rpgConfig.blueprintMaxBlocks()
                 + "블록 / 한 변 " + rpgConfig.blueprintMaxDimension() + " · 초당 "
@@ -697,7 +708,9 @@ public final class RpgCorePlugin extends JavaPlugin {
                 + bank.totalDeposits() + " / 대출 " + bank.totalLoans() + " · 지급준비율 "
                 + (int) economyConfig.reserveRatioPercent() + "% · 대출여력 "
                 + bank.lendingCapacity() + " · 연체율 "
-                + String.format(java.util.Locale.ROOT, "%.1f%%", bank.delinquencyPercent()));
+                + String.format(java.util.Locale.ROOT, "%.1f%%", bank.delinquencyPercent())
+                + " · 국채 잔액 " + bank.bondsOutstanding() + " (연 "
+                + com.rpgcore.plugin.economy.BankService.percent(bank.bondRate()) + ")");
         line(sender, "중앙은행", rpgConfig.marketEnabled() || rpgConfig.bankEnabled(),
                 macro.day() + "일차 (하루 " + economyConfig.dayMinutes() + "분, 1년 "
                         + economyConfig.daysPerYear() + "일) · 물가 "

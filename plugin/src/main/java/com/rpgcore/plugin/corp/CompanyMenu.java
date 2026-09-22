@@ -36,7 +36,7 @@ public final class CompanyMenu {
 
     public enum Action {
         DEPOSIT, WITHDRAW, SUPPLY, ISSUE, SELL_POLICY, DIVIDEND_POLICY, AUTO_BUY,
-        FACTORY_SHOP, BACK_TO_OVERVIEW, STOCKS, BLUEPRINTS, BACK, CLOSE
+        LOAN, REPAY, FACTORY_SHOP, BACK_TO_OVERVIEW, STOCKS, BLUEPRINTS, BACK, CLOSE
     }
 
     private static final int SIZE = 54;
@@ -257,6 +257,59 @@ public final class CompanyMenu {
                 ChatColor.YELLOW + "좌클릭" + ChatColor.GRAY + " 1,000주 · "
                         + ChatColor.YELLOW + "Shift+좌클릭" + ChatColor.GRAY + " 10,000주"));
         inv.setItem(39, staffCard(company));
+        inv.setItem(40, financeCard(company));
+        button(inv, holder, 41, Action.LOAN, Material.IRON_BARS, "&6대출", List.of(
+                ChatColor.GRAY + "회사 명의로 은행에서 빌립니다.",
+                ChatColor.GRAY + "한도는 자산과 신용등급으로 정해집니다.",
+                ChatColor.DARK_GRAY + "빌린 돈도 갚아야 할 돈입니다 - 자본이 마이너스로",
+                ChatColor.DARK_GRAY + "며칠 이어지면 파산합니다.",
+                "",
+                ChatColor.YELLOW + "좌클릭" + ChatColor.GRAY + " 10,000 · 7일 · "
+                        + ChatColor.YELLOW + "Shift+좌클릭" + ChatColor.GRAY + " 100,000 · 30일"));
+        button(inv, holder, 42, Action.REPAY, Material.EMERALD_BLOCK, "&a상환", List.of(
+                ChatColor.GRAY + "회사 현금으로 빚을 갚습니다.",
+                "",
+                ChatColor.YELLOW + "좌클릭" + ChatColor.GRAY + " 10,000 · "
+                        + ChatColor.YELLOW + "Shift+좌클릭" + ChatColor.GRAY + " 전액"));
+    }
+
+    /** The balance sheet, which is what decides whether the company lives. */
+    private ItemStack financeCard(Company company) {
+        CorpService corps = plugin.corps();
+        long debt = corps.debt(company);
+        double equity = corps.equity(company);
+        var account = corps.bankAccount(company);
+        List<String> lore = new ArrayList<>();
+        lore.add(ChatColor.GRAY + "자산 " + ChatColor.WHITE + comma(Math.round(corps.assets(company))));
+        lore.add(ChatColor.GRAY + "부채 " + (debt > 0 ? ChatColor.RED : ChatColor.WHITE) + comma(debt));
+        lore.add(ChatColor.GRAY + "자본 " + (equity < 0 ? ChatColor.RED : ChatColor.WHITE)
+                + comma(Math.round(equity)));
+        lore.add(ChatColor.GRAY + "부채비율 " + ChatColor.WHITE
+                + (corps.debtRatioPercent(company) >= Double.MAX_VALUE / 2
+                        ? ChatColor.RED + "자본잠식"
+                        : String.format(Locale.ROOT, "%.0f%%", corps.debtRatioPercent(company))));
+        double coverage = corps.interestCoverage(company);
+        lore.add(ChatColor.GRAY + "이자보상배율 " + ChatColor.WHITE
+                + (coverage >= Double.MAX_VALUE / 2 ? "-"
+                        : String.format(Locale.ROOT, "%.1f배", coverage)));
+        lore.add("");
+        lore.add(ChatColor.GRAY + "신용등급 " + ChatColor.WHITE
+                + plugin.bank().grade(account).name() + ChatColor.GRAY + " (" + account.creditScore()
+                + "점) · 한도 " + ChatColor.WHITE + comma(plugin.bank().creditLimit(account)));
+        lore.add(ChatColor.GRAY + "법인세 " + ChatColor.WHITE + comma(company.lastTax())
+                + ChatColor.DARK_GRAY + " (지난 정산)");
+        if (company.watchlisted()) {
+            lore.add("");
+            lore.add(ChatColor.RED + "관리종목: 부채가 과하거나 자본이 마이너스입니다.");
+        }
+        if (company.erosionDays() > 0) {
+            lore.add(ChatColor.DARK_RED + "자본잠식 " + company.erosionDays() + "일째 - "
+                    + plugin.corps().config().capitalErosionDays() + "일이면 파산");
+        }
+        if (company.stateOwned()) {
+            lore.add(ChatColor.AQUA + "공기업 - 공급 부족으로 국가가 세웠습니다.");
+        }
+        return plain(Material.GOLD_NUGGET, "&f재무 상태", lore);
     }
 
     private void drawFactoryShop(Inventory inv, Holder holder, Company company) {

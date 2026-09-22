@@ -26,6 +26,9 @@
 #    duels-won      대결 승리 수
 #    gold-earned    누적으로 번 골드 (대결로 딴 골드는 제외)
 #    collected      도감에 등록한 종류 수
+#    traded         시장에서 사고판 누적 금액
+#    dividends      주식으로 받은 누적 배당
+#    built          청사진으로 올린 누적 블록 수
 #    level          RPG 레벨
 #
 #  first-only 는 '서버 최초' 기록입니다. 먼저 달성한 사람이 가져가면
@@ -424,3 +427,88 @@ achievements:
     reward-xp: 4000
     title: "&d&l[초대 관장]"
     first-only: true
+
+  # --- 경제 -----------------------------------------------------------------
+
+  first-trade:
+    display: "&a첫 거래"
+    description: "시장에서 누적 1,000골드어치를 사고팝니다."
+    icon: minecraft:emerald
+    type: traded
+    goal: 1000
+    reward-xp: 120
+    reward-gold: 100
+
+  trader:
+    display: "&a장사꾼"
+    description: "시장에서 누적 100,000골드어치를 사고팝니다."
+    icon: minecraft:gold_ingot
+    type: traded
+    goal: 100000
+    title: "&a[장사꾼]"
+    reward-xp: 900
+    reward-gold: 2000
+
+  tycoon:
+    display: "&6거상"
+    description: "시장에서 누적 2,000,000골드어치를 사고팝니다."
+    icon: minecraft:gold_block
+    type: traded
+    goal: 2000000
+    title: "&6[거상]"
+    reward-xp: 5000
+
+  first-dividend:
+    display: "&b첫 배당"
+    description: "주식 배당을 처음 받습니다."
+    icon: minecraft:paper
+    type: dividends
+    goal: 1
+    reward-xp: 150
+    reward-gold: 200
+
+  rentier:
+    display: "&b주주"
+    description: "배당으로만 누적 50,000골드를 받습니다."
+    icon: minecraft:writable_book
+    type: dividends
+    goal: 50000
+    title: "&b[주주]"
+    reward-xp: 1500
+
+  magnate:
+    display: "&e재벌"
+    description: "배당으로만 누적 500,000골드를 받습니다."
+    icon: minecraft:beacon
+    type: dividends
+    goal: 500000
+    title: "&e[재벌]"
+    reward-xp: 6000
+
+  first-build:
+    display: "&b첫 시공"
+    description: "청사진으로 500블록을 올립니다."
+    icon: minecraft:bricks
+    type: built
+    goal: 500
+    reward-xp: 200
+    reward-gold: 300
+
+  builder:
+    display: "&b도시계획가"
+    description: "청사진으로 누적 50,000블록을 올립니다."
+    icon: minecraft:filled_map
+    type: built
+    goal: 50000
+    title: "&b[도시계획가]"
+    reward-xp: 2500
+
+  first-fortune:
+    display: "&6최초의 백만장자"
+    description: "누적 1,000,000골드를 법니다. 서버에서 한 명뿐입니다."
+    icon: minecraft:netherite_ingot
+    type: gold-earned
+    goal: 1000000
+    first-only: true
+    title: "&6[백만장자]"
+    reward-xp: 8000

@@ -22,6 +22,11 @@ public enum CounterType {
     DUELS_WON("duels-won", "rpgcore.duels", "대결 승리"),
     GOLD_EARNED("gold-earned", "rpgcore.gold_total", "누적 골드"),
     COLLECTED("collected", "rpgcore.collected", "도감 등록"),
+    // The economy's own tallies. Same treatment as the rest: mirrored, so an
+    // achievement can be written against them and a leaderboard can rank them.
+    TRADED("traded", "rpgcore.traded", "시장 거래액"),
+    DIVIDENDS("dividends", "rpgcore.dividends", "받은 배당"),
+    BUILT("built", "rpgcore.built", "청사진 블록"),
     LEVEL("level", null, "레벨");
 
     private final String id;

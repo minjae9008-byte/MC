@@ -85,6 +85,20 @@ final class BankStorage {
                             + " is malformed (" + e.getMessage() + ") - skipped.");
                 }
             }
+            for (Map<?, ?> row : node.getMapList("bonds")) {
+                try {
+                    account.bonds().add(new TimeDeposit(
+                            uuid(row.get("id")),
+                            longOf(row.get("principal")),
+                            doubleOf(row.get("rate")),
+                            intOf(row.get("opened")),
+                            Math.max(1, intOf(row.get("term"))),
+                            doubleOf(row.get("accrued"))));
+                } catch (IllegalArgumentException e) {
+                    plugin.getLogger().severe(FILE + ": a bond of " + account.name()
+                            + " is malformed (" + e.getMessage() + ") - skipped.");
+                }
+            }
             for (Map<?, ?> row : node.getMapList("loans")) {
                 try {
                     account.loans().add(new Loan(
@@ -146,6 +160,19 @@ final class BankStorage {
                 deposits.add(row);
             }
             yaml.set(path + ".deposits", deposits);
+
+            List<Map<String, Object>> bonds = new ArrayList<>();
+            for (TimeDeposit bond : account.bonds()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id", bond.id().toString());
+                row.put("principal", bond.principal());
+                row.put("rate", round(bond.annualRate()));
+                row.put("opened", bond.openedDay());
+                row.put("term", bond.termDays());
+                row.put("accrued", round(bond.accrued()));
+                bonds.add(row);
+            }
+            yaml.set(path + ".bonds", bonds);
 
             List<Map<String, Object>> loans = new ArrayList<>();
             for (Loan loan : account.loans()) {

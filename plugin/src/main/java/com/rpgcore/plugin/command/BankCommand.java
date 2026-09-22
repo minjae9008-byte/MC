@@ -27,7 +27,8 @@ import java.util.Locale;
 public final class BankCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBS = List.of(
-            "info", "deposit", "withdraw", "save", "close", "loan", "repay", "rates", "help");
+            "info", "deposit", "withdraw", "save", "close", "bond", "loan", "repay",
+            "rates", "help");
 
     private final RpgCorePlugin plugin;
 
@@ -103,6 +104,20 @@ public final class BankCommand implements CommandExecutor, TabCompleter {
                     bank.repay(player, amount);
                 }
             }
+            case "bond", "국채" -> {
+                if (args.length < 2) {
+                    player.sendMessage(ChatColor.YELLOW + "/bank bond <금액> [일수]");
+                    player.sendMessage(ChatColor.GRAY + "  연 "
+                            + BankService.percent(bank.bondRate())
+                            + " · 산 돈은 국고로 가고 만기에 국고가 갚습니다. 중도 환매 없음.");
+                    return true;
+                }
+                long amount = amount(player, args, 1, plugin.economy().balance(player));
+                int days = args.length > 2 ? parseInt(args[2], 7) : 7;
+                if (amount > 0) {
+                    bank.buyBond(player, amount, days);
+                }
+            }
             case "rates", "금리" -> rates(player);
             case "info", "정보" -> info(player, account);
             default -> help(player);
@@ -161,6 +176,15 @@ public final class BankCommand implements CommandExecutor, TabCompleter {
                 + ChatColor.GRAY + "/1000 · 등급 " + ChatColor.WHITE + grade.name()
                 + ChatColor.GRAY + " · 한도 " + ChatColor.WHITE + bank.creditLimit(account)
                 + ChatColor.GRAY + " · 여유 " + ChatColor.WHITE + bank.borrowable(account));
+        if (!account.bonds().isEmpty()) {
+            player.sendMessage(ChatColor.GRAY + " 국채:");
+            int i = 1;
+            for (TimeDeposit bond : account.bonds()) {
+                player.sendMessage(ChatColor.DARK_GRAY + "  " + i++ + ") " + bond.principal()
+                        + symbol + " · 연 " + BankService.percent(bond.annualRate())
+                        + (bond.matured(day) ? " · 만기" : " · " + bond.daysLeft(day) + "일 남음"));
+            }
+        }
         if (!account.deposits().isEmpty()) {
             player.sendMessage(ChatColor.GRAY + " 정기예금:");
             int i = 1;
@@ -225,6 +249,8 @@ public final class BankCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.GRAY + " /bank close <번호>" + ChatColor.DARK_GRAY + " - 정기예금 해지");
         player.sendMessage(ChatColor.GRAY + " /bank loan <금액|max> [일수]");
         player.sendMessage(ChatColor.GRAY + " /bank repay <금액|all>");
+        player.sendMessage(ChatColor.GRAY + " /bank bond <금액> [일수]"
+                + ChatColor.DARK_GRAY + " - 국채 매입 (국고에 빌려주기)");
         player.sendMessage(ChatColor.GRAY + " /bank rates" + ChatColor.DARK_GRAY + " - 금리표");
     }
 
@@ -237,6 +263,9 @@ public final class BankCommand implements CommandExecutor, TabCompleter {
             String sub = args[0].toLowerCase(Locale.ROOT);
             if (sub.equals("deposit") || sub.equals("withdraw") || sub.equals("repay") || sub.equals("save")) {
                 return prefixed(List.of("all", "1000", "10000"), args[1]);
+            }
+            if (sub.equals("bond")) {
+                return prefixed(List.of("10000", "100000", "all"), args[1]);
             }
             if (sub.equals("loan")) {
                 return prefixed(List.of("max", "1000", "10000"), args[1]);

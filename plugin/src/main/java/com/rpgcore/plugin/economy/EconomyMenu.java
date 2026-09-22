@@ -215,6 +215,8 @@ public final class EconomyMenu {
         inv.setItem(31, tile(Material.BELL, "&b통화정책 이력", policyLore(macro)));
         inv.setItem(32, tile(Material.BREAD, "&f물가바스켓", basketLore(market)));
         inv.setItem(33, tile(Material.WRITABLE_BOOK, "&6기업", corporateLore()));
+        inv.setItem(34, tile(Material.IRON_PICKAXE, "&f고용", labourLore(macro)));
+        inv.setItem(25, tile(Material.EMERALD_BLOCK, "&f주가지수", stockLore(macro)));
 
         button(inv, holder, 45, Action.BACK, Material.ARROW, "&c뒤로",
                 List.of(ChatColor.GRAY + "/menu 로 돌아갑니다"));
@@ -285,7 +287,18 @@ public final class EconomyMenu {
             factories += company.factories().size();
         }
         lore.add(ChatColor.GRAY + "상장 " + ChatColor.WHITE + corps.count() + "개"
-                + ChatColor.GRAY + " (공모 " + corps.countNpc() + ")");
+                + ChatColor.GRAY + " (공모 " + corps.countNpc() + " · 공기업 "
+                + corps.countState() + ")");
+        int watchlisted = 0;
+        for (var company : corps.all()) {
+            if (company.watchlisted()) {
+                watchlisted++;
+            }
+        }
+        if (watchlisted > 0) {
+            lore.add(ChatColor.RED + "관리종목 " + watchlisted + "개" + ChatColor.DARK_GRAY
+                    + " (자본잠식 또는 과다 부채)");
+        }
         lore.add(ChatColor.GRAY + "시가총액 " + ChatColor.YELLOW + comma(cap));
         lore.add(ChatColor.GRAY + "보유 현금 " + ChatColor.WHITE + comma(cash)
                 + ChatColor.DARK_GRAY + " (통화량에는 안 들어갑니다)");
@@ -309,6 +322,37 @@ public final class EconomyMenu {
             lore.add(ChatColor.GRAY + "시총 상위:");
             lore.addAll(top);
         }
+        return lore;
+    }
+
+    /** The labour market, measured over the people who are actually here. */
+    private List<String> labourLore(MacroService macro) {
+        List<String> lore = new ArrayList<>();
+        lore.add(ChatColor.GRAY + "취업 " + ChatColor.WHITE + macro.employed()
+                + ChatColor.GRAY + " / 접속 " + ChatColor.WHITE + macro.workforce() + "명");
+        lore.add(ChatColor.GRAY + "실업률 " + (macro.unemployment() > 50
+                ? ChatColor.RED : ChatColor.GREEN)
+                + String.format(Locale.ROOT, "%.0f%%", macro.unemployment()));
+        lore.add(ChatColor.DARK_GRAY + bar((int) (100 - macro.unemployment())));
+        lore.add("");
+        lore.add(ChatColor.DARK_GRAY + "회사에 들어가면 경제일마다 일당이 나옵니다.");
+        lore.add(ChatColor.DARK_GRAY + "직업에 따라 급여와 회사 생산이 달라집니다.");
+        return lore;
+    }
+
+    /** The exchange as one number, indexed to 1,000 on its first day. */
+    private List<String> stockLore(MacroService macro) {
+        List<String> lore = new ArrayList<>();
+        lore.add(ChatColor.GRAY + "지수 " + ChatColor.YELLOW
+                + String.format(Locale.ROOT, "%,.0f", macro.stockIndex())
+                + ChatColor.DARK_GRAY + " (첫날 1,000)");
+        String chart = MarketItem.spark(macro.stockHistory());
+        if (!chart.isEmpty()) {
+            lore.add(ChatColor.AQUA + chart);
+        }
+        lore.add("");
+        lore.add(ChatColor.DARK_GRAY + "상장 기업 전체의 시가총액을 첫날과 비교한 것입니다.");
+        lore.add(ChatColor.DARK_GRAY + "기업이 돈을 벌면 오르고, 망하면 내려갑니다.");
         return lore;
     }
 

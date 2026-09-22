@@ -70,6 +70,18 @@ final class CorpStorage {
                 plugin.getLogger().warning(FILE + ": a takeover offer is malformed - skipped.");
             }
         }
+        ConfigurationSection shortage = yaml.getConfigurationSection("shortage-days");
+        if (shortage != null) {
+            for (String key : shortage.getKeys(false)) {
+                service.shortageDaysMap().put(key, shortage.getInt(key));
+            }
+        }
+        ConfigurationSection surplus = yaml.getConfigurationSection("surplus-days");
+        if (surplus != null) {
+            for (String key : surplus.getKeys(false)) {
+                service.surplusDaysMap().put(key, surplus.getInt(key));
+            }
+        }
         plugin.getLogger().info("Company register restored from " + FILE + ".");
     }
 
@@ -82,6 +94,10 @@ final class CorpStorage {
                 node.getBoolean("npc", false),
                 node.getLong("created-at", System.currentTimeMillis()));
         company.cash(node.getLong("cash", 0));
+        company.stateOwned(node.getBoolean("state-owned", false));
+        company.watchlisted(node.getBoolean("watchlisted", false));
+        company.erosionDays(node.getInt("erosion-days", 0));
+        company.lastTax(node.getLong("last-tax", 0));
         company.sharesIssued(node.getLong("shares", 0));
         company.sellPercent(node.getInt("sell-percent", 100));
         company.autoBuyInputs(node.getBoolean("auto-buy-inputs", true));
@@ -174,6 +190,10 @@ final class CorpStorage {
             yaml.set(path + ".npc", company.npc());
             yaml.set(path + ".created-at", company.createdAt());
             yaml.set(path + ".cash", company.cash());
+            yaml.set(path + ".state-owned", company.stateOwned());
+            yaml.set(path + ".watchlisted", company.watchlisted());
+            yaml.set(path + ".erosion-days", company.erosionDays());
+            yaml.set(path + ".last-tax", company.lastTax());
             yaml.set(path + ".shares", company.sharesIssued());
             yaml.set(path + ".sell-percent", company.sellPercent());
             yaml.set(path + ".auto-buy-inputs", company.autoBuyInputs());
@@ -230,6 +250,15 @@ final class CorpStorage {
             offers.add(row);
         }
         yaml.set("offers", offers);
+        // How long each good has been scarce or piled up. Kept because the
+        // state's decision to step in is meant to take days, and a restart
+        // should not put that clock back to zero.
+        for (Map.Entry<String, Integer> entry : service.shortageDaysMap().entrySet()) {
+            yaml.set("shortage-days." + entry.getKey(), entry.getValue());
+        }
+        for (Map.Entry<String, Integer> entry : service.surplusDaysMap().entrySet()) {
+            yaml.set("surplus-days." + entry.getKey(), entry.getValue());
+        }
         return yaml;
     }
 

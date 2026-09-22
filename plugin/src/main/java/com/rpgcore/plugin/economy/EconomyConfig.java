@@ -90,6 +90,10 @@ public final class EconomyConfig {
     private double earlyWithdrawalPenaltyPercent;
     private long centralBankFacility;
     private long bailoutThreshold;
+    private long bondMin;
+    private int bondMaxDays;
+    private double bondPremiumPercent;
+    private long bondTotalLimit;
     private int loanMin;
     private int loanMaxDays;
     private int loanDefaultDays;
@@ -97,6 +101,7 @@ public final class EconomyConfig {
     private int overdueCreditDropPerDay;
     private double originationFeePercent;
     private int maxLoans;
+    private double corporateLimitPercent;
     private int limitBase;
     private int limitPerLevel;
     private double limitDepositPercent;
@@ -180,6 +185,10 @@ public final class EconomyConfig {
         earlyWithdrawalPenaltyPercent = Math.clamp(c.getDouble("bank.early-withdrawal-penalty-percent", 50), 0.0, 100.0);
         centralBankFacility = Math.max(0, c.getLong("bank.central-bank-facility", 200_000L));
         bailoutThreshold = Math.max(0, c.getLong("bank.bailout-threshold", 2_000L));
+        bondMin = Math.max(1, c.getLong("bank.bond-min", 1000));
+        bondMaxDays = Math.clamp(c.getInt("bank.bond-max-days", 30), 1, 365);
+        bondPremiumPercent = Math.clamp(c.getDouble("bank.bond-premium-percent", 0.5), 0.0, 20.0);
+        bondTotalLimit = Math.max(0, c.getLong("bank.bond-total-limit", 5_000_000L));
         loanMin = Math.max(1, c.getInt("bank.loan-min", 100));
         loanMaxDays = Math.clamp(c.getInt("bank.loan-max-days", 30), 1, 365);
         loanDefaultDays = Math.clamp(c.getInt("bank.loan-default-days", 30), 1, 365);
@@ -187,6 +196,7 @@ public final class EconomyConfig {
         overdueCreditDropPerDay = Math.clamp(c.getInt("bank.overdue-credit-drop-per-day", 12), 0, 1000);
         originationFeePercent = Math.clamp(c.getDouble("bank.origination-fee-percent", 1), 0.0, 50.0);
         maxLoans = Math.clamp(c.getInt("bank.max-loans", 3), 1, 20);
+        corporateLimitPercent = Math.clamp(c.getDouble("bank.corporate-limit-percent", 60), 0.0, 500.0);
         limitBase = Math.max(0, c.getInt("bank.limit-base", 2000));
         limitPerLevel = Math.max(0, c.getInt("bank.limit-per-level", 400));
         limitDepositPercent = Math.clamp(c.getDouble("bank.limit-deposit-percent", 80), 0.0, 500.0);
@@ -489,6 +499,22 @@ public final class EconomyConfig {
         return bailoutThreshold;
     }
 
+    public long bondMin() {
+        return bondMin;
+    }
+
+    public int bondMaxDays() {
+        return bondMaxDays;
+    }
+
+    public double bondPremiumPercent() {
+        return bondPremiumPercent;
+    }
+
+    public long bondTotalLimit() {
+        return bondTotalLimit;
+    }
+
     public int loanMin() {
         return loanMin;
     }
@@ -515,6 +541,10 @@ public final class EconomyConfig {
 
     public int maxLoans() {
         return maxLoans;
+    }
+
+    public double corporateLimitPercent() {
+        return corporateLimitPercent;
     }
 
     public int limitBase() {

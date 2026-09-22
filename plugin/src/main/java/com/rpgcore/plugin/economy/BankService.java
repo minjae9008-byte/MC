@@ -119,6 +119,23 @@ public final class BankService {
         return accounts.get(owner);
     }
 
+    /**
+     * The bank account of something that is not a person - a company.
+     *
+     * Same ledger, same loan machinery, same arrears handling. Only the
+     * credit limit differs: a company borrows against what it owns rather
+     * than against its level and its savings, because a company does not
+     * have a level and its savings are its working capital.
+     */
+    public BankAccount accountFor(UUID owner, String name, long assets) {
+        BankAccount account = accounts.computeIfAbsent(owner,
+                id -> new BankAccount(id, name, config.creditStart()));
+        account.name(name);
+        account.corporate(true);
+        account.declaredAssets(assets);
+        return account;
+    }
+
     public Map<UUID, BankAccount> accounts() {
         return accounts;
     }
@@ -260,8 +277,40 @@ public final class BankService {
         return policyRate() + config.loanMarginPercent() + grade(account).riskPremium();
     }
 
+    /**
+     * Sets a company's rating.
+     *
+     * Only a company's: a player's score is earned through this class's own
+     * repayment and arrears handling, and letting anything outside set it
+     * would make that record meaningless.
+     */
+    public void rateCorporate(BankAccount account, int score) {
+        if (account != null && account.corporate()) {
+            account.creditScore(score);
+        }
+    }
+
     public EconomyConfig.Grade grade(BankAccount account) {
-        return config.gradeFor(account.creditScore());
+        return config.gradeFor(effectiveScore(account));
+    }
+
+    /**
+     * The score a lender actually goes on: what the account earned, plus
+     * whatever their trade is worth to a bank.
+     *
+     * Only for people, and only while they are online - an offline player is
+     * not applying for anything, and a company's rating comes from its books.
+     */
+    public int effectiveScore(BankAccount account) {
+        if (account.corporate() || plugin.jobs() == null) {
+            return account.creditScore();
+        }
+        Player online = plugin.getServer().getPlayer(account.owner());
+        if (online == null) {
+            return account.creditScore();
+        }
+        return Math.clamp(account.creditScore()
+                + plugin.jobs().economyOf(online).creditBonus(), 0, 1000);
     }
 
     /**
@@ -273,18 +322,22 @@ public final class BankService {
      * it least and would swing wildly as they spend.
      */
     public long creditLimit(BankAccount account) {
-        double capacity = config.limitBase()
+        return Math.max(0, Math.round(capacity(account) * grade(account).limitMultiplier()));
+    }
+
+    /** What the borrower can service, before their grade is applied. */
+    private double capacity(BankAccount account) {
+        if (account.corporate()) {
+            return account.declaredAssets() * config.corporateLimitPercent() / 100.0;
+        }
+        return config.limitBase()
                 + (long) config.limitPerLevel() * account.level()
                 + account.totalDeposits() * config.limitDepositPercent() / 100.0;
-        return Math.max(0, Math.round(capacity * grade(account).limitMultiplier()));
     }
 
     /** The debt-to-income ceiling, which bites before the credit limit does. */
     public long dtiCeiling(BankAccount account) {
-        double capacity = config.limitBase()
-                + (long) config.limitPerLevel() * account.level()
-                + account.totalDeposits() * config.limitDepositPercent() / 100.0;
-        return Math.round(capacity * config.dtiPercent() / 100.0);
+        return Math.round(capacity(account) * config.dtiPercent() / 100.0);
     }
 
     public long borrowable(BankAccount account) {
@@ -408,6 +461,90 @@ public final class BankService {
         return true;
     }
 
+    // ---------------------------------------------------------------- bonds
+
+    /** What the state pays to borrow: the policy rate plus a small premium. */
+    public double bondRate() {
+        // Capped under the cheapest loan for the same reason term deposits
+        // are: otherwise borrowing to buy bonds is free money.
+        double best = policyRate() + config.loanMarginPercent() - 0.5;
+        return Math.max(0, Math.min(policyRate() + config.bondPremiumPercent(), best));
+    }
+
+    public long bondsOutstanding() {
+        long total = 0;
+        for (BankAccount account : accounts.values()) {
+            total += account.bondHoldings();
+        }
+        return total;
+    }
+
+    /**
+     * Lends gold to the state.
+     *
+     * The gold leaves circulation the moment it is bought - it goes into the
+     * treasury, which is not counted as money - so a bond issue is a
+     * contraction, and redeeming one is an expansion. That is the whole point
+     * of the instrument: it lets the state raise money now without printing,
+     * and pay for it later.
+     */
+    public boolean buyBond(Player player, long amount, int days) {
+        if (!guard(player)) {
+            return false;
+        }
+        int term = Math.clamp(days, 1, config.bondMaxDays());
+        if (amount < config.bondMin()) {
+            player.sendMessage(ChatColor.RED + "[국채] 최소 매입 금액은 " + config.bondMin()
+                    + plugin.rpgConfig().goldSymbol() + " 입니다.");
+            return false;
+        }
+        if (bondsOutstanding() + amount > config.bondTotalLimit()) {
+            player.sendMessage(ChatColor.RED + "[국채] 발행 한도가 찼습니다. (한도 "
+                    + config.bondTotalLimit() + ", 발행 잔액 " + bondsOutstanding() + ")");
+            return false;
+        }
+        int take = (int) Math.min(Integer.MAX_VALUE, amount);
+        if (!plugin.economy().take(player, take)) {
+            player.sendMessage(ChatColor.RED + "[국채] 골드가 부족합니다. (보유 "
+                    + plugin.economy().balance(player) + ")");
+            return false;
+        }
+        BankAccount account = account(player);
+        double rate = bondRate();
+        account.bonds().add(TimeDeposit.open(take, rate, today(), term));
+        plugin.market().creditTreasury(take);
+        commit();
+        player.sendMessage(ChatColor.GREEN + "[국채] " + take + plugin.rpgConfig().goldSymbol()
+                + " · " + term + "일 · 연 " + percent(rate) + " 로 매입했습니다.");
+        player.sendMessage(ChatColor.GRAY + "  만기 " + (today() + term) + "일차에 원금과 이자를 "
+                + "국고가 돌려줍니다. 중도 환매는 없습니다.");
+        return true;
+    }
+
+    /** Matured bonds, paid out of the treasury. */
+    private void redeemBonds(BankAccount account, int day) {
+        List<TimeDeposit> matured = new ArrayList<>();
+        for (TimeDeposit bond : account.bonds()) {
+            if (bond.matured(day)) {
+                matured.add(bond);
+                continue;
+            }
+            bond.accrue(config.dailyFrom(bond.annualRate()));
+        }
+        for (TimeDeposit bond : matured) {
+            account.bonds().remove(bond);
+            long interest = (long) Math.floor(bond.accrued());
+            long total = bond.principal() + interest;
+            plugin.market().debitTreasury(total);
+            account.addInterestEarned(interest);
+            plugin.mailbox().giveGold(account.owner(),
+                    (int) Math.min(Integer.MAX_VALUE, total), "국채 상환");
+            tell(account, ChatColor.GREEN + "[국채] 만기 상환 " + total
+                    + plugin.rpgConfig().goldSymbol() + " (원금 " + bond.principal()
+                    + " + 이자 " + interest + ")");
+        }
+    }
+
     // ---------------------------------------------------------------- loans
 
     public boolean borrow(Player player, long amount, int days) {
@@ -453,21 +590,10 @@ public final class BankService {
             return false;
         }
 
-        double rate = loanRate(account);
-        long fee = Math.round(amount * config.originationFeePercent() / 100.0);
-        long payout = amount - fee;
-        drawOnFacility(amount);
-        account.loans().add(Loan.open(amount, rate, today(), term));
-        account.countLoanTaken();
-        cash -= amount;
-        commit();
+        long payout = openLoan(account, amount, term);
         plugin.economy().refund(player, (int) Math.min(Integer.MAX_VALUE, payout));
-        // The fee leaves circulation entirely rather than becoming bank
-        // profit: it is a tax, and it is the one part of borrowing that is
-        // not simply moved around.
-        if (fee > 0 && plugin.macro() != null) {
-            plugin.macro().collectFee(fee);
-        }
+        double rate = account.loans().get(account.loans().size() - 1).annualRate();
+        long fee = amount - payout;
 
         player.sendMessage(ChatColor.GREEN + "[은행] " + amount + plugin.rpgConfig().goldSymbol()
                 + " 를 " + term + "일 · 연 " + percent(rate) + " 로 빌렸습니다. "
@@ -520,6 +646,104 @@ public final class BankService {
             cash -= repay;
             centralBankLoans -= repay;
         }
+    }
+
+    /**
+     * Why this account cannot borrow this much, or null when it can.
+     *
+     * Shared by people and companies, because the reasons are the same ones:
+     * too small, too many open, already behind, no credit, over the limit, or
+     * the bank has nothing lendable left.
+     */
+    public String refuseLoan(BankAccount account, long amount, int days) {
+        if (!enabled()) {
+            return "이 서버에서는 은행을 쓸 수 없습니다.";
+        }
+        if (amount < config.loanMin()) {
+            return "최소 대출 금액은 " + config.loanMin() + " 골드입니다.";
+        }
+        if (account.loans().size() >= config.maxLoans()) {
+            return "대출은 동시에 " + config.maxLoans() + "건까지입니다.";
+        }
+        if (account.hasOverdue(today())) {
+            return "연체 중에는 새로 빌릴 수 없습니다.";
+        }
+        EconomyConfig.Grade grade = grade(account);
+        if (grade.limitMultiplier() <= 0) {
+            return "신용등급 " + grade.name() + " 은(는) 대출 대상이 아닙니다. (점수 "
+                    + account.creditScore() + ")";
+        }
+        long limit = Math.min(creditLimit(account), dtiCeiling(account));
+        if (account.totalDebt() + amount > limit) {
+            return "한도를 넘습니다. 한도 " + limit + ", 기존 채무 " + account.totalDebt()
+                    + ", 남은 여유 " + Math.max(0, limit - account.totalDebt()) + ".";
+        }
+        if (amount > lendingCapacity()) {
+            return "은행 대출 여력이 부족합니다. 지금 빌려줄 수 있는 돈은 "
+                    + lendingCapacity() + " 골드입니다.";
+        }
+        return null;
+    }
+
+    /**
+     * Opens the loan and returns the net payout. The caller moves the gold -
+     * into a wallet for a person, into the till for a company.
+     *
+     * Call {@link #refuseLoan} first; this does not check again.
+     */
+    public long openLoan(BankAccount account, long amount, int days) {
+        int term = Math.clamp(days, 1, config.loanMaxDays());
+        double rate = loanRate(account);
+        long fee = Math.round(amount * config.originationFeePercent() / 100.0);
+        drawOnFacility(amount);
+        account.loans().add(Loan.open(amount, rate, today(), term));
+        account.countLoanTaken();
+        cash -= amount;
+        commit();
+        // The fee leaves circulation entirely rather than becoming bank
+        // profit: it is a tax, and it is the one part of borrowing that is
+        // not simply moved around.
+        if (fee > 0) {
+            plugin.market().creditTreasury(fee);
+            if (plugin.macro() != null) {
+                plugin.macro().collectFee(fee);
+            }
+        }
+        return amount - fee;
+    }
+
+    /**
+     * Takes a repayment from something that is not a player - a company
+     * paying down its own loans out of its till.
+     *
+     * @return how much was actually applied
+     */
+    public long repayFor(BankAccount account, long amount) {
+        long applied = applyRepayment(account, amount);
+        cash += applied;
+        if (applied > 0) {
+            commit();
+        }
+        return applied;
+    }
+
+    /**
+     * Writes off what a failed borrower cannot pay.
+     *
+     * The bank loses it - that is what a bad debt is - and the loss lands in
+     * its own capital, where a run of them will eventually need the central
+     * bank. Nothing is quietly forgiven.
+     */
+    public void writeOff(BankAccount account) {
+        long owed = account.totalDebt();
+        if (owed <= 0) {
+            return;
+        }
+        writtenOff += owed;
+        account.loans().clear();
+        account.countDefault();
+        account.bumpCredit(config.creditOnDefault());
+        commit();
     }
 
     /** Pays down the oldest loan first, then the next. Returns what was used. */
@@ -672,6 +896,7 @@ public final class BankService {
         double depositDaily = config.dailyFrom(depositRate());
         for (BankAccount account : accounts.values()) {
             accrueDeposits(account, depositDaily, day);
+            redeemBonds(account, day);
             accrueLoans(account, day);
             chaseArrears(account, day);
             recoverCredit(account);

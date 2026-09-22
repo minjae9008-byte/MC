@@ -343,6 +343,15 @@ public final class BlueprintService {
      * top is labour: the build puts itself up, and that is not free.
      */
     public Estimate estimate(Blueprint blueprint) {
+        return estimate(blueprint, null);
+    }
+
+    /**
+     * The same estimate, with the builder's trade taken into account: an
+     * architect pays less for the labour, never less for the materials -
+     * the market charges everyone the same for a brick.
+     */
+    public Estimate estimate(Blueprint blueprint, Player builder) {
         Map<Material, Integer> items = blueprint.materials();
         Map<Material, Long> shortfall = new LinkedHashMap<>();
         long materials = 0;
@@ -368,8 +377,12 @@ public final class BlueprintService {
                 imported += Math.round(unit * missing);
             }
         }
-        long margin = Math.round((materials + imported)
-                * plugin.rpgConfig().blueprintMarginPercent() / 100.0);
+        double marginPercent = plugin.rpgConfig().blueprintMarginPercent();
+        if (builder != null && plugin.jobs() != null) {
+            double discount = plugin.jobs().economyOf(builder).buildDiscount();
+            marginPercent *= Math.max(0, 1 - Math.min(90, discount) / 100.0);
+        }
+        long margin = Math.round((materials + imported) * marginPercent / 100.0);
         return new Estimate(materials, margin, imported,
                 materials + margin + imported, items, shortfall);
     }
@@ -409,7 +422,7 @@ public final class BlueprintService {
             return false;
         }
 
-        Estimate estimate = estimate(blueprint);
+        Estimate estimate = estimate(blueprint, player);
         long total = estimate.total();
         if (company != null) {
             if (company.cash() < total) {
@@ -690,6 +703,13 @@ public final class BlueprintService {
 
     private void announceFinished(ConstructionSite site, Blueprint blueprint) {
         Player owner = plugin.getServer().getPlayer(site.owner());
+        if (owner != null) {
+            // Putting a building up is progression too, and the tally is what
+            // the construction achievements are written against.
+            plugin.achievements().bump(owner,
+                    com.rpgcore.plugin.progress.CounterType.BUILT, blueprint.solidCount());
+            plugin.stats().addXp(owner, Math.clamp(blueprint.solidCount() / 20, 1, 500));
+        }
         String where = site.originX() + ", " + site.originY() + ", " + site.originZ();
         if (owner != null) {
             owner.sendMessage(ChatColor.GREEN + "[청사진] " + ChatColor.WHITE + blueprint.name()

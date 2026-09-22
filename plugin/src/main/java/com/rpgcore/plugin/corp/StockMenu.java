@@ -121,8 +121,23 @@ public final class StockMenu {
         double pe = corps.priceEarnings(company);
 
         List<String> lore = new ArrayList<>();
-        lore.add(ChatColor.DARK_GRAY + (company.npc() ? "공모 기업" : "대표 " + ceoName(company))
+        lore.add(ChatColor.DARK_GRAY + (company.stateOwned() ? "공기업"
+                : company.npc() ? "공모 기업" : "대표 " + ceoName(company))
                 + " · 영업 " + company.daysOperating() + "일");
+        if (company.stateOwned()) {
+            lore.add(ChatColor.AQUA + "공기업 - 공급 부족으로 국가가 세웠습니다.");
+            lore.add(ChatColor.DARK_GRAY + "공급이 회복되면 민영화되어 살 수 있게 됩니다.");
+        }
+        if (company.watchlisted()) {
+            lore.add(ChatColor.RED + "관리종목 - 부채가 과하거나 자본이 마이너스입니다.");
+        }
+        long debt = corps.debt(company);
+        if (debt > 0) {
+            lore.add(ChatColor.GRAY + "부채 " + ChatColor.RED + comma(debt)
+                    + ChatColor.GRAY + " · 부채비율 " + (corps.debtRatioPercent(company)
+                    >= Double.MAX_VALUE / 2 ? ChatColor.RED + "자본잠식"
+                    : String.format(Locale.ROOT, "%.0f%%", corps.debtRatioPercent(company))));
+        }
         lore.add("");
         lore.add(ChatColor.WHITE + "살 때 " + ChatColor.GOLD
                 + MarketService.money(corps.askPrice(company)) + plugin.rpgConfig().goldSymbol()
@@ -145,9 +160,14 @@ public final class StockMenu {
                 + (pe <= 0 ? "-" : String.format(Locale.ROOT, "%.1f", pe)));
         lore.add(ChatColor.GRAY + "공장 " + company.factories().size() + "개 · 현금 "
                 + comma(company.cash()));
-        lore.add(ChatColor.GRAY + "살 수 있는 물량 " + ChatColor.WHITE
-                + comma(company.treasuryShares()) + "주"
-                + (company.npc() ? ChatColor.DARK_GRAY + " (공모)" : ""));
+        if (company.stateOwned()) {
+            lore.add(ChatColor.GRAY + "살 수 있는 물량 " + ChatColor.RED + "없음"
+                    + ChatColor.DARK_GRAY + " (전량 국가 보유)");
+        } else {
+            lore.add(ChatColor.GRAY + "살 수 있는 물량 " + ChatColor.WHITE
+                    + comma(company.treasuryShares()) + "주"
+                    + (company.npc() ? ChatColor.DARK_GRAY + " (공모)" : ""));
+        }
         lore.add("");
         if (mine > 0) {
             lore.add(ChatColor.GREEN + "보유 " + comma(mine) + "주 · 지분 "

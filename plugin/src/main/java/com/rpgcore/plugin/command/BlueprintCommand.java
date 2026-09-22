@@ -115,7 +115,7 @@ public final class BlueprintCommand implements CommandExecutor, TabCompleter {
 
     /** The bill of materials, and whether the market can actually supply it. */
     private void cost(Player player, Blueprint blueprint) {
-        BlueprintService.Estimate estimate = plugin.blueprints().estimate(blueprint);
+        BlueprintService.Estimate estimate = plugin.blueprints().estimate(blueprint, player);
         player.sendMessage(ChatColor.GOLD + "===== " + blueprint.name() + " =====");
         player.sendMessage(ChatColor.GRAY + " " + blueprint.width() + "x" + blueprint.height()
                 + "x" + blueprint.length() + " · 블록 " + comma(blueprint.solidCount())

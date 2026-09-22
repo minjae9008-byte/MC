@@ -499,6 +499,9 @@ public final class MenuListener implements Listener {
             case WITHDRAW -> corps.withdraw(player, shift ? 10_000 : (right ? 100_000 : 1_000));
             case SUPPLY -> corps.supply(player, shift);
             case ISSUE -> corps.issueShares(player, shift ? 10_000 : 1_000);
+            case LOAN -> corps.borrow(player, shift ? 100_000 : 10_000, shift ? 30 : 7);
+            case REPAY -> corps.repayDebt(player,
+                    shift && company != null ? corps.debt(company) : 10_000);
             case SELL_POLICY -> {
                 if (company != null && company.manages(player.getUniqueId())) {
                     company.sellPercent(company.sellPercent() + (right ? -10 : 10));

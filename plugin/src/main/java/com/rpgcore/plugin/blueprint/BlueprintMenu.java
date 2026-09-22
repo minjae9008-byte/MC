@@ -114,7 +114,7 @@ public final class BlueprintMenu {
     }
 
     private ItemStack icon(Player player, Blueprint blueprint) {
-        BlueprintService.Estimate estimate = plugin.blueprints().estimate(blueprint);
+        BlueprintService.Estimate estimate = plugin.blueprints().estimate(blueprint, player);
         List<String> lore = new ArrayList<>();
         lore.add(ChatColor.GRAY + String.valueOf(blueprint.width()) + "x" + blueprint.height() + "x"
                 + blueprint.length() + " · 블록 " + ChatColor.WHITE

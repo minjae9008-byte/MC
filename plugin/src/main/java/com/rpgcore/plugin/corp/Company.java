@@ -113,6 +113,8 @@ public final class Company {
     private String ticker;
     private UUID ceo;
     private final boolean npc;
+    /** Founded by the state to cover a shortage, until it is privatised. */
+    private boolean stateOwned;
     private final long createdAt;
 
     private final Map<UUID, Employee> employees = new LinkedHashMap<>();
@@ -144,6 +146,10 @@ public final class Company {
     /** Cash already spent buying shares back today; reset each economic day. */
     private long buybackSpentToday;
     private boolean bankrupt;
+    private int erosionDays;
+    private boolean watchlisted;
+    /** Tax paid on the last close, for the ledger card. */
+    private long lastTax;
 
     public Company(UUID id, String name, String ticker, UUID ceo, boolean npc, long createdAt) {
         this.id = id;
@@ -185,6 +191,32 @@ public final class Company {
 
     public boolean npc() {
         return npc;
+    }
+
+    public boolean stateOwned() {
+        return stateOwned;
+    }
+
+    public void stateOwned(boolean stateOwned) {
+        this.stateOwned = stateOwned;
+    }
+
+    /** Consecutive days with negative capital. Reset the moment it recovers. */
+    public int erosionDays() {
+        return erosionDays;
+    }
+
+    void erosionDays(int erosionDays) {
+        this.erosionDays = Math.max(0, erosionDays);
+    }
+
+    /** Publicly flagged as in trouble: too much debt, or capital gone. */
+    public boolean watchlisted() {
+        return watchlisted;
+    }
+
+    void watchlisted(boolean watchlisted) {
+        this.watchlisted = watchlisted;
     }
 
     public long createdAt() {
@@ -474,6 +506,14 @@ public final class Company {
         this.lifetimeRevenue += Math.max(0, revenue);
         this.lifetimeCosts += Math.max(0, costs);
         this.daysOperating++;
+    }
+
+    public long lastTax() {
+        return lastTax;
+    }
+
+    void lastTax(long lastTax) {
+        this.lastTax = lastTax;
     }
 
     void recordDividend(long paid) {

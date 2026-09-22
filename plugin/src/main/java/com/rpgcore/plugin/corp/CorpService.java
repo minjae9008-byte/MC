@@ -1,6 +1,7 @@
 package com.rpgcore.plugin.corp;
 
 import com.rpgcore.plugin.RpgCorePlugin;
+import com.rpgcore.plugin.economy.Loan;
 import com.rpgcore.plugin.economy.MarketItem;
 import com.rpgcore.plugin.economy.MarketService;
 import com.rpgcore.plugin.util.DeferredSave;
@@ -62,6 +63,12 @@ public final class CorpService {
     }
 
     private static final int PRICE_HISTORY = 24;
+    /**
+     * The most the staff's jobs can add to a factory's output, in percent.
+     * Without a ceiling, a big enough payroll of the right job would make
+     * output unbounded and the wage bill irrelevant.
+     */
+    private static final double MAX_STAFF_BONUS_PERCENT = 50;
 
     private final RpgCorePlugin plugin;
     private final CorpConfig config;
@@ -73,6 +80,9 @@ public final class CorpService {
     private final Map<UUID, UUID> employment = new HashMap<>();
     private final Map<UUID, Invite> invites = new HashMap<>();
     private final List<Offer> offers = new ArrayList<>();
+    /** Consecutive economic days a good has been scarce, or been piled up. */
+    private final Map<String, Integer> shortageDays = new LinkedHashMap<>();
+    private final Map<String, Integer> surplusDays = new LinkedHashMap<>();
     private boolean seeded;
 
     public CorpService(RpgCorePlugin plugin, CorpConfig config) {
@@ -313,8 +323,57 @@ public final class CorpService {
         return value;
     }
 
-    public double bookValue(Company company) {
+    /** Everything the company owns, at what it would fetch today. */
+    public double assets(Company company) {
         return company.cash() + warehouseValue(company) + factoryValue(company);
+    }
+
+    /** What it owes the bank. */
+    public long debt(Company company) {
+        var account = plugin.bank().peek(company.id());
+        return account == null ? 0 : account.totalDebt();
+    }
+
+    /**
+     * Assets minus debt: the shareholders' share of the company.
+     *
+     * Negative equity is 자본잠식 - the company owes more than it owns, and
+     * every day it stays there is counted. It is also the number the share
+     * price is built on, which is why a company can be worth nothing.
+     */
+    public double equity(Company company) {
+        return assets(company) - debt(company);
+    }
+
+    /** Debt over capital, in percent. The usual gearing measure. */
+    public double debtRatioPercent(Company company) {
+        double capital = equity(company);
+        if (capital <= 0) {
+            return Double.MAX_VALUE;
+        }
+        return debt(company) / capital * 100.0;
+    }
+
+    /**
+     * Operating profit over interest: how many times over the company can
+     * pay what its debt costs. Under 1 it is borrowing to pay interest.
+     */
+    public double interestCoverage(Company company) {
+        var account = plugin.bank().peek(company.id());
+        if (account == null || account.totalDebt() <= 0) {
+            return Double.MAX_VALUE;
+        }
+        double dailyInterest = account.totalDebt() * plugin.economyConfig()
+                .dailyFrom(plugin.bank().loanRate(account));
+        if (dailyInterest <= 0) {
+            return Double.MAX_VALUE;
+        }
+        return (company.lastProfit() + dailyInterest) / dailyInterest;
+    }
+
+    public double bookValue(Company company) {
+        // Book value for pricing is the shareholders' book, so debt comes off.
+        return equity(company);
     }
 
     /**
@@ -345,6 +404,13 @@ public final class CorpService {
      */
     public double fairPrice(Company company) {
         long outstanding = company.outstandingShares();
+        if (outstanding <= 0) {
+            // A company that holds every one of its own shares has no float
+            // to divide by. Falling back to the minimum price here is what
+            // once let a buyer pick up a whole company for pocket change:
+            // one share bought into an empty register is the whole register.
+            outstanding = company.sharesIssued();
+        }
         if (outstanding <= 0) {
             return config.minSharePrice();
         }
@@ -499,6 +565,23 @@ public final class CorpService {
         company.addCash(Math.round(factoryValue(company)));
         company.factories().clear();
 
+        // Creditors before owners. The bank lent real deposits; shareholders
+        // took a risk. Paying the owners out of money that belongs to the
+        // depositors is how a plugin quietly turns a bank into a charity.
+        long owed = debt(company);
+        if (owed > 0) {
+            var account = plugin.bank().peek(company.id());
+            long paid = plugin.bank().repayFor(account, Math.min(owed, Math.max(0, company.cash())));
+            company.addCash(-paid);
+            long unpaid = debt(company);
+            if (unpaid > 0) {
+                plugin.bank().writeOff(account);
+                plugin.getServer().broadcastMessage(ChatColor.DARK_RED + "[파산] " + ChatColor.WHITE
+                        + company.name() + ChatColor.GRAY + " 의 빚 " + comma(unpaid)
+                        + " 골드는 은행이 손실 처리했습니다.");
+            }
+        }
+
         long distributable = Math.max(0, company.cash());
         long publicShares = company.publicShares();
         if (distributable > 0 && publicShares > 0) {
@@ -546,6 +629,14 @@ public final class CorpService {
         if (corporate != null) {
             corporate.addCash(amount);
             return;
+        }
+        if (note.endsWith("배당")) {
+            Player online = plugin.getServer().getPlayer(holder);
+            if (online != null) {
+                plugin.achievements().bump(online,
+                        com.rpgcore.plugin.progress.CounterType.DIVIDENDS,
+                        (int) Math.min(Integer.MAX_VALUE, amount));
+            }
         }
         plugin.mailbox().giveGold(holder, (int) Math.min(Integer.MAX_VALUE, amount), note);
     }
@@ -740,12 +831,104 @@ public final class CorpService {
             player.sendMessage(ChatColor.RED + "[기업] 회사 현금이 부족합니다. (현금 " + company.cash() + ")");
             return false;
         }
+        // Creditors have a claim on the assets. Letting the CEO walk the
+        // borrowed money out of the door and leave the debt behind is not a
+        // loophole worth leaving open - it is the whole scam.
+        double headroom = equity(company);
+        if (debt(company) > 0 && amount > headroom) {
+            player.sendMessage(ChatColor.RED + "[기업] 빚이 있는 회사에서는 자본을 넘겨 뺄 수 없습니다.");
+            player.sendMessage(ChatColor.GRAY + "  자본 " + comma(Math.round(headroom))
+                    + " 까지만 가능합니다. (자산 " + comma(Math.round(assets(company)))
+                    + " - 부채 " + comma(debt(company)) + ")");
+            return false;
+        }
         company.addCash(-amount);
         commit();
         plugin.economy().refund(player, (int) Math.min(Integer.MAX_VALUE, amount));
         player.sendMessage(ChatColor.GREEN + "[기업] " + amount + " 골드를 꺼냈습니다. (회사 현금 "
                 + company.cash() + ")");
         return true;
+    }
+
+    // ---------------------------------------------------------- borrowing
+
+    /** The company's own bank account, kept current with its books. */
+    public com.rpgcore.plugin.economy.BankAccount bankAccount(Company company) {
+        return plugin.bank().accountFor(company.id(), company.name(),
+                Math.round(Math.max(0, assets(company))));
+    }
+
+    /**
+     * Borrows against the company's assets.
+     *
+     * A company can do what a player can: take money now against what it
+     * expects to earn. It is also how a company gets into the trouble the
+     * insolvency rules are for - borrowing to build a factory that then does
+     * not pay for itself is exactly the mistake that should be possible.
+     */
+    public boolean borrow(Player player, long amount, int days) {
+        Company company = employerOf(player);
+        if (company == null || !player.getUniqueId().equals(company.ceo())) {
+            player.sendMessage(ChatColor.RED + "[기업] 대표만 회사 명의로 빌릴 수 있습니다.");
+            return false;
+        }
+        var account = bankAccount(company);
+        String refusal = plugin.bank().refuseLoan(account, amount, days);
+        if (refusal != null) {
+            player.sendMessage(ChatColor.RED + "[기업] " + refusal);
+            player.sendMessage(ChatColor.GRAY + "  자산 " + comma(Math.round(assets(company)))
+                    + " · 기존 채무 " + comma(debt(company))
+                    + " · 신용등급 " + plugin.bank().grade(account).name());
+            return false;
+        }
+        long payout = plugin.bank().openLoan(account, amount, days);
+        company.addCash(payout);
+        commit();
+        player.sendMessage(ChatColor.GREEN + "[기업] 회사 명의로 " + comma(amount)
+                + " 골드를 빌렸습니다. " + ChatColor.GRAY + "(수수료를 떼고 " + comma(payout)
+                + " 입금 · 연 " + com.rpgcore.plugin.economy.BankService
+                .percent(plugin.bank().loanRate(account)) + ")");
+        player.sendMessage(ChatColor.YELLOW + "  부채비율이 "
+                + ratio(debtRatioPercent(company)) + " 가 되었습니다. "
+                + (int) config.debtRatioLimitPercent() + "% 를 넘으면 관리종목으로 지정됩니다.");
+        return true;
+    }
+
+    public boolean repayDebt(Player player, long amount) {
+        Company company = employerOf(player);
+        if (company == null || !company.manages(player.getUniqueId())) {
+            player.sendMessage(ChatColor.RED + "[기업] 대표나 임원만 상환할 수 있습니다.");
+            return false;
+        }
+        long owed = debt(company);
+        if (owed <= 0) {
+            player.sendMessage(ChatColor.GRAY + "[기업] 갚을 빚이 없습니다.");
+            return false;
+        }
+        long pay = Math.min(Math.min(amount, owed), Math.max(0, company.cash()));
+        if (pay <= 0) {
+            player.sendMessage(ChatColor.RED + "[기업] 회사 현금이 부족합니다. (현금 "
+                    + comma(company.cash()) + ", 채무 " + comma(owed) + ")");
+            return false;
+        }
+        long applied = plugin.bank().repayFor(bankAccount(company), pay);
+        company.addCash(-applied);
+        commit();
+        player.sendMessage(ChatColor.GREEN + "[기업] " + comma(applied)
+                + " 골드를 갚았습니다. " + ChatColor.GRAY + "(남은 채무 " + comma(debt(company))
+                + ", 부채비율 " + ratio(debtRatioPercent(company)) + ")");
+        return true;
+    }
+
+    private static String ratio(double percent) {
+        if (percent >= Double.MAX_VALUE / 2) {
+            return "자본잠식";
+        }
+        return String.format(Locale.ROOT, "%.0f%%", percent);
+    }
+
+    private static String comma(long value) {
+        return String.format(Locale.ROOT, "%,d", value);
     }
 
     // ------------------------------------------------------------ factories
@@ -942,12 +1125,29 @@ public final class CorpService {
             player.sendMessage(ChatColor.RED + "[주식] 1주 이상 사야 합니다.");
             return false;
         }
+        if (company.stateOwned()) {
+            // The state holds the whole register. Auto-issue would otherwise
+            // print new paper for the buyer and quietly sell a public company
+            // out from under the policy that founded it.
+            player.sendMessage(ChatColor.RED + "[주식] " + company.name()
+                    + " 은(는) 공기업이라 지분을 살 수 없습니다.");
+            player.sendMessage(ChatColor.GRAY + "  공급이 회복되어 민영화되면 거래소에 풀립니다.");
+            return false;
+        }
         long available = company.treasuryShares();
         if (available < units && company.npc() && config.npcAutoIssue()) {
             // A seeded company is public: it prints the paper rather than
             // turning an investor away.
             company.issue(units - available);
             available = company.treasuryShares();
+        }
+        // A privatised state enterprise has no treasury shares - the stake
+        // being sold is the state's own, so those shares change hands and the
+        // money goes to the public purse rather than into the company.
+        boolean fromFloat = false;
+        if (available <= 0 && company.sharesOf(Company.PUBLIC) > 0) {
+            available = company.sharesOf(Company.PUBLIC);
+            fromFloat = true;
         }
         long want = Math.min(units, available);
         if (want <= 0) {
@@ -956,7 +1156,7 @@ public final class CorpService {
                     + ChatColor.GRAY + "(대표가 /company issue 로 신주를 발행해야 합니다)");
             return false;
         }
-        long gross = Math.max(1, Math.round(askPrice(company) * want));
+        long gross = Math.max(1, Math.round(askPrice(company) * want * rampFactor(impactMove(company, want))));
         long tax = Math.round(gross * config.shareTaxPercent() / 100.0);
         long total = gross + tax;
         if (total > Integer.MAX_VALUE) {
@@ -969,8 +1169,13 @@ public final class CorpService {
             return false;
         }
 
-        company.addCash(gross);
-        company.moveShares(company.id(), player.getUniqueId(), want);
+        if (fromFloat) {
+            plugin.market().creditTreasury(gross);
+            company.moveShares(Company.PUBLIC, player.getUniqueId(), want);
+        } else {
+            company.addCash(gross);
+            company.moveShares(company.id(), player.getUniqueId(), want);
+        }
         applyTradeImpact(company, want, true);
         plugin.market().creditTreasury(tax);
         plugin.macro().collectFee(tax);
@@ -1023,7 +1228,22 @@ public final class CorpService {
             return false;
         }
         long sold = Math.min(want, affordable);
-        long gross = Math.max(1, Math.round(unit * sold));
+        // A buyback that takes the last share off the market leaves the price
+        // per outstanding share undefined, and the next buyer would then get
+        // the company for nothing. Keep a floor under the float.
+        long floor = Math.round(company.sharesIssued() * config.minFloatPercent() / 100.0);
+        long room = Math.max(0, company.outstandingShares() - floor);
+        if (sold > room) {
+            sold = room;
+        }
+        if (sold <= 0) {
+            player.sendMessage(ChatColor.RED + "[주식] " + company.name()
+                    + " 은(는) 더 되살 수 없습니다. " + ChatColor.GRAY + "(유통주식이 발행주식의 "
+                    + (int) config.minFloatPercent() + "% 밑으로 내려갈 수 없습니다)");
+            return false;
+        }
+        long gross = Math.max(1, Math.round(unit * sold / rampFactor(impactMove(company, sold))));
+        gross = Math.min(gross, Math.max(1, budget));
         long tax = Math.round(gross * config.shareTaxPercent() / 100.0);
         long net = Math.max(0, gross - tax);
 
@@ -1049,6 +1269,37 @@ public final class CorpService {
     }
 
     /**
+     * How far an order of this size moves the price, as a fraction.
+     *
+     * Capped, because the raw figure is linear in the size of the order and a
+     * big enough sale would otherwise drive sentiment through zero and out
+     * the other side into negative prices.
+     */
+    private double impactMove(Company company, long units) {
+        if (company.sharesIssued() <= 0 || units <= 0) {
+            return 0;
+        }
+        double fraction = units / (double) Math.max(1, company.outstandingShares());
+        return Math.min(config.tradeImpactPercent() / 100.0 * (fraction / 0.01),
+                config.maxImpactPercent() / 100.0);
+    }
+
+    /**
+     * What the order actually pays per share, given that it moves the price
+     * while it is being filled.
+     *
+     * Charging the pre-trade price for the whole order and then moving the
+     * price afterwards is a free lunch: buy a tenth of a company at yesterday's
+     * price, sell it back at the price your own buying just made. Walking the
+     * ramp - the geometric mean of the price before and after - is the same
+     * thing the goods market does unit by unit, and it leaves a round trip
+     * costing exactly the spread and the tax, which is the point of both.
+     */
+    private double rampFactor(double move) {
+        return Math.sqrt(1 + Math.max(0, move));
+    }
+
+    /**
      * Moves the price the way an order moves any price here: buying lifts it,
      * selling drops it, in proportion to how much of the company changed
      * hands. It decays back towards fair value every day.
@@ -1057,9 +1308,11 @@ public final class CorpService {
         if (company.sharesIssued() <= 0) {
             return;
         }
-        double fraction = units / (double) Math.max(1, company.outstandingShares());
-        double move = config.tradeImpactPercent() / 100.0 * (fraction / 0.01);
-        company.sentiment(company.sentiment() * (buying ? 1 + move : 1 - move));
+        double move = impactMove(company, units);
+        // Divided rather than subtracted on the way down: the two directions
+        // then undo each other exactly, and sentiment can never reach zero.
+        company.sentiment(buying ? company.sentiment() * (1 + move)
+                : company.sentiment() / (1 + move));
         revalue(company);
     }
 
@@ -1118,6 +1371,11 @@ public final class CorpService {
         }
         if (target == null || target.id().equals(acquirer.id())) {
             player.sendMessage(ChatColor.RED + "[인수] 대상 회사를 찾을 수 없습니다.");
+            return false;
+        }
+        if (target.stateOwned()) {
+            player.sendMessage(ChatColor.RED + "[인수] 공기업은 인수할 수 없습니다.");
+            player.sendMessage(ChatColor.GRAY + "  민영화되기를 기다려야 합니다.");
             return false;
         }
         double premium = Math.clamp(premiumPercent,
@@ -1320,10 +1578,31 @@ public final class CorpService {
             costs += runFactories(company);
             revenue += runSales(company);
             long wages = payWages(company);
+            // Accrued, not paid: interest is a cost the day it is owed even
+            // though the cash leaves when the loan is settled. Reporting it
+            // any other way would show a company borrowing its way to a
+            // profit it has not made.
+            long interest = interestDue(company);
+            serviceDebt(company, day);
 
-            long profit = revenue - costs - wages;
-            company.recordDay(revenue, costs, wages, profit);
+            long gross = revenue - costs - wages - interest;
+            long tax = gross > 0 ? Math.round(gross * config.corporateTaxPercent() / 100.0) : 0;
+            if (tax > 0) {
+                tax = Math.min(tax, Math.max(0, company.cash()));
+                company.addCash(-tax);
+                plugin.market().creditTreasury(tax);
+                plugin.macro().collectFee(tax);
+            }
+            company.lastTax(tax);
+
+            long profit = gross - tax;
+            company.recordDay(revenue, costs + interest, wages, profit);
             payDividends(company, profit);
+            updateCreditScore(company);
+
+            if (assessSolvency(company, day)) {
+                doomed.add(company);
+            }
 
             // Sentiment decays towards fair value, so a price that ran up on
             // one day of buying comes back unless the business justifies it.
@@ -1331,21 +1610,175 @@ public final class CorpService {
             company.sentiment(company.sentiment() + drift);
             revalue(company);
             company.pushPrice(PRICE_HISTORY);
-
-            if (company.cash() < config.bankruptcyDebtLimit() && bookValue(company) <= 0) {
-                doomed.add(company);
-            }
         }
         for (Company company : doomed) {
             company.bankrupt(true);
-            liquidate(company, "자금난으로 도산");
+            liquidate(company, "자본잠식으로 파산");
         }
+        reviewSupply(day);
         save();
+    }
+
+    /** One day's interest on the company's debt, as a cost. */
+    private long interestDue(Company company) {
+        var account = plugin.bank().peek(company.id());
+        if (account == null || account.totalDebt() <= 0) {
+            return 0;
+        }
+        return Math.round(account.totalDebt()
+                * plugin.economyConfig().dailyFrom(plugin.bank().loanRate(account)));
+    }
+
+    /**
+     * Pays off loans that have come due, out of the till.
+     *
+     * Only on or after the due date. A company with the cash should not
+     * default because nobody logged in to press a button, and a company
+     * without it should - that is the whole point of the insolvency rules.
+     */
+    private void serviceDebt(Company company, int day) {
+        var account = plugin.bank().peek(company.id());
+        if (account == null || account.loans().isEmpty() || company.cash() <= 0) {
+            return;
+        }
+        long due = 0;
+        for (Loan loan : account.loans()) {
+            if (day >= loan.dueDay()) {
+                due += loan.owed();
+            }
+        }
+        if (due <= 0) {
+            return;
+        }
+        long pay = Math.min(due, company.cash());
+        long applied = plugin.bank().repayFor(account, pay);
+        company.addCash(-applied);
+        if (applied > 0) {
+            tellCeo(company, ChatColor.GRAY + "[기업] 만기 대출 " + comma(applied)
+                    + " 골드를 자동 상환했습니다. (남은 채무 " + comma(debt(company)) + ")");
+        }
+    }
+
+    /**
+     * Rates the company the way a lender would: how much of it is its own
+     * money, how comfortably it covers its interest, and what its record is.
+     *
+     * Recomputed from state every day rather than nudged, so it cannot drift
+     * away from the books - but a default still leaves a mark, because the
+     * count of them is part of the formula.
+     */
+    private void updateCreditScore(Company company) {
+        var account = bankAccount(company);
+        double assets = assets(company);
+        double equityRatio = assets > 0 ? Math.clamp(equity(company) / assets, -1.0, 1.0) : -1.0;
+        double coverage = interestCoverage(company);
+        int fundamentals = (int) Math.round(equityRatio * 300
+                + Math.min(200, coverage >= Double.MAX_VALUE / 2 ? 200 : coverage * 20));
+        int record = Math.min(100, account.loansRepaid() * 10) - account.defaults() * 150;
+        plugin.bank().rateCorporate(account, Math.clamp(500 + fundamentals + record, 0, 1000));
+    }
+
+    /**
+     * The insolvency ladder: warn, then fail.
+     *
+     * Too much debt or negative capital puts a company on the watchlist,
+     * which is public and marks its share price down - the market should
+     * know. Capital that stays negative for a few days is 자본잠식 and ends
+     * the company. A state enterprise is bailed out instead, because the
+     * state founded it on purpose and can afford to keep it running.
+     *
+     * @return true when the company should be wound up
+     */
+    private boolean assessSolvency(Company company, int day) {
+        double capital = equity(company);
+        boolean troubled = capital < 0 || debtRatioPercent(company) > config.debtRatioLimitPercent();
+
+        if (troubled && !company.watchlisted()) {
+            company.watchlisted(true);
+            if (config.announceInsolvency()) {
+                plugin.getServer().broadcastMessage(ChatColor.RED + "[공시] " + ChatColor.WHITE
+                        + company.name() + ChatColor.GRAY + " 이(가) 관리종목으로 지정되었습니다. "
+                        + "(자본 " + comma(Math.round(capital)) + ", 부채 " + comma(debt(company))
+                        + ", 부채비율 " + ratio(debtRatioPercent(company)) + ")");
+            }
+        } else if (!troubled && company.watchlisted()) {
+            company.watchlisted(false);
+            if (config.announceInsolvency()) {
+                plugin.getServer().broadcastMessage(ChatColor.GREEN + "[공시] " + ChatColor.WHITE
+                        + company.name() + ChatColor.GRAY + " 이(가) 관리종목에서 해제되었습니다.");
+            }
+        }
+
+        if (capital < 0) {
+            company.erosionDays(company.erosionDays() + 1);
+            if (company.erosionDays() == 1) {
+                tellCeo(company, ChatColor.RED + "[기업] 자본이 마이너스입니다(자본잠식). "
+                        + config.capitalErosionDays() + "일 안에 회복하지 못하면 파산합니다. "
+                        + "증자·매각·상환 중 하나를 하세요.");
+            }
+        } else {
+            company.erosionDays(0);
+        }
+
+        if (company.stateOwned() && (capital < 0 || company.cash() < 0)) {
+            // The state does not let its own enterprise fail; it puts money
+            // in, and the money comes from the treasury like any other public
+            // spending.
+            long need = Math.max(config.stateStartupCapital() / 2,
+                    Math.round(-Math.min(capital, company.cash())));
+            plugin.market().debitTreasury(need);
+            company.addCash(need);
+            company.erosionDays(0);
+            if (config.announceState()) {
+                plugin.getServer().broadcastMessage(ChatColor.AQUA + "[재정] " + ChatColor.WHITE
+                        + company.name() + ChatColor.GRAY + " 에 국고에서 " + comma(need)
+                        + " 골드를 투입했습니다.");
+            }
+            return false;
+        }
+
+        if (company.erosionDays() >= config.capitalErosionDays()) {
+            return true;
+        }
+        return company.cash() < config.cashFloor() && assets(company) <= 0;
+    }
+
+    private void tellCeo(Company company, String message) {
+        if (company.ceo() == null) {
+            return;
+        }
+        Player online = plugin.getServer().getPlayer(company.ceo());
+        if (online != null) {
+            online.sendMessage(message);
+        }
+    }
+
+    /**
+     * How much the staff's trades add to output, as a fraction.
+     *
+     * Summed over everybody on the payroll and then capped, so hiring the
+     * right people matters and hiring twenty of them does not make a factory
+     * print goods. This is what makes a job choice an economic decision
+     * rather than a combat one.
+     */
+    private double staffOutputBonus(Company company) {
+        if (plugin.jobs() == null) {
+            return 0;
+        }
+        double sum = 0;
+        for (UUID member : company.employees().keySet()) {
+            Player online = plugin.getServer().getPlayer(member);
+            if (online != null) {
+                sum += plugin.jobs().economyOf(online).factoryBonus();
+            }
+        }
+        return Math.min(sum, MAX_STAFF_BONUS_PERCENT) / 100.0;
     }
 
     /** Production, input sourcing and upkeep. Returns what it all cost. */
     private long runFactories(Company company) {
         long costs = 0;
+        double staffBonus = staffOutputBonus(company);
         for (Factory factory : company.factories()) {
             factory.lastOutput(0);
             CorpConfig.FactoryType type = config.factory(factory.typeId());
@@ -1361,7 +1794,7 @@ public final class CorpService {
             company.addCash(-upkeep);
             costs += upkeep;
 
-            double capacity = config.outputAt(type, factory.level());
+            double capacity = config.outputAt(type, factory.level()) * (1 + staffBonus);
             double ratio = 1.0;
             for (Map.Entry<Material, Double> input : type.inputs().entrySet()) {
                 double need = input.getValue() * capacity;
@@ -1456,8 +1889,13 @@ public final class CorpService {
         for (Map.Entry<UUID, Company.Employee> entry : company.employees().entrySet()) {
             Company.Employee employee = entry.getValue();
             boolean isCeo = entry.getKey().equals(company.ceo());
+            double jobBonus = 0;
+            Player atWork = plugin.getServer().getPlayer(entry.getKey());
+            if (atWork != null && plugin.jobs() != null) {
+                jobBonus = plugin.jobs().economyOf(atWork).wageBonus() / 100.0;
+            }
             long wage = Math.round(config.wagePerEmployee()
-                    * (isCeo ? config.ceoWageMultiplier() : 1.0));
+                    * (isCeo ? config.ceoWageMultiplier() : 1.0) * (1 + jobBonus));
             if (wage <= 0) {
                 continue;
             }
@@ -1501,21 +1939,21 @@ public final class CorpService {
             return;
         }
         long pool = Math.min(company.cash(), profit * company.dividendPercent() / 100);
-        if (pool <= 0) {
+        if (pool < config.minDividendPool()) {
+            // Too thin to be worth distributing; it stays as retained
+            // earnings and shows up in the share price instead.
             return;
         }
-        long perShare = pool / publicShares;
-        if (perShare < config.minDividendPerShare()) {
-            // Too thin to be worth the message; it stays as retained earnings
-            // and shows up in the share price instead.
-            return;
-        }
+        // Split the pool in proportion to the register rather than paying a
+        // whole number of gold per share. Ten thousand shares against a day's
+        // profit gives a per-share figure under one gold, and rounding that
+        // down meant a profitable company paid its owners nothing, for ever.
         long paid = 0;
         for (Map.Entry<UUID, Long> entry : new ArrayList<>(company.holders().entrySet())) {
             if (entry.getKey().equals(company.id())) {
                 continue;
             }
-            long amount = perShare * entry.getValue();
+            long amount = Math.round(pool * (entry.getValue() / (double) publicShares));
             if (amount <= 0) {
                 continue;
             }
@@ -1524,6 +1962,177 @@ public final class CorpService {
         }
         company.addCash(-paid);
         company.recordDividend(paid);
+    }
+
+    // -------------------------------------------------- state enterprises
+
+    /**
+     * Watches the shelves, and does something about the empty ones.
+     *
+     * A market can be short of something simply because nobody chose to make
+     * it - and if nothing intervenes it stays short forever, because the
+     * player who would have to build that factory is the same player who
+     * cannot afford one. So when a good stays scarce for a few days the state
+     * founds a company to make it, out of the treasury, and when the shelves
+     * are overflowing again that company is privatised and the state steps
+     * back out. It is a floor under supply, not a replacement for it.
+     */
+    private void reviewSupply(int day) {
+        if (!config.stateEnabled() || !plugin.rpgConfig().marketEnabled()) {
+            return;
+        }
+        int founded = 0;
+        for (MarketItem item : plugin.market().items().values()) {
+            // The closing figure, not the current one: the market restocks
+            // before this runs, so reading the live stock would hide every
+            // shortage that the overnight production papered over.
+            double supply = item.closingSupplyPercent();
+            String id = item.id();
+            if (supply < config.shortageThresholdPercent()) {
+                surplusDays.remove(id);
+                int days = shortageDays.merge(id, 1, Integer::sum);
+                if (days >= config.shortageDays() && founded < config.statePerDay()
+                        && countState() < config.stateMaxTotal() && foundStateCompany(item, day)) {
+                    founded++;
+                    shortageDays.remove(id);
+                }
+            } else if (supply > config.surplusThresholdPercent()) {
+                shortageDays.remove(id);
+                int days = surplusDays.merge(id, 1, Integer::sum);
+                if (days >= config.privatiseDays() && privatiseProducerOf(item)) {
+                    surplusDays.remove(id);
+                }
+            } else {
+                shortageDays.remove(id);
+                surplusDays.remove(id);
+            }
+        }
+    }
+
+    public int countState() {
+        int state = 0;
+        for (Company company : companies.values()) {
+            if (company.stateOwned()) {
+                state++;
+            }
+        }
+        return state;
+    }
+
+    /** True when some company already has a plant making this good. */
+    private boolean stateAlreadyMakes(Material output) {
+        for (Company company : companies.values()) {
+            if (!company.stateOwned()) {
+                continue;
+            }
+            for (Factory factory : company.factories()) {
+                CorpConfig.FactoryType type = config.factory(factory.typeId());
+                if (type != null && type.output() == output) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean foundStateCompany(MarketItem item, int day) {
+        if (stateAlreadyMakes(item.material())) {
+            return false;
+        }
+        CorpConfig.FactoryType type = null;
+        for (CorpConfig.FactoryType candidate : config.factories()) {
+            if (candidate.output() == item.material()) {
+                type = candidate;
+                break;
+            }
+        }
+        if (type == null) {
+            // Nothing in the catalogue makes this. The state cannot conjure a
+            // factory for a good nobody knows how to produce.
+            return false;
+        }
+
+        long capital = config.stateStartupCapital();
+        plugin.market().debitTreasury(capital);
+        Company company = new Company(UUID.randomUUID(), uniqueName("공영" + type.name()),
+                uniqueTicker("ST" + Math.abs(type.id().hashCode() % 90 + 10)),
+                null, true, System.currentTimeMillis());
+        company.stateOwned(true);
+        company.cash(capital);
+        company.sharesIssued(config.founderShares());
+        // Wholly state-held: nobody can buy in until it is privatised.
+        company.setHolding(Company.PUBLIC, config.founderShares());
+        company.sellPercent(100);
+        company.autoBuyInputs(true);
+        company.dividendPercent(0);
+        company.factories().add(new Factory(type.id(), 1));
+        revalue(company);
+        companies.put(company.id(), company);
+
+        if (config.announceState()) {
+            plugin.getServer().broadcastMessage(ChatColor.AQUA + "[재정] " + ChatColor.WHITE
+                    + item.id() + ChatColor.GRAY + " 공급이 " + config.shortageDays()
+                    + "일째 부족해 " + ChatColor.WHITE + company.name() + ChatColor.GRAY
+                    + " 을(를) 설립했습니다. (국고 " + comma(capital) + "골드 투입, "
+                    + type.name() + " 1곳)");
+        }
+        plugin.getLogger().info("State enterprise founded for " + item.id() + ": " + company.name());
+        return true;
+    }
+
+    /**
+     * Hands a state enterprise over to the market.
+     *
+     * The shares stop being the state's and become the company's own float,
+     * which is what makes them buyable. Nothing else changes - it keeps its
+     * factories and its cash, and from here it lives or dies like any other.
+     */
+    private boolean privatiseProducerOf(MarketItem item) {
+        for (Company company : companies.values()) {
+            if (!company.stateOwned()) {
+                continue;
+            }
+            boolean makes = false;
+            for (Factory factory : company.factories()) {
+                CorpConfig.FactoryType type = config.factory(factory.typeId());
+                if (type != null && type.output() == item.material()) {
+                    makes = true;
+                    break;
+                }
+            }
+            if (!makes) {
+                continue;
+            }
+            // The shares stay where they are. Moving them into the
+            // company's own treasury would empty the outstanding register
+            // and make the first buyer's stake worth the whole company; as
+            // the state's float they are simply for sale, and what they
+            // fetch goes back to the treasury that paid for them.
+            long held = company.sharesOf(Company.PUBLIC);
+            company.stateOwned(false);
+            company.dividendPercent(config.defaultDividendPercent());
+            revalue(company);
+            if (config.announceState()) {
+                plugin.getServer().broadcastMessage(ChatColor.AQUA + "[재정] " + ChatColor.WHITE
+                        + company.name() + ChatColor.GRAY + " 이(가) 민영화되었습니다. "
+                        + comma(held) + "주가 거래소에 풀립니다. "
+                        + ChatColor.YELLOW + "/stocks");
+            }
+            plugin.getLogger().info("State enterprise privatised: " + company.name());
+            return true;
+        }
+        return false;
+    }
+
+    private String uniqueName(String wanted) {
+        String base = wanted.length() > config.nameMaxLength()
+                ? wanted.substring(0, config.nameMaxLength()) : wanted;
+        String candidate = base;
+        int suffix = 2;
+        while (byName(candidate) != null) {
+            candidate = base + suffix++;
+        }
+        return candidate;
     }
 
     private void expireOffers() {
@@ -1550,6 +2159,14 @@ public final class CorpService {
 
     List<Offer> offerList() {
         return offers;
+    }
+
+    Map<String, Integer> shortageDaysMap() {
+        return shortageDays;
+    }
+
+    Map<String, Integer> surplusDaysMap() {
+        return surplusDays;
     }
 
     boolean seededFlag() {

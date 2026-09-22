@@ -212,6 +212,30 @@ public final class MarketService {
     }
 
     /**
+     * Takes gold out of the national treasury for public spending.
+     *
+     * If the treasury is short, the central bank covers the difference by
+     * printing - the state does not simply fail to pay for something it has
+     * decided to do, it pays for it with new money and the price shows up in
+     * the inflation figure a day later.
+     */
+    public void debitTreasury(long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        if (treasury < amount) {
+            long need = amount - treasury;
+            treasury += need;
+            printed += need;
+            if (plugin.macro() != null) {
+                plugin.macro().recordPrinting(need);
+            }
+        }
+        treasury -= amount;
+        save();
+    }
+
+    /**
      * Puts gold into the national treasury - a tax or a fee that has left
      * circulation.
      *
@@ -372,25 +396,31 @@ public final class MarketService {
             player.sendMessage(ChatColor.RED + "[시장] " + quote.refusal());
             return false;
         }
-        if (!plugin.economy().take(player, (int) Math.min(Integer.MAX_VALUE, quote.total()))) {
+        // A trader's job pays for itself here: part of the tax stays in
+        // their pocket rather than going to the treasury.
+        long rebate = jobRebate(player, quote.tax());
+        long due = quote.total() - rebate;
+        if (!plugin.economy().take(player, (int) Math.min(Integer.MAX_VALUE, due))) {
             player.sendMessage(ChatColor.RED + "[시장] 골드가 부족합니다. 필요 "
-                    + quote.total() + ", 보유 " + plugin.economy().balance(player) + ".");
+                    + due + ", 보유 " + plugin.economy().balance(player) + ".");
             return false;
         }
 
         item.stock(item.stock() - quote.units());
         item.countBought(quote.units());
         item.recompute(config);
-        treasury += quote.total();
-        taxTake += quote.tax();
+        treasury += due;
+        taxTake += quote.tax() - rebate;
         deliver(player, item.material(), quote.units());
         recordTrade(quote.gross());
+        creditTrader(player, quote.gross());
         save();
 
         player.sendMessage(ChatColor.GREEN + "[시장] " + name(item) + " " + quote.units()
-                + "개를 " + ChatColor.GOLD + quote.total() + plugin.rpgConfig().goldSymbol()
+                + "개를 " + ChatColor.GOLD + due + plugin.rpgConfig().goldSymbol()
                 + ChatColor.GREEN + " 에 샀습니다. " + ChatColor.GRAY + "(개당 "
-                + money(quote.averagePrice()) + ", 세금 " + quote.tax() + ")");
+                + money(quote.averagePrice()) + ", 세금 " + (quote.tax() - rebate)
+                + (rebate > 0 ? " · 직업 할인 -" + rebate : "") + ")");
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_TRADE, 0.8F, 1.1F);
         return true;
     }
@@ -417,27 +447,31 @@ public final class MarketService {
             return 0;
         }
 
+        long rebate = jobRebate(player, quote.tax());
         item.stock(item.stock() + quote.units());
         item.countSold(quote.units());
         item.recompute(config);
-        treasury -= quote.total();
-        taxTake += quote.tax();
+        treasury -= quote.total() + rebate;
+        taxTake += quote.tax() - rebate;
 
         // The bank gets first claim on the proceeds of a player in arrears.
         // Without it a defaulter simply never touches their bank account again
         // and keeps trading, which makes a loan a gift.
-        long seized = plugin.bank() == null ? 0 : plugin.bank().garnish(player, quote.total());
-        long paid = quote.total() - seized;
+        long proceeds = quote.total() + rebate;
+        long seized = plugin.bank() == null ? 0 : plugin.bank().garnish(player, proceeds);
+        long paid = proceeds - seized;
         if (paid > 0) {
             plugin.economy().refund(player, (int) Math.min(Integer.MAX_VALUE, paid));
         }
         recordTrade(quote.gross());
+        creditTrader(player, quote.gross());
         save();
 
         player.sendMessage(ChatColor.GREEN + "[시장] " + name(item) + " " + quote.units()
                 + "개를 " + ChatColor.GOLD + paid + plugin.rpgConfig().goldSymbol()
                 + ChatColor.GREEN + " 에 팔았습니다. " + ChatColor.GRAY + "(개당 "
-                + money(quote.averagePrice()) + ", 세금 " + quote.tax()
+                + money(quote.averagePrice()) + ", 세금 " + (quote.tax() - rebate)
+                + (rebate > 0 ? " · 직업 할인 -" + rebate : "")
                 + (seized > 0 ? ", 연체 압류 " + seized : "") + ")");
         if (quote.units() < want) {
             player.sendMessage(ChatColor.GRAY + "[시장] " + (want - quote.units())
@@ -636,6 +670,38 @@ public final class MarketService {
         recordTrade(cost - tax);
         save();
         return new Fill((int) Math.min(Integer.MAX_VALUE, take), cost);
+    }
+
+    /**
+     * The slice of the tax a player's job lets them keep.
+     *
+     * Applied to the tax rather than to the price so it cannot turn a trade
+     * into a money printer: the most a discount can do is remove the tax, and
+     * the spread is still there underneath.
+     */
+    /**
+     * Trading is work, so it pays in progression as well as in gold.
+     *
+     * The tally is what the economic achievements are written against, and
+     * the experience is deliberately thin - a trade should be worth
+     * something, but not more than going out and killing the thing.
+     */
+    private void creditTrader(Player player, long value) {
+        if (value <= 0) {
+            return;
+        }
+        plugin.achievements().bump(player, com.rpgcore.plugin.progress.CounterType.TRADED,
+                (int) Math.min(Integer.MAX_VALUE, value));
+        int xp = (int) Math.clamp(value / 200, 1, 200);
+        plugin.stats().addXp(player, xp);
+    }
+
+    private long jobRebate(Player player, long tax) {
+        if (tax <= 0 || plugin.jobs() == null) {
+            return 0;
+        }
+        double discount = plugin.jobs().economyOf(player).marketFeeDiscount();
+        return discount <= 0 ? 0 : Math.round(tax * Math.min(100.0, discount) / 100.0);
     }
 
     private boolean guard(Player player) {

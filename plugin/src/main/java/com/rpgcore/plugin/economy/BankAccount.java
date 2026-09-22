@@ -21,10 +21,25 @@ public final class BankAccount {
     private String name;
     private long checking;
     private final List<TimeDeposit> deposits = new ArrayList<>();
+    /**
+     * Government bonds. Kept apart from deposits because they are not the
+     * bank's liability and not money: the gold went to the treasury, and
+     * until it matures it is out of circulation entirely.
+     */
+    private final List<TimeDeposit> bonds = new ArrayList<>();
     private final List<Loan> loans = new ArrayList<>();
 
     private int creditScore;
     private int level = 1;
+    /**
+     * True when the account belongs to a company rather than a person.
+     *
+     * A company borrows against what it owns, not against its level and its
+     * savings, so the limit is worked out from {@link #declaredAssets} - a
+     * number the company service refreshes as its books change.
+     */
+    private boolean corporate;
+    private long declaredAssets;
     private int loansTaken;
     private int loansRepaid;
     private int defaults;
@@ -69,6 +84,18 @@ public final class BankAccount {
         return deposits;
     }
 
+    public List<TimeDeposit> bonds() {
+        return bonds;
+    }
+
+    public long bondHoldings() {
+        long total = 0;
+        for (TimeDeposit bond : bonds) {
+            total += bond.principal();
+        }
+        return total;
+    }
+
     public List<Loan> loans() {
         return loans;
     }
@@ -109,6 +136,22 @@ public final class BankAccount {
 
     void bumpCredit(int delta) {
         creditScore(creditScore + delta);
+    }
+
+    public boolean corporate() {
+        return corporate;
+    }
+
+    public void corporate(boolean corporate) {
+        this.corporate = corporate;
+    }
+
+    public long declaredAssets() {
+        return declaredAssets;
+    }
+
+    public void declaredAssets(long declaredAssets) {
+        this.declaredAssets = Math.max(0, declaredAssets);
     }
 
     public int level() {
@@ -178,7 +221,8 @@ public final class BankAccount {
 
     /** True when nothing here is worth writing to disk. */
     public boolean empty() {
-        return checking == 0 && deposits.isEmpty() && loans.isEmpty()
-                && loansTaken == 0 && interestEarned == 0 && interestPaid == 0;
+        return checking == 0 && deposits.isEmpty() && bonds.isEmpty() && loans.isEmpty()
+                && loansTaken == 0 && interestEarned == 0 && interestPaid == 0
+                && !corporate;
     }
 }

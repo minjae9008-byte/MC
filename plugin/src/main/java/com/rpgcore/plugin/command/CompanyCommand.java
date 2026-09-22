@@ -30,8 +30,8 @@ public final class CompanyCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBS = List.of(
             "create", "info", "list", "hire", "accept", "leave", "fire", "promote", "demote",
-            "transfer", "deposit", "withdraw", "factory", "supply", "sell", "policy", "issue",
-            "acquire", "offers", "absorb", "disband", "help");
+            "transfer", "deposit", "withdraw", "loan", "repay", "factory", "supply", "sell",
+            "policy", "issue", "acquire", "offers", "absorb", "disband", "help");
 
     private final RpgCorePlugin plugin;
 
@@ -111,6 +111,29 @@ public final class CompanyCommand implements CommandExecutor, TabCompleter {
             }
             case "deposit" -> corps.deposit(player, amount(player, args, 1));
             case "withdraw" -> corps.withdraw(player, amount(player, args, 1));
+            case "loan" -> {
+                if (args.length < 2) {
+                    Company mine = corps.employerOf(player);
+                    player.sendMessage(ChatColor.YELLOW + "/company loan <금액> [일수]");
+                    if (mine != null) {
+                        var account = corps.bankAccount(mine);
+                        player.sendMessage(ChatColor.GRAY + "  자산 "
+                                + comma(Math.round(corps.assets(mine))) + " · 한도 "
+                                + comma(plugin.bank().creditLimit(account)) + " · 기존 채무 "
+                                + comma(corps.debt(mine)) + " · 등급 "
+                                + plugin.bank().grade(account).name());
+                    }
+                    return true;
+                }
+                corps.borrow(player, parse(args[1], 0), args.length > 2 ? (int) parse(args[2], 7) : 7);
+            }
+            case "repay" -> {
+                Company mine = corps.employerOf(player);
+                long owed = mine == null ? 0 : corps.debt(mine);
+                long want = args.length > 1 && !args[1].equalsIgnoreCase("all")
+                        ? parse(args[1], 0) : owed;
+                corps.repayDebt(player, want);
+            }
             case "supply" -> corps.supply(player, args.length > 1 && args[1].equalsIgnoreCase("all"));
             case "sell" -> {
                 if (args.length < 2) {
@@ -268,6 +291,15 @@ public final class CompanyCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.WHITE + " 현금 " + ChatColor.YELLOW + comma(company.cash())
                 + ChatColor.GRAY + " · 창고 " + comma(Math.round(corps.warehouseValue(company)))
                 + " · 설비 " + comma(Math.round(corps.factoryValue(company))));
+        player.sendMessage(ChatColor.WHITE + " 자산 " + ChatColor.YELLOW
+                + comma(Math.round(corps.assets(company))) + ChatColor.GRAY + " · 부채 "
+                + (corps.debt(company) > 0 ? ChatColor.RED : ChatColor.GRAY)
+                + comma(corps.debt(company)) + ChatColor.GRAY + " · 자본 "
+                + (corps.equity(company) < 0 ? ChatColor.RED : ChatColor.WHITE)
+                + comma(Math.round(corps.equity(company)))
+                + ChatColor.GRAY + " · 부채비율 " + ratioOf(corps.debtRatioPercent(company))
+                + (company.watchlisted() ? ChatColor.RED + "  [관리종목]" : "")
+                + (company.stateOwned() ? ChatColor.AQUA + "  [공기업]" : ""));
         player.sendMessage(ChatColor.WHITE + " 기업가치 " + ChatColor.YELLOW
                 + comma(Math.round(corps.fairValue(company)))
                 + ChatColor.GRAY + " · 주가 " + MarketService.money(company.sharePrice())
@@ -317,7 +349,9 @@ public final class CompanyCommand implements CommandExecutor, TabCompleter {
                     + company.name() + " · 주가 " + MarketService.money(company.sharePrice())
                     + " · 시총 " + comma(Math.round(plugin.corps().marketCap(company)))
                     + " · 공장 " + company.factories().size()
-                    + (company.npc() ? " · 공모" : ""));
+                    + (company.stateOwned() ? " · 공기업"
+                    : company.npc() ? " · 공모" : "")
+                    + (company.watchlisted() ? ChatColor.RED + " · 관리종목" : ""));
         }
         player.sendMessage(ChatColor.GRAY + " /stocks 로 거래소 화면을 엽니다.");
     }
@@ -329,6 +363,8 @@ public final class CompanyCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.GRAY + " /company hire <플레이어> · accept · leave · fire <플레이어>");
         player.sendMessage(ChatColor.GRAY + " /company promote|demote|transfer <플레이어>");
         player.sendMessage(ChatColor.GRAY + " /company deposit|withdraw <금액>");
+        player.sendMessage(ChatColor.GRAY + " /company loan <금액> [일수] · repay <금액|all>"
+                + ChatColor.DARK_GRAY + " - 회사 명의 대출");
         player.sendMessage(ChatColor.GRAY + " /company factory list|build <종류>|upgrade <번호>|sell <번호>");
         player.sendMessage(ChatColor.GRAY + " /company supply [all]" + ChatColor.DARK_GRAY + " - 손에 든 물건 납품");
         player.sendMessage(ChatColor.GRAY + " /company sell <품목> [개수|all]" + ChatColor.DARK_GRAY + " - 창고 출고");
@@ -356,6 +392,12 @@ public final class CompanyCommand implements CommandExecutor, TabCompleter {
 
     private static String comma(long value) {
         return String.format(Locale.ROOT, "%,d", value);
+    }
+
+    private static String ratioOf(double percent) {
+        return percent >= Double.MAX_VALUE / 2
+                ? ChatColor.RED + "자본잠식"
+                : String.format(Locale.ROOT, "%.0f%%", percent);
     }
 
     @Override

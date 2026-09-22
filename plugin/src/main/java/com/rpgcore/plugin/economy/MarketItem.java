@@ -73,6 +73,12 @@ public final class MarketItem {
     private double price;
     /** The close of the previous economic day, for the change column. */
     private double previousClose;
+    /**
+     * Stock as the previous day's trading left it, before the overnight
+     * restock. -1 until a day has closed. This is what tells the state
+     * whether the market actually ran short of something.
+     */
+    private double closingStock = -1;
     private final Deque<Double> history = new ArrayDeque<>();
 
     private long boughtToday;
@@ -168,6 +174,21 @@ public final class MarketItem {
     /** Stock against the level it reverts to, in percent. */
     public double supplyPercent() {
         return baseStock <= 0 ? 100 : stock / baseStock * 100.0;
+    }
+
+    /**
+     * What was left on the shelf when yesterday's trading ended.
+     *
+     * The daily pass restocks before anything reads the market, so the
+     * current stock always flatters it: a good that sold out at noon looks
+     * a quarter full again by morning. Anyone asking whether the market ran
+     * short wants the closing figure, not the opening one.
+     */
+    public double closingSupplyPercent() {
+        if (baseStock <= 0) {
+            return 100;
+        }
+        return (closingStock < 0 ? stock : closingStock) / baseStock * 100.0;
     }
 
     /** The whole warehouse at the mid price - this good's share of the market. */
@@ -309,6 +330,14 @@ public final class MarketItem {
         this.previousClose = previousClose;
     }
 
+    public double closingStock() {
+        return closingStock;
+    }
+
+    void closingStock(double closingStock) {
+        this.closingStock = closingStock;
+    }
+
     public long boughtToday() {
         return boughtToday;
     }
@@ -342,6 +371,7 @@ public final class MarketItem {
 
     void closeDay() {
         previousClose = price;
+        closingStock = stock;
         boughtToday = 0;
         soldToday = 0;
     }

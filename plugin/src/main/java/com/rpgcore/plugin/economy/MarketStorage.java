@@ -63,6 +63,7 @@ final class MarketStorage {
                 item.sentiment(node.getDouble("sentiment", 1.0));
                 item.price(node.getDouble("price", item.mid()));
                 item.previousClose(node.getDouble("previous-close", item.mid()));
+                item.closingStock(node.getDouble("closing-stock", -1));
                 item.restoreVolume(node.getLong("lifetime-bought", 0), node.getLong("lifetime-sold", 0));
                 item.shockNote(node.getString("shock-note"));
                 List<Double> history = new ArrayList<>();
@@ -110,6 +111,7 @@ final class MarketStorage {
             yaml.set(path + ".sentiment", round(item.sentiment()));
             yaml.set(path + ".price", round(item.mid()));
             yaml.set(path + ".previous-close", round(item.previousClose()));
+            yaml.set(path + ".closing-stock", round(item.closingStock()));
             yaml.set(path + ".lifetime-bought", item.lifetimeBought());
             yaml.set(path + ".lifetime-sold", item.lifetimeSold());
             yaml.set(path + ".reserve", round(reserve.getOrDefault(item.id(), 0.0)));
