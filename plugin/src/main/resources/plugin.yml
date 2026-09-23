@@ -1,13 +1,16 @@
 name: RPGCorePlugin
-version: '2.6.6'
+version: '2.9.0'
 main: com.rpgcore.plugin.RpgCorePlugin
 api-version: '26.2'
 author: RPGCore
 description: >
   RPG stats, jobs, leaderboards, persistent parties, player trading,
   achievements and titles, a collection log, wagered 1v1 duels, a gold auction
-  house, guilds with a shared vault and claimed territory, encumbrance, gear
-  wear, chain tree-felling, custom anvil upgrades and proximity chat.
+  house, a supply-and-demand market, a bank with deposits, term savings and
+  credit-scored loans, a central bank that sets the rate from measured
+  inflation, companies that run factories and issue shares, blueprints that
+  build themselves at market prices, encumbrance,
+  gear wear, chain tree-felling, custom anvil upgrades and proximity chat.
   One /menu screen reaches all of it.
   Everything is server-side, so Java and Bedrock (Geyser) players get
   identical behaviour. No dependencies.
@@ -19,9 +22,24 @@ commands:
   auction:
     description: Browse, sell on, and collect from the auction house.
     aliases: [ah, 경매, 경매장]
-  guild:
-    description: Create and run a guild - shared vault, treasury, territory and war.
-    aliases: [g, 길드]
+  market:
+    description: Buy and sell at the market, where prices move with supply.
+    aliases: [shop, 시장, 상점]
+  bank:
+    description: Deposits, term savings, loans and your credit grade.
+    aliases: [은행]
+  economy:
+    description: The economic dashboard - prices, rates, money and output.
+    aliases: [eco, 경제, 지표]
+  company:
+    description: Found and run a company - factories, staff, shares and takeovers.
+    aliases: [corp, 기업, 회사]
+  stocks:
+    description: Invest in listed companies and collect dividends.
+    aliases: [stock, 주식, 거래소]
+  blueprint:
+    description: Capture a region, pay market price, and have it built for you.
+    aliases: [bp, 청사진, 설계]
   stats:
     description: Open your RPGCore stats menu.
     aliases: [rpg, rpgstats]

@@ -188,6 +188,9 @@ public final class AuctionService {
                     + plugin.economy().balance(seller) + ")");
             return;
         }
+        // The fee used to simply cease to exist. It is a tax, so it goes
+        // where the market's taxes go and shows up in the national accounts.
+        collect(fee);
 
         ItemStack lot = held.clone();
         seller.getInventory().setItemInMainHand(null);
@@ -408,10 +411,30 @@ public final class AuctionService {
         save();
     }
 
+    /**
+     * Sends a fee or a tax to the national treasury.
+     *
+     * The auction house predates the economy and its fees used to vanish.
+     * Vanishing gold is invisible deflation - it never shows up in any
+     * figure, and the treasury that buys players' goods is short by exactly
+     * that much.
+     */
+    private void collect(int amount) {
+        if (amount <= 0) {
+            return;
+        }
+        plugin.market().creditTreasury(amount);
+        if (plugin.macro() != null) {
+            plugin.macro().collectFee(amount);
+            plugin.macro().recordTrade(amount);
+        }
+    }
+
     /** Hands the item to the winner and the money, less tax, to the seller. */
     private void payOut(AuctionListing listing, UUID winner, String winnerName, int price, String how) {
         int tax = tax(price);
         int net = price - tax;
+        collect(tax);
 
         plugin.mailbox().give(winner, listing.item(), "경매 낙찰");
         plugin.mailbox().giveGold(listing.seller(), net, "경매 판매 대금");

@@ -65,6 +65,11 @@ public final class ProgressListener implements Listener {
         Material type = event.getBlock().getType();
         AchievementService achievements = plugin.achievements();
         achievements.bump(player, CounterType.BLOCKS_MINED, 1);
+        // A block out of the ground is one more of that thing in the world,
+        // so the market's supply of it goes up - which is the live half of
+        // the rule that mining speed sets supply. One block barely moves a
+        // warehouse; a server mining all evening does.
+        plugin.market().recordProduction(type);
         if (ores.contains(type)) {
             achievements.bump(player, CounterType.ORES_MINED, 1);
         }

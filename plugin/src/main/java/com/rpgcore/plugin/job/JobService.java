@@ -117,7 +117,13 @@ public final class JobService {
                 node.getInt("weight-bonus", 0),
                 node.getDouble("xp-multiplier", 1.0D),
                 readAttributes(node, "attributes.add", context),
-                readAttributes(node, "attributes.multiply", context));
+                readAttributes(node, "attributes.multiply", context),
+                new RpgJob.Economy(
+                        Math.clamp(node.getDouble("economy.market-fee-discount", 0), 0, 100),
+                        Math.clamp(node.getDouble("economy.factory-bonus", 0), 0, 500),
+                        Math.clamp(node.getDouble("economy.wage-bonus", 0), 0, 500),
+                        Math.clamp(node.getDouble("economy.build-discount", 0), 0, 90),
+                        Math.clamp(node.getInt("economy.credit-bonus", 0), -500, 500)));
     }
 
     private Map<String, Double> readAttributes(ConfigurationSection node, String path, String context) {
@@ -161,6 +167,12 @@ public final class JobService {
     }
 
     /** The job a player currently has, or null when they have not picked one. */
+    /** The economic side of a player's job, or zeroes when they have none. */
+    public RpgJob.Economy economyOf(Player player) {
+        RpgJob job = of(player);
+        return job == null ? RpgJob.Economy.NONE : job.economy();
+    }
+
     public RpgJob of(Player player) {
         PlayerData data = plugin.players().cached(player.getUniqueId());
         return byId(data == null ? readStored(player) : data.jobId());
@@ -236,6 +248,26 @@ public final class JobService {
         }
         if (job.weightBonus() != 0) {
             lines.add(ChatColor.AQUA + "소지무게 " + withSign(job.weightBonus()));
+        }
+        RpgJob.Economy economy = job.economy();
+        if (economy.any()) {
+            lines.add(ChatColor.GOLD + "경제:");
+            if (economy.marketFeeDiscount() > 0) {
+                lines.add(ChatColor.GRAY + "  시장 수수료 -" + (int) economy.marketFeeDiscount() + "%");
+            }
+            if (economy.factoryBonus() > 0) {
+                lines.add(ChatColor.GRAY + "  소속 회사 생산 +" + (int) economy.factoryBonus() + "%");
+            }
+            if (economy.wageBonus() > 0) {
+                lines.add(ChatColor.GRAY + "  급여 +" + (int) economy.wageBonus() + "%");
+            }
+            if (economy.buildDiscount() > 0) {
+                lines.add(ChatColor.GRAY + "  청사진 시공비 -" + (int) economy.buildDiscount() + "%");
+            }
+            if (economy.creditBonus() != 0) {
+                lines.add(ChatColor.GRAY + "  신용점수 "
+                        + (economy.creditBonus() > 0 ? "+" : "") + economy.creditBonus());
+            }
         }
         if (job.xpMultiplier() != 1.0D) {
             lines.add(ChatColor.AQUA + "경험치 x" + job.xpMultiplier());

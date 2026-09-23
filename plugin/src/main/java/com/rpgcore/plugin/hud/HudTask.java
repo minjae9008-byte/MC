@@ -24,12 +24,6 @@ public final class HudTask extends BukkitRunnable {
     @Override
     public void run() {
         boolean hud = plugin.rpgConfig().hudEnabled();
-        // One claim's banner is checked per pass - see validateOneClaim. It is
-        // a single block read, and it is the safety net for every way a banner
-        // can leave the world that no listener catches.
-        if (plugin.rpgConfig().guildEnabled()) {
-            plugin.guilds().validateOneClaim();
-        }
         for (Player player : plugin.getServer().getOnlinePlayers()) {
             PlayerData data = plugin.players().cached(player.getUniqueId());
             if (data == null) {
@@ -43,13 +37,6 @@ public final class HudTask extends BukkitRunnable {
             // refresh() compares before it writes, so a name that has not
             // moved costs one string compare.
             plugin.nameplates().refresh(player, data);
-            // Same reasoning as the overload effects above: this interval
-            // already exists, and the buff's duration is sized to outlast it,
-            // so a member standing on their own land is never briefly without
-            // it and one who walks off the edge loses it within one cycle.
-            if (plugin.rpgConfig().guildEnabled()) {
-                plugin.claimListener().applyClaimBuffs(player);
-            }
             if (hud) {
                 player.sendActionBar(render(player, data));
             }

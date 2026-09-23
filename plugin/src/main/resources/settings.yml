@@ -70,4 +70,9 @@ features:
   collection: true          # 수집 도감 (/collection)
   duels: true               # 1:1 대결 (/duel)
   auction: true             # 경매장 (/auction) - 골드로 사고팔기
-  guilds: true              # 길드 (/guild) - 공동 보관함과 영지
+  companies: true           # 기업 (/company, /stocks) - 공장·생산·주식·인수
+  blueprints: true          # 청사진 (/blueprint) - 구역을 떠서 자동 건설
+  market: true              # 시장 (/market) - 수요·공급으로 값이 움직이는 상점
+  bank: true                # 은행 (/bank) - 예금·정기예금·대출·신용등급
+# 시장과 은행의 세부 설정(임금, 초기 공급, 금리, 지급준비율, 물가목표 등)은
+# economy.yml 에 있습니다. 지표는 /economy 로 봅니다.

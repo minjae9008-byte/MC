@@ -64,6 +64,9 @@ list:
         submerged_mining_speed: 1.0
       add:
         oxygen_bonus: 2
+    economy:
+      factory-bonus: 12       # 채취 공장이 잘 돕니다
+      wage-bonus: 10
 
   lumberjack:
     name: "&6나무꾼"
@@ -79,6 +82,9 @@ list:
     attributes:
       multiply:
         block_break_speed: 0.15
+    economy:
+      factory-bonus: 12
+      wage-bonus: 10
 
   fisher:
     name: "&b어부"
@@ -94,6 +100,9 @@ list:
         oxygen_bonus: 4
       multiply:
         water_movement_efficiency: 0.6
+    economy:
+      factory-bonus: 12
+      market-fee-discount: 10
 
   # --- 2단계: 레벨 12부터 ---------------------------------------------------
 
@@ -134,6 +143,8 @@ list:
         sneaking_speed: 0.5
       add:
         max_health: -4
+    economy:
+      market-fee-discount: 12
 
   hunter:
     name: "&2사냥꾼"
@@ -170,6 +181,9 @@ list:
       multiply:
         block_break_speed: 0.1
         movement_speed: -0.04
+    economy:
+      factory-bonus: 18       # 가공 공장에 특히 쓸모가 있습니다
+      build-discount: 10
 
   scout:
     name: "&a탐험가"
@@ -189,6 +203,8 @@ list:
         safe_fall_distance: 5
         step_height: 0.5
         attack_damage: -1
+    economy:
+      market-fee-discount: 15
 
   # --- 3단계: 레벨 30부터 ---------------------------------------------------
 
@@ -212,6 +228,8 @@ list:
       multiply:
         knockback_resistance: 0.7
         movement_speed: -0.1
+    economy:
+      build-discount: 12
 
   berserker:
     name: "&4광전사"
@@ -269,6 +287,9 @@ list:
         luck: 3
       multiply:
         attack_damage: -0.15
+    economy:
+      credit-bonus: 40        # 은행이 좋아하는 이력
+      market-fee-discount: 10
 
   warden:
     name: "&3파수꾼"
@@ -290,3 +311,75 @@ list:
         max_health: 6
       multiply:
         block_break_speed: 0.12
+    economy:
+      credit-bonus: 25
+      wage-bonus: 10
+
+
+  # --- 경제 직업: 싸우는 대신 버는 쪽 -------------------------------------
+
+  merchant:
+    name: "&6상인"
+    icon: minecraft:emerald
+    description:
+      - "&7사고파는 것으로 먹고삽니다."
+      - "&8시장 수수료를 크게 아끼고, 은행이 신용을 높게 봅니다."
+    stat-bonus:
+      luck: 3
+      agi: 1
+    weight-bonus: 40
+    economy:
+      market-fee-discount: 35
+      credit-bonus: 40
+    attributes:
+      multiply:
+        movement_speed: 0.04
+
+  farmer:
+    name: "&a농부"
+    icon: minecraft:wheat
+    description:
+      - "&7기르고 거둡니다."
+      - "&8농장·목장 계열 회사의 생산을 끌어올립니다."
+    stat-bonus:
+      vit: 2
+      str: 1
+    weight-bonus: 50
+    xp-multiplier: 1.05
+    economy:
+      factory-bonus: 15
+      wage-bonus: 15
+    attributes:
+      add:
+        max_health: 2
+
+  entrepreneur:
+    name: "&e기업가"
+    icon: minecraft:writable_book
+    description:
+      - "&7회사를 굴리는 사람."
+      - "&8생산·급여·신용 전부에 붙지만 싸움에는 아무 도움이 안 됩니다."
+    min-level: 12
+    stat-bonus:
+      luck: 2
+      agi: 2
+    economy:
+      factory-bonus: 22
+      wage-bonus: 25
+      credit-bonus: 70
+      market-fee-discount: 10
+
+  architect:
+    name: "&b건축가"
+    icon: minecraft:filled_map
+    description:
+      - "&7설계하고 올립니다."
+      - "&8청사진 시공비가 크게 줄고, 자재 회사에도 보탬이 됩니다."
+    min-level: 12
+    stat-bonus:
+      dex: 2
+      vit: 2
+    weight-bonus: 60
+    economy:
+      build-discount: 35
+      factory-bonus: 8

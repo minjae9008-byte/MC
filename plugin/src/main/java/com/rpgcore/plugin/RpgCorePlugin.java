@@ -21,9 +21,21 @@ import com.rpgcore.plugin.gear.RangedListener;
 import com.rpgcore.plugin.command.AchievementCommand;
 import com.rpgcore.plugin.command.AuctionCommand;
 import com.rpgcore.plugin.command.CollectionCommand;
+import com.rpgcore.plugin.blueprint.BlueprintListener;
+import com.rpgcore.plugin.blueprint.BlueprintMenu;
+import com.rpgcore.plugin.blueprint.BlueprintService;
+import com.rpgcore.plugin.command.BankCommand;
+import com.rpgcore.plugin.command.BlueprintCommand;
+import com.rpgcore.plugin.command.CompanyCommand;
+import com.rpgcore.plugin.command.StockCommand;
+import com.rpgcore.plugin.corp.CompanyMenu;
+import com.rpgcore.plugin.corp.CorpConfig;
+import com.rpgcore.plugin.corp.CorpService;
+import com.rpgcore.plugin.corp.StockMenu;
 import com.rpgcore.plugin.command.DuelCommand;
+import com.rpgcore.plugin.command.EconomyCommand;
+import com.rpgcore.plugin.command.MarketCommand;
 import com.rpgcore.plugin.command.GoldCommand;
-import com.rpgcore.plugin.command.GuildCommand;
 import com.rpgcore.plugin.command.JobCommand;
 import com.rpgcore.plugin.command.LeaderboardCommand;
 import com.rpgcore.plugin.command.MenuCommand;
@@ -33,10 +45,14 @@ import com.rpgcore.plugin.command.PayCommand;
 import com.rpgcore.plugin.command.TitleCommand;
 import com.rpgcore.plugin.command.TradeCommand;
 import com.rpgcore.plugin.duel.DuelListener;
+import com.rpgcore.plugin.economy.BankMenu;
+import com.rpgcore.plugin.economy.BankService;
+import com.rpgcore.plugin.economy.EconomyConfig;
+import com.rpgcore.plugin.economy.EconomyMenu;
+import com.rpgcore.plugin.economy.MacroService;
+import com.rpgcore.plugin.economy.MarketMenu;
+import com.rpgcore.plugin.economy.MarketService;
 import com.rpgcore.plugin.duel.DuelService;
-import com.rpgcore.plugin.guild.GuildClaimListener;
-import com.rpgcore.plugin.guild.GuildVaultListener;
-import com.rpgcore.plugin.guild.GuildService;
 import com.rpgcore.plugin.gui.MenuListener;
 import com.rpgcore.plugin.gui.StatsMenu;
 import com.rpgcore.plugin.job.JobMenu;
@@ -115,8 +131,20 @@ public final class RpgCorePlugin extends JavaPlugin {
     private DuelService duels;
     private MailboxService mailbox;
     private AuctionService auctions;
-    private GuildService guilds;
-    private GuildClaimListener claimListener;
+    private CorpConfig corpConfig;
+    private CorpService corps;
+    private CompanyMenu companyMenu;
+    private StockMenu stockMenu;
+    private BlueprintService blueprints;
+    private BlueprintMenu blueprintMenu;
+    private BlueprintListener blueprintListener;
+    private EconomyConfig economyConfig;
+    private MarketService market;
+    private BankService bank;
+    private MacroService macro;
+    private MarketMenu marketMenu;
+    private BankMenu bankMenu;
+    private EconomyMenu economyMenu;
     private AuctionMenu auctionMenu;
     private MainMenu mainMenu;
     private ProgressListener progress;
@@ -186,8 +214,25 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.duels = new DuelService(this);
         this.auctions = new AuctionService(this);
         this.auctions.load();
-        this.guilds = new GuildService(this);
-        this.guilds.load();
+        // The economy is built in the order it depends on itself: the
+        // catalogue, then the market that prices it, then the bank that lends
+        // against it, and last the central bank that measures both and sets
+        // the rate they run on.
+        this.economyConfig = new EconomyConfig(this);
+        this.market = new MarketService(this, economyConfig);
+        this.market.load();
+        this.bank = new BankService(this, economyConfig);
+        this.bank.load();
+        this.macro = new MacroService(this, economyConfig, market, bank);
+        this.macro.load();
+
+        // Companies come after the market they sell into and before the
+        // blueprints that can be paid for out of a company's cash.
+        this.corpConfig = new CorpConfig(this);
+        this.corps = new CorpService(this, corpConfig);
+        this.corps.load();
+        this.blueprints = new BlueprintService(this);
+        this.blueprints.load();
 
         this.nameplates = new NameplateService(this);
 
@@ -196,6 +241,12 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.titleMenu = new TitleMenu(this);
         this.collectionMenu = new CollectionMenu(this);
         this.auctionMenu = new AuctionMenu(this);
+        this.marketMenu = new MarketMenu(this);
+        this.companyMenu = new CompanyMenu(this);
+        this.stockMenu = new StockMenu(this);
+        this.blueprintMenu = new BlueprintMenu(this);
+        this.bankMenu = new BankMenu(this);
+        this.economyMenu = new EconomyMenu(this);
         this.mainMenu = new MainMenu(this);
 
         getServer().getPluginManager().registerEvents(new PlayerSessionListener(this), this);
@@ -210,9 +261,8 @@ public final class RpgCorePlugin extends JavaPlugin {
         this.progress = new ProgressListener(this);
         getServer().getPluginManager().registerEvents(progress, this);
         getServer().getPluginManager().registerEvents(new DuelListener(this), this);
-        this.claimListener = new GuildClaimListener(this);
-        getServer().getPluginManager().registerEvents(claimListener, this);
-        getServer().getPluginManager().registerEvents(new GuildVaultListener(this), this);
+        this.blueprintListener = new BlueprintListener(this);
+        getServer().getPluginManager().registerEvents(blueprintListener, this);
         // Registered unconditionally; the listener itself honours the toggle,
         // so features.proximity-chat responds to /rpgcore reload like the rest.
         getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
@@ -232,7 +282,10 @@ public final class RpgCorePlugin extends JavaPlugin {
                 treeFell.tick();
                 duels.tick();
                 auctions.tick();
-                guilds.tickWars();
+                blueprints.tick();
+                // One long comparison until the economic day actually turns;
+                // the whole economy moves on that one call.
+                macro.tick();
                 // Everything that changed since the last pass is written out
                 // together, once, off the main thread. All four stores flush
                 // in the same tick on purpose: an auction lot and the mailbox
@@ -248,7 +301,6 @@ public final class RpgCorePlugin extends JavaPlugin {
         scheduleHudTask();
 
         registerCommand("menu", new MenuCommand(this));
-        registerCommand("guild", new GuildCommand(this));
         registerCommand("auction", new AuctionCommand(this));
         registerCommand("job", new JobCommand(this));
         registerCommand("leaderboard", new LeaderboardCommand(this));
@@ -261,6 +313,12 @@ public final class RpgCorePlugin extends JavaPlugin {
         registerCommand("duel", new DuelCommand(this));
         registerCommand("gold", new GoldCommand(this));
         registerCommand("pay", new PayCommand(this));
+        registerCommand("market", new MarketCommand(this));
+        registerCommand("bank", new BankCommand(this));
+        registerCommand("economy", new EconomyCommand(this));
+        registerCommand("company", new CompanyCommand(this));
+        registerCommand("stocks", new StockCommand(this));
+        registerCommand("blueprint", new BlueprintCommand(this));
 
         new VoiceChatHook(this).check();
 
@@ -312,10 +370,24 @@ public final class RpgCorePlugin extends JavaPlugin {
         if (auctions != null) {
             auctions.saveNow();
         }
-        // Guild vaults hold members' items, so the file has to be current
-        // before the process goes away.
-        if (guilds != null) {
-            guilds.saveNow();
+        // A company register holds people's shareholdings and a construction
+        // site holds a build somebody has already paid for.
+        if (corps != null) {
+            corps.saveNow();
+        }
+        if (blueprints != null) {
+            blueprints.saveNow();
+        }
+        // The market holds no items, but the bank holds deposits - gold that
+        // has already left players' balances and exists nowhere else.
+        if (market != null) {
+            market.saveNow();
+        }
+        if (bank != null) {
+            bank.saveNow();
+        }
+        if (macro != null) {
+            macro.saveNow();
         }
         if (players != null) {
             for (Player player : getServer().getOnlinePlayers()) {
@@ -342,7 +414,7 @@ public final class RpgCorePlugin extends JavaPlugin {
             hudTask.cancel();
             hudTask = null;
         }
-        // Last: unwinding trades, duels and guilds above can all post to it.
+        // Last: unwinding trades and duels above can both post to it.
         if (mailbox != null) {
             mailbox.saveNow();
         }
@@ -406,6 +478,12 @@ public final class RpgCorePlugin extends JavaPlugin {
                 treeFell.load();
                 anvil.load();
                 jobs.load();
+                // The catalogue can gain or lose goods and change the wage,
+                // so base prices and supply levels are re-derived; live stock
+                // is kept, because a reload reprices the world rather than
+                // emptying its warehouses.
+                economyConfig.reload();
+                market.applyConfig();
                 // Both declare their titles, so the registry is rebuilt from
                 // scratch rather than accumulating renamed duplicates.
                 titles.clear();
@@ -418,10 +496,9 @@ public final class RpgCorePlugin extends JavaPlugin {
                 // The HUD interval is baked into the running task, so a new
                 // value only takes effect if the task is replaced.
                 scheduleHudTask();
-                // Claim radius is derived from a guild's investment and the
-                // config, so a changed base radius or block price has to be
-                // pushed into the claims that are already on the ground.
-                guilds.refreshRadii();
+                // Factory output and upkeep are read from the catalogue every
+                // pass, so retuning it retunes the plants already standing.
+                corpConfig.reload();
                 leaderboard.invalidate();
                 // A reload is how an operator fixes a mistyped webhook, so it
                 // is also where the one-warning-per-session mute is lifted.
@@ -594,17 +671,53 @@ public final class RpgCorePlugin extends JavaPlugin {
         line(sender, "대결", rpgConfig.duelEnabled(), "최대 " + rpgConfig.duelMaxGold()
                 + "골드, " + rpgConfig.duelCountdownSeconds() + "초 카운트다운, 제한 "
                 + rpgConfig.duelMaxSeconds() + "초, 진행 중 " + duels.count() + "건");
-        line(sender, "길드", rpgConfig.guildEnabled(), guilds.count() + "개, 영지 "
-                + guilds.claimCount() + "곳 (기본 반경 " + rpgConfig.guildClaimRadius()
-                + ", 최대 " + rpgConfig.guildMaxRadius()
-                + ", 보관함 " + rpgConfig.guildVaultRows() + "줄), 전쟁 "
-                + guilds.liveWars().size() + "건");
+        line(sender, "기업", rpgConfig.companyEnabled(), corps.count() + "개 ("
+                + corps.countNpc() + "개 공모 / " + corps.countState() + "개 공기업), 공장 "
+                + corpConfig.factories().size() + "종, 창업비 " + corpConfig.createCost()
+                + ", 일당 " + corpConfig.wagePerEmployee() + ", 배당 "
+                + corpConfig.defaultDividendPercent() + "%, 법인세 "
+                + (int) corpConfig.corporateTaxPercent() + "%");
+        line(sender, "부실·파산", rpgConfig.companyEnabled(), "부채비율 한계 "
+                + (int) corpConfig.debtRatioLimitPercent() + "%, 자본잠식 "
+                + corpConfig.capitalErosionDays() + "일이면 파산 (청산 시 은행이 우선)");
+        line(sender, "공기업", rpgConfig.companyEnabled() && corpConfig.stateEnabled(),
+                "재고 " + (int) corpConfig.shortageThresholdPercent() + "% 미만이 "
+                        + corpConfig.shortageDays() + "일 이어지면 설립 (최대 "
+                        + corpConfig.stateMaxTotal() + "개, 자본금 "
+                        + corpConfig.stateStartupCapital() + "), 재고 "
+                        + (int) corpConfig.surplusThresholdPercent() + "% 초과 "
+                        + corpConfig.privatiseDays() + "일이면 민영화");
+        line(sender, "청사진", rpgConfig.blueprintEnabled(), blueprints.count() + "장, 공사 중 "
+                + blueprints.sites().size() + "곳 · 최대 " + rpgConfig.blueprintMaxBlocks()
+                + "블록 / 한 변 " + rpgConfig.blueprintMaxDimension() + " · 초당 "
+                + rpgConfig.blueprintBlocksPerSecond() + "블록 · 시공비 "
+                + (int) rpgConfig.blueprintMarginPercent() + "%");
         line(sender, "경매장", rpgConfig.auctionEnabled(), auctions.count() + "건 진행 중, "
                 + (rpgConfig.auctionDurationMinutes() / 60) + "시간, 등록 수수료 "
                 + rpgConfig.auctionListingFeePercent() + "% / 판매 수수료 "
                 + rpgConfig.auctionTaxPercent() + "%, 1인 " + rpgConfig.auctionMaxListings() + "개");
         line(sender, "골드", true, "처치 +" + rpgConfig.goldPerMobKill() + " / 레벨업 +"
                 + rpgConfig.goldPerLevel() + (rpgConfig.goldTransferAllowed() ? ", /pay 허용" : ", /pay 금지"));
+        line(sender, "시장", rpgConfig.marketEnabled(), market.size() + "품목 / "
+                + economyConfig.categories().size() + "분류, 시급 " + (int) economyConfig.hourlyWage()
+                + " 기준 · 초기공급 " + economyConfig.initialSupplyHours() + "시간 x "
+                + economyConfig.referencePlayers() + "명 · 스프레드 "
+                + (int) economyConfig.spreadPercent() + "% / 거래세 "
+                + (int) economyConfig.salesTaxPercent() + "% · 금고 " + market.treasury());
+        line(sender, "은행", rpgConfig.bankEnabled(), bank.accountCount() + "계좌, 예금 "
+                + bank.totalDeposits() + " / 대출 " + bank.totalLoans() + " · 지급준비율 "
+                + (int) economyConfig.reserveRatioPercent() + "% · 대출여력 "
+                + bank.lendingCapacity() + " · 연체율 "
+                + String.format(java.util.Locale.ROOT, "%.1f%%", bank.delinquencyPercent())
+                + " · 국채 잔액 " + bank.bondsOutstanding() + " (연 "
+                + com.rpgcore.plugin.economy.BankService.percent(bank.bondRate()) + ")");
+        line(sender, "중앙은행", rpgConfig.marketEnabled() || rpgConfig.bankEnabled(),
+                macro.day() + "일차 (하루 " + economyConfig.dayMinutes() + "분, 1년 "
+                        + economyConfig.daysPerYear() + "일) · 물가 "
+                        + String.format(java.util.Locale.ROOT, "%.1f", macro.cpi()) + " ("
+                        + MacroService.signed(macro.inflation()) + ", 목표 "
+                        + economyConfig.inflationTargetPercent() + "%) · 정책금리 "
+                        + com.rpgcore.plugin.economy.BankService.percent(macro.policyRate()));
 
         // Reports whether the webhook is set, never what it is: the URL is a
         // credential, and /rpgcore check is run in front of other people.
@@ -643,8 +756,8 @@ public final class RpgCorePlugin extends JavaPlugin {
      * them as ONE task, in one fixed order.
      *
      * The order is the point. Items cross between these files: an auction lot
-     * that sells moves into the mailbox, a disbanded guild empties its vault
-     * into the mailbox. The file giving the item away has to be written before
+     * that sells moves into the mailbox, and a wound-up company pays its
+     * shareholders through it. The file giving the item away has to be written before
      * the file receiving it, or a crash in between leaves the item in both -
      * and the mailbox, which only ever receives, is therefore always last.
      *
@@ -661,10 +774,17 @@ public final class RpgCorePlugin extends JavaPlugin {
             // store, in the one place that can still guarantee the order.
             return;
         }
-        List<Runnable> writes = new ArrayList<>(4);
+        List<Runnable> writes = new ArrayList<>(6);
         add(writes, parties.pendingWrite());
         add(writes, auctions.pendingWrite());
-        add(writes, guilds.pendingWrite());
+        // The market gives gold to the bank's borrowers and takes it from its
+        // depositors, so it is written first for the same reason as above.
+        add(writes, market.pendingWrite());
+        add(writes, bank.pendingWrite());
+        add(writes, macro.pendingWrite());
+        add(writes, corps.pendingWrite());
+        add(writes, blueprints.pendingLibraryWrite());
+        add(writes, blueprints.pendingSiteWrite());
         // Last: everything above can post into it, nothing it holds goes back.
         add(writes, mailbox.pendingWrite());
         if (writes.isEmpty()) {
@@ -720,6 +840,12 @@ public final class RpgCorePlugin extends JavaPlugin {
                 || holder instanceof CollectionMenu.Holder
                 || holder instanceof MainMenu.Holder
                 || holder instanceof AuctionMenu.Holder
+                || holder instanceof MarketMenu.Holder
+                || holder instanceof BankMenu.Holder
+                || holder instanceof EconomyMenu.Holder
+                || holder instanceof CompanyMenu.Holder
+                || holder instanceof StockMenu.Holder
+                || holder instanceof BlueprintMenu.Holder
                 || holder instanceof com.rpgcore.plugin.trade.TradeSession;
     }
 
@@ -767,12 +893,60 @@ public final class RpgCorePlugin extends JavaPlugin {
         return auctions;
     }
 
-    public GuildService guilds() {
-        return guilds;
+    public CorpService corps() {
+        return corps;
     }
 
-    public GuildClaimListener claimListener() {
-        return claimListener;
+    public CorpConfig corpConfig() {
+        return corpConfig;
+    }
+
+    public CompanyMenu companyMenu() {
+        return companyMenu;
+    }
+
+    public StockMenu stockMenu() {
+        return stockMenu;
+    }
+
+    public BlueprintService blueprints() {
+        return blueprints;
+    }
+
+    public BlueprintMenu blueprintMenu() {
+        return blueprintMenu;
+    }
+
+    public BlueprintListener blueprintListener() {
+        return blueprintListener;
+    }
+
+    public EconomyConfig economyConfig() {
+        return economyConfig;
+    }
+
+    public MarketService market() {
+        return market;
+    }
+
+    public BankService bank() {
+        return bank;
+    }
+
+    public MacroService macro() {
+        return macro;
+    }
+
+    public MarketMenu marketMenu() {
+        return marketMenu;
+    }
+
+    public BankMenu bankMenu() {
+        return bankMenu;
+    }
+
+    public EconomyMenu economyMenu() {
+        return economyMenu;
     }
 
     public AuctionMenu auctionMenu() {
@@ -813,6 +987,17 @@ public final class RpgCorePlugin extends JavaPlugin {
 
     public DiscordNotifier notifier() {
         return notifier;
+    }
+
+    /**
+     * The scoreboard mirror.
+     *
+     * Exposed for the money supply, which has to count every wallet on the
+     * server - including offline players - and has to count them now rather
+     * than from the leaderboard's few-second cache.
+     */
+    public RpgScoreboard scoreboard() {
+        return scoreboard;
     }
 
     public PlayerDataManager players() {
